@@ -85,6 +85,22 @@ CRITICAL RULES:
   reference patterns above) — a small/student/hobby project should get a
   simple architecture even if you're unsure, not production infrastructure
   "just in case".
+- The reference patterns' numeric thresholds are hard gates, not vibes:
+  before adding a CDN, load balancer, API gateway, cache, queue, or
+  replica, check the actual expected_users/expected_rps/budget/
+  availability_target constraints against those thresholds. Constraints
+  like "100-500 users" and "$50-100/month" do NOT clear the ~100,000-user
+  bar for a CDN/load balancer/API gateway, nor the ~500,000-user (or
+  explicit high-availability) bar for a cache, queue, or replica — at that
+  scale the right answer is still just a small managed database, even
+  though the budget could technically afford more. Never add infrastructure
+  a constraint doesn't clear "since the budget allows it" or "for future
+  scaling" — that is exactly the over-provisioning this rule exists to stop.
+- A load balancer implies multiple running instances of whatever it fronts.
+  Never put one directly in front of a static/CDN-served frontend
+  (type="frontend" or "edge_cdn" with no server-rendering need) — there are
+  no instances to distribute across. A load balancer only belongs in front
+  of a service that actually runs multiple horizontally-scaled instances.
 - Output ONLY valid JSON matching the InterviewTurnOutput schema below.
   No prose outside the JSON.
 
