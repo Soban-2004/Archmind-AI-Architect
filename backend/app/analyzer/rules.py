@@ -18,7 +18,7 @@ from typing import Callable
 from app.models.analysis import SEVERITY_POINTS, Category, Finding, Severity
 from app.models.state import ArchitectureState, ConstraintType, DatabaseRole, InfraType, ServiceType, SyncAsync
 
-RULES_VERSION = "v1"
+RULES_VERSION = "v2"
 
 RuleFn = Callable[[ArchitectureState], list[Finding]]
 
@@ -152,30 +152,58 @@ def rule_no_observability(state: ArchitectureState) -> list[Finding]:
 
 
 # ---------------------------------------------------------------------------
-# Reliability: chained synchronous calls (cascading-failure risk)
+# Reliability: a long fully-synchronous call chain (cascading-failure risk)
 # ---------------------------------------------------------------------------
+#
+# NOTE: an earlier version of this rule flagged any node with both an
+# incoming and an outgoing sync edge. That's wrong — a load balancer or API
+# gateway *always* looks like that; it's what routing infrastructure does,
+# not a structural flaw. Confirmed by a real run: it scored a production
+# tier (with a CDN/gateway/LB in front) WORSE on reliability than the
+# barebones tier it was generated from, which is backwards. This version
+# only flags a single, genuinely deep synchronous chain (>=4 hops, no async
+# break anywhere in it) — normal 2-3 hop request paths never trigger it.
 
-def rule_chained_sync_calls(state: ArchitectureState) -> list[Finding]:
-    findings: list[Finding] = []
-    incoming_sync: dict[str, list] = {}
-    outgoing_sync: dict[str, list] = {}
+CHAIN_THRESHOLD_HOPS = 4
+
+
+def _longest_sync_path(sync_adj: dict[str, list[str]], node_id: str, visiting: frozenset[str]) -> list[str]:
+    best: list[str] = []
+    for nxt in sync_adj.get(node_id, []):
+        if nxt in visiting:
+            continue  # cycle guard
+        candidate = [nxt] + _longest_sync_path(sync_adj, nxt, visiting | {nxt})
+        if len(candidate) > len(best):
+            best = candidate
+    return best
+
+
+def rule_long_sync_chain(state: ArchitectureState) -> list[Finding]:
+    sync_adj: dict[str, list[str]] = {}
+    edge_by_pair: dict[tuple[str, str], str] = {}
     for e in state.edges:
         if e.sync_async == SyncAsync.sync:
-            outgoing_sync.setdefault(e.from_id, []).append(e)
-            incoming_sync.setdefault(e.to_id, []).append(e)
+            sync_adj.setdefault(e.from_id, []).append(e.to_id)
+            edge_by_pair[(e.from_id, e.to_id)] = e.id
 
-    for node in state.nodes:
-        ins = incoming_sync.get(node.id, [])
-        outs = outgoing_sync.get(node.id, [])
-        if ins and outs:
-            evidence_edges = [e.id for e in ins + outs]
-            findings.append(_finding(
-                "chained_sync_calls", Category.reliability, Severity.moderate,
-                f"{node.name} both receives and makes synchronous calls — a slowdown downstream blocks callers upstream with no isolation.",
-                node_ids=[node.id],
-                edge_ids=evidence_edges,
-            ))
-    return findings
+    best_path: list[str] = []
+    for n in state.nodes:
+        path = [n.id] + _longest_sync_path(sync_adj, n.id, frozenset({n.id}))
+        if len(path) > len(best_path):
+            best_path = path
+
+    if len(best_path) - 1 < CHAIN_THRESHOLD_HOPS:
+        return []
+
+    id_to_name = {n.id: n.name for n in state.nodes}
+    chain_desc = " -> ".join(id_to_name.get(nid, nid) for nid in best_path)
+    edge_ids = [edge_by_pair[(best_path[i], best_path[i + 1])] for i in range(len(best_path) - 1)]
+    return [_finding(
+        "long_sync_chain", Category.reliability, Severity.moderate,
+        f"A fully synchronous call chain {len(best_path) - 1} hops deep with no async decoupling anywhere in it: {chain_desc}.",
+        node_ids=best_path,
+        edge_ids=edge_ids,
+    )]
 
 
 # ---------------------------------------------------------------------------
@@ -245,7 +273,7 @@ ALL_RULES: list[RuleFn] = [
     rule_no_cache_at_scale,
     rule_no_gateway_or_rate_limiting,
     rule_no_observability,
-    rule_chained_sync_calls,
+    rule_long_sync_chain,
     rule_hard_external_dependency,
     rule_no_budget_constraint,
     rule_no_language_specified,

@@ -44,6 +44,16 @@ You always operate in exactly one of three modes per turn:
 
 {reference_patterns}
 
+Every add_node's `attributes` MUST match the shape for its `node_type`
+EXACTLY — the JSON Schema below shows `attributes` as a generic object, so
+these are not visible there; use ONLY the values listed here, never a
+synonym:
+- node_type="service": {{"type": one of "gateway" | "service" | "worker" | "frontend" | "edge_cdn" (use "service" for a generic backend service — NOT "backend"), "language"?: string, "responsibilities"?: string, "scaling_mode"?: "stateless" | "stateful"}}
+- node_type="database": {{"type": one of "relational" | "document" | "keyvalue" | "search" | "graph", "engine": string (e.g. "postgres", "redis"), "role"?: "primary" | "replica" | "cache"}}
+- node_type="queue": {{"type": one of "queue" | "pubsub" | "stream", "engine": string (e.g. "sqs", "kafka")}}
+- node_type="external_dependency": {{"type": one of "third_party_api" | "payment" | "market_data" | "auth_provider" | "storage" (use "third_party_api" for a generic external API — NOT "api"), "criticality"?: "hard" | "soft"}}
+- node_type="infra_node": {{"type": one of "cdn" | "load_balancer" | "api_gateway" | "object_storage" | "container_runtime" | "observability"}}
+
 CRITICAL RULES:
 - You NEVER draw or describe a diagram directly. You only ever emit
   mutation commands (add_node, remove_node, update_node, add_edge,
@@ -55,6 +65,8 @@ CRITICAL RULES:
   final node id — the server generates those. When editing and connecting
   to a node that already existed before this turn, use its real existing
   id instead of a ref.
+- `attributes.type` must be EXACTLY one of the listed values for that
+  node_type — invented values (e.g. "backend", "api") will be rejected.
 - Output ONLY valid JSON matching the InterviewTurnOutput schema below.
   No prose outside the JSON.
 

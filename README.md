@@ -34,6 +34,50 @@ Currently implemented:
   cite findings the rule engine actually produced — the score itself is
   never computed or touched by the LLM.
 
+Phases 1–4 have been run end-to-end against a real Groq key and a real
+Supabase database (not just unit-tested against mocks) — see "Live testing
+findings" below for the two real bugs that surfaced and how they were
+fixed.
+
+## Live testing findings
+
+Running the full interview → edit → tier → analyze flow against a real
+model surfaced two real issues neither unit tests nor synthetic test data
+caught:
+
+1. **Groq model naming drift.** `llama-3.3-70b-versatile` (the model this
+   was originally built against) had been retired from Groq's catalog by
+   the time this ran live — model availability on hosted-inference
+   providers shifts over time, so treat `GROQ_MODEL` in `.env` as
+   something to re-verify against `console.groq.com/docs/models` rather
+   than a fixed constant. Currently set to `openai/gpt-oss-120b`, which
+   also has the nice property of returning its chain-of-thought in a
+   separate `reasoning` field instead of mixing it into the JSON content.
+2. **A real Analyzer rule bug, caught by the actual acceptance scenario.**
+   Generating a "$0 student" tier and then a "production, 1M users" tier
+   from it and comparing scorecards — precisely the flagship demo this
+   project is built around — showed the production tier scoring *worse*
+   on reliability (25) than the student tier (55). The cause:
+   `chained_sync_calls` flagged any node with both an incoming and
+   outgoing synchronous edge, which is just what routing infrastructure
+   (a load balancer, an API gateway) always looks like — not a real flaw.
+   Replaced with `long_sync_chain` (`backend/app/analyzer/rules.py`),
+   which only fires on a single, genuinely deep synchronous chain (≥4 hops
+   with no async break anywhere in it); bumped `RULES_VERSION` to `v2`.
+   Re-run against the same two real tiers: student 89 overall, production
+   97 — correctly ordered, and reliability ties at 85 for a legitimate
+   reason each time (student: no replica; production: replica added, but
+   a real new finding — the read path is still fully synchronous end to
+   end despite the added infrastructure). This is exactly the kind of bug
+   that only a full live run surfaces, and exactly why Phases 1–4 were
+   tested before starting Phase 5.
+
+Separately, a garbled em-dash (`â€”`) showed up in scorecard
+messages during manual `curl` testing — traced to the Windows terminal's
+handling of piped UTF-8 output, not the actual data (confirmed the Python
+string holds the correct `U+2014` codepoint). The real JSON served over
+HTTP is unaffected; a browser renders it correctly.
+
 ## Project layout
 
 ```
