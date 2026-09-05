@@ -19,6 +19,13 @@ Currently implemented:
   instead of reshuffling; every meaningful edit gets an ADR (LLM-authored,
   or a deterministic templated fallback if it forgets); unambiguous
   requests ("remove the queue") resolve without an LLM call at all.
+- **Phase 3** — architecture tiers: "show me the $0 student version" or
+  "production for 1M users" generates a fresh sibling version (not an edit
+  of the current graph) grounded in a small reference-pattern library and
+  the project's known constraints. A compare view picks any two versions
+  and gets the deterministic structural diff plus an LLM narration that's
+  only allowed to reference facts actually present in that diff — anything
+  else is filtered out before it reaches the UI.
 
 ## Project layout
 
@@ -122,7 +129,45 @@ clarifying questions, then renders the first architecture on the canvas.
   new chat edits always continue from the true latest version — branching
   from an older version is Phase 3's tiering work, not built yet.
 
+## Phase 3 design notes
+
+- **Tiers branch, they don't chain.** Every chat call now carries an
+  explicit `base_version_id` (whatever the frontend currently has active)
+  instead of the backend always assuming "the most recently created row."
+  This is what lets a "$0 student" tier and a "production, 1M users" tier
+  both branch off the *same* base rather than the second one accidentally
+  branching off the first. It also means editing from an older version in
+  history now properly branches instead of being blocked, which is a
+  generalization of Phase 2's read-only restriction, not a new special
+  case.
+- **A tier is a fresh generation, not an edit.** The model builds it from
+  an empty state via the same `add_node`/`add_edge` + local-`ref`
+  mechanism as the very first Phase 1 architecture — it does not reuse the
+  base's node ids. One consequence worth knowing: because node identity is
+  id-based, the diff between a base and a tier shows even structurally
+  identical components (e.g. the frontend) as "removed + added" rather
+  than "unchanged," since their ids differ across independently-generated
+  graphs. This is an honest diff (they really are two separate generated
+  graphs), just not the friendliest possible one — a future refinement
+  would match unmatched nodes by `(kind, name)` across tier comparisons
+  specifically, without changing Phase 2's edit-diff semantics (where
+  id-based matching is exactly correct, since renames should show as
+  "changed", not "removed+added").
+- **Explanation groundedness is enforced in code, not just prompted.** The
+  compare LLM call is given only the deterministic diff, both versions'
+  constraints, and both versions' ADRs — nothing else — and every
+  explanation it returns must carry a `ref` that matches a real diff entry
+  exactly; anything that doesn't is dropped before the result reaches the
+  API response (`backend/app/services/compare.py`).
+- **Reference patterns are grounding, not a template engine.** The list in
+  `backend/app/llm/reference_patterns.py` is fed into the tier-generation
+  prompt as context the model reasons over — it is explicitly instructed
+  not to apply patterns mechanically. There is no code path that turns a
+  pattern into a command directly.
+
 ## What's next (not yet built)
 
-Phase 3 — architecture tiers (student/production/budget variants) and an
-arbitrary-version compare view, reusing the diff engine already built here.
+Phase 4 — the rule-based Analyzer/scorecard (scalability, reliability,
+security, cost, observability, performance, maintainability), with
+deterministic scoring and LLM-authored explanations of already-computed
+results (never LLM-computed scores).

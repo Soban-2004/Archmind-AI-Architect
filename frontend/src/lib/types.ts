@@ -95,6 +95,22 @@ export type ChatResponse =
   | { kind: "architecture"; summary: string; version: VersionRow; diff: VersionDiff | null }
   | { kind: "error"; error: string };
 
+// Mirrors backend/app/models/compare.py
+export interface DiffExplanationEntry {
+  ref: string;
+  explanation: string;
+}
+
+export interface CompareExplanation {
+  entries: DiffExplanationEntry[];
+  overall_summary: string;
+}
+
+export interface CompareResult {
+  diff: VersionDiff;
+  explanation: CompareExplanation;
+}
+
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;

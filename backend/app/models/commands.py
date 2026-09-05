@@ -89,14 +89,17 @@ class CommandValidationError(BaseModel):
 
 
 class InterviewTurnOutput(BaseModel):
-    """The model's structured output for every interview turn (Phase 1).
+    """The model's structured output for every interview/edit/tier turn.
 
-    Control flow is structured even though `question` is free text — the
-    model can only ever be in one of two modes: still gathering
-    requirements, or proposing a validated architecture.
+    Control flow is structured even though `question`/`summary` are free
+    text — the model can only ever be in one of three modes: still
+    gathering requirements, editing the current architecture, or
+    generating an alternative tier from the same underlying requirements
+    (spec §6 Phase 3).
     """
 
-    action: Literal["ask_question", "propose_architecture"]
+    action: Literal["ask_question", "propose_architecture", "generate_tier"]
     question: Optional[str] = None
     commands: Optional[list[MutationCommand]] = None
     summary: Optional[str] = None  # short natural-language note for the chat log
+    tier_label: Optional[str] = None  # required when action == "generate_tier", e.g. "$0 Student Tier"

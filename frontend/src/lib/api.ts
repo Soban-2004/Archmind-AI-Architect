@@ -1,4 +1,4 @@
-import type { ChatResponse, VersionDiff, VersionRow, VersionSummary } from "./types";
+import type { ChatResponse, CompareResult, VersionDiff, VersionRow, VersionSummary } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -46,9 +46,12 @@ export const api = {
       body: JSON.stringify({ layout }),
     }),
 
-  sendChatMessage: (projectId: string, message: string) =>
+  sendChatMessage: (projectId: string, message: string, baseVersionId?: string | null) =>
     request<ChatResponse>(`/projects/${projectId}/chat`, {
       method: "POST",
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ message, base_version_id: baseVersionId ?? null }),
     }),
+
+  compare: (projectId: string, versionAId: string, versionBId: string) =>
+    request<CompareResult>(`/projects/${projectId}/compare?version_a=${versionAId}&version_b=${versionBId}`),
 };

@@ -1,6 +1,11 @@
 from abc import ABC, abstractmethod
+from typing import TypeVar
+
+from pydantic import BaseModel
 
 from app.models.commands import InterviewTurnOutput
+
+T = TypeVar("T", bound=BaseModel)
 
 
 class LLMProvider(ABC):
@@ -17,4 +22,10 @@ class LLMProvider(ABC):
     ) -> InterviewTurnOutput:
         """Return exactly one structured InterviewTurnOutput. Raises on
         total failure (caller decides how many retries to allow)."""
+        ...
+
+    @abstractmethod
+    async def structured_json(self, system_prompt: str, user_message: str, schema_model: type[T]) -> T:
+        """General-purpose one-shot structured call for anything that isn't
+        the interview loop (e.g. diff explanations)."""
         ...
