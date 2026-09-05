@@ -3,14 +3,24 @@
 import { useMemo } from "react";
 import { Background, Controls, ReactFlow, type NodeTypes } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { layoutState } from "@/lib/layout";
-import type { ArchitectureState } from "@/lib/types";
+import { toFlowElements } from "@/lib/diffView";
+import type { LayoutMap } from "@/lib/layout";
+import type { ArchitectureState, VersionDiff } from "@/lib/types";
 import { ArchNodeCard } from "./ArchNodeCard";
 
 const nodeTypes: NodeTypes = { archNode: ArchNodeCard };
 
-export function ArchitectureCanvas({ state }: { state: ArchitectureState | null }) {
-  const { nodes, edges } = useMemo(() => (state ? layoutState(state) : { nodes: [], edges: [] }), [state]);
+interface Props {
+  state: ArchitectureState | null;
+  layout: LayoutMap;
+  diff?: VersionDiff | null;
+}
+
+export function ArchitectureCanvas({ state, layout, diff }: Props) {
+  const { nodes, edges } = useMemo(
+    () => (state ? toFlowElements(state, layout, diff) : { nodes: [], edges: [] }),
+    [state, layout, diff]
+  );
 
   if (!state || state.nodes.length === 0) {
     return (

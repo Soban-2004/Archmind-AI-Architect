@@ -1,18 +1,18 @@
 import dagre from "dagre";
-import type { Edge, Node } from "@xyflow/react";
 import type { ArchitectureState } from "./types";
 
-// Deterministic layout: the graph's positions are always a pure function of
-// the ArchitectureState, computed by dagre — never chosen by the LLM (spec
-// §0 / §5). Phase 1 recomputes the full layout on every render; incremental
-// position-preservation across edits is a Phase 2 concern (see
-// AI_ARCHITECT_IMPLEMENTATION.md critique — layout will move to persisted
-// per-version `layout` metadata then).
+// Deterministic layout: positions are always a pure function of the graph
+// structure, computed by dagre — never chosen by the LLM (spec §0/§5).
+// This is the FULL re-layout, used only when there's no persisted layout to
+// build on (a version's very first render). Incremental edits use
+// incrementalLayout.ts instead, so existing nodes don't jump around.
 
-const NODE_WIDTH = 190;
-const NODE_HEIGHT = 64;
+export const NODE_WIDTH = 190;
+export const NODE_HEIGHT = 64;
 
-export function layoutState(state: ArchitectureState): { nodes: Node[]; edges: Edge[] } {
+export type LayoutMap = Record<string, { x: number; y: number }>;
+
+export function computeDagreLayout(state: ArchitectureState): LayoutMap {
   const g = new dagre.graphlib.Graph();
   g.setGraph({ rankdir: "LR", nodesep: 40, ranksep: 100 });
   g.setDefaultEdgeLabel(() => ({}));
@@ -28,25 +28,10 @@ export function layoutState(state: ArchitectureState): { nodes: Node[]; edges: E
 
   dagre.layout(g);
 
-  const nodes: Node[] = state.nodes.map((n) => {
-    const pos = g.node(n.id) ?? { x: 0, y: 0 };
-    return {
-      id: n.id,
-      type: "archNode",
-      position: { x: pos.x - NODE_WIDTH / 2, y: pos.y - NODE_HEIGHT / 2 },
-      data: { archNode: n },
-    };
-  });
-
-  const edges: Edge[] = state.edges.map((e) => ({
-    id: e.id,
-    source: e.from_id,
-    target: e.to_id,
-    label: e.protocol,
-    animated: e.sync_async === "async_",
-    style: { strokeWidth: 1.5 },
-    labelStyle: { fontSize: 11 },
-  }));
-
-  return { nodes, edges };
+  const layout: LayoutMap = {};
+  for (const n of state.nodes) {
+    const pos = g.node(n.id);
+    if (pos) layout[n.id] = { x: pos.x - NODE_WIDTH / 2, y: pos.y - NODE_HEIGHT / 2 };
+  }
+  return layout;
 }

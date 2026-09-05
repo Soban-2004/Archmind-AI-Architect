@@ -1,4 +1,4 @@
-import type { ChatResponse, VersionRow } from "./types";
+import type { ChatResponse, VersionDiff, VersionRow, VersionSummary } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -30,13 +30,21 @@ export const api = {
 
   getProject: (projectId: string) => request<Project>(`/projects/${projectId}`),
 
-  listVersions: (projectId: string) =>
-    request<Array<Pick<VersionRow, "id" | "project_id" | "parent_version_id" | "label" | "kind" | "created_at">>>(
-      `/projects/${projectId}/versions`
-    ),
+  listVersions: (projectId: string) => request<VersionSummary[]>(`/projects/${projectId}/versions`),
 
   getVersion: (projectId: string, versionId: string) =>
     request<VersionRow>(`/projects/${projectId}/versions/${versionId}`),
+
+  getDiff: (projectId: string, versionId: string, against?: string) =>
+    request<VersionDiff>(
+      `/projects/${projectId}/versions/${versionId}/diff${against ? `?against=${against}` : ""}`
+    ),
+
+  updateLayout: (projectId: string, versionId: string, layout: Record<string, { x: number; y: number }>) =>
+    request<{ ok: boolean }>(`/projects/${projectId}/versions/${versionId}/layout`, {
+      method: "PUT",
+      body: JSON.stringify({ layout }),
+    }),
 
   sendChatMessage: (projectId: string, message: string) =>
     request<ChatResponse>(`/projects/${projectId}/chat`, {

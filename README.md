@@ -10,8 +10,15 @@ built around: **the LLM never owns the diagram — it only ever emits
 validated mutation commands against a structured state, which is rendered
 deterministically.**
 
-Currently implemented: **Phase 1** — new-project requirements interview →
-first Architecture State → rendered diagram.
+Currently implemented:
+- **Phase 1** — new-project requirements interview → first Architecture
+  State → rendered diagram.
+- **Phase 2** — conversational editing: every edit produces a new,
+  diffed version; the canvas highlights what changed (green/amber/red-dashed
+  ghost) instead of just re-rendering; positions persist across edits
+  instead of reshuffling; every meaningful edit gets an ADR (LLM-authored,
+  or a deterministic templated fallback if it forgets); unambiguous
+  requests ("remove the queue") resolve without an LLM call at all.
 
 ## Project layout
 
@@ -83,10 +90,39 @@ clarifying questions, then renders the first architecture on the canvas.
   version history/diffing/tiering (Phases 2–3) free later instead of a
   retrofit.
 
+## Phase 2 design notes
+
+- **Diff engine** ([`backend/app/services/diff.py`](./backend/app/services/diff.py))
+  is pure and order-independent — it takes any two `ArchitectureState`s, not
+  just a parent/child pair, so it already supports Phase 3's arbitrary
+  version comparison. Nodes are matched by id; edges by `(from_id, to_id)`
+  since there's no `update_edge` command, so a protocol change reads as
+  "changed" rather than an unrelated remove+add.
+- **Layout persistence.** `versions.layout` is filled in by the *frontend*
+  (dagre and incremental placement are JS-side) via
+  `PUT /versions/{id}/layout`, immediately after each render. Existing
+  nodes carry their position forward unchanged
+  ([`frontend/src/lib/incrementalLayout.ts`](./frontend/src/lib/incrementalLayout.ts));
+  only genuinely new nodes get placed, near the centroid of their connected
+  neighbors. Full dagre re-layout only happens when there's no persisted
+  layout to build on yet.
+- **ADR guarantee.** If the model's `propose_architecture` output doesn't
+  include an `annotate_decision`, the backend appends a templated one
+  derived purely from the diff summary
+  ([`backend/app/services/adr.py`](./backend/app/services/adr.py)) — every
+  edit is guaranteed a rationale on record without depending on model
+  compliance.
+- **Deterministic fast path** ([`backend/app/services/deterministic.py`](./backend/app/services/deterministic.py))
+  implements §7's "no LLM call" tier for the unambiguous case: "remove/delete
+  X" resolves directly to a `remove_node` command when exactly one node
+  matches by name, skipping the LLM turn entirely. Anything ambiguous falls
+  through to the interview loop.
+- **Version history is read-only for now.** Clicking an older version in
+  the right-hand panel shows it (with its diff against its own parent) but
+  new chat edits always continue from the true latest version — branching
+  from an older version is Phase 3's tiering work, not built yet.
+
 ## What's next (not yet built)
 
-Phase 2 (conversational editing + diffs) is the next slice — see the
-implementation doc's phase list. Note the diagram currently re-lays-out
-fully on every render; Phase 2 needs positions to persist per version
-(`versions.layout` already exists in the schema for this) so edits don't
-reshuffle the whole canvas.
+Phase 3 — architecture tiers (student/production/budget variants) and an
+arbitrary-version compare view, reusing the diff engine already built here.

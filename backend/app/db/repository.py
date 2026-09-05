@@ -72,6 +72,11 @@ async def get_version(version_id: UUID) -> Optional[dict]:
     return dict(row) if row else None
 
 
+async def update_version_layout(version_id: UUID, layout: dict[str, Any]) -> None:
+    pool = await get_pool()
+    await pool.execute("update versions set layout = $2 where id = $1", version_id, layout)
+
+
 async def list_versions(project_id: UUID) -> list[dict]:
     pool = await get_pool()
     rows = await pool.fetch(
