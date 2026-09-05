@@ -2,7 +2,8 @@ import type { ButtonHTMLAttributes, ReactNode } from "react";
 
 // Small shared design-system primitives so every panel (chat, analyzer,
 // compare, simulate) reads as one product instead of four separately
-// styled screens.
+// styled screens. Every primitive carries its own dark: variants so
+// callers never have to think about theme.
 
 export function Button({
   variant = "primary",
@@ -14,8 +15,9 @@ export function Button({
   const sizes = { sm: "px-2.5 py-1 text-xs", md: "px-3.5 py-2 text-sm" };
   const variants = {
     primary: "bg-brand-600 text-white hover:bg-brand-700 shadow-sm shadow-brand-600/20",
-    secondary: "bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 shadow-sm",
-    ghost: "text-slate-500 hover:bg-slate-100 hover:text-slate-700",
+    secondary:
+      "bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 shadow-sm dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700 dark:hover:bg-slate-700",
+    ghost: "text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200",
     danger: "bg-red-600 text-white hover:bg-red-700 shadow-sm shadow-red-600/20",
   };
   return <button className={`${base} ${sizes[size]} ${variants[variant]} ${className}`} {...props} />;
@@ -24,18 +26,18 @@ export function Button({
 export function IconButton({ className = "", ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
-      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 disabled:opacity-40 ${className}`}
+      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 disabled:opacity-40 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300 ${className}`}
       {...props}
     />
   );
 }
 
 const BADGE_TONES = {
-  slate: "bg-slate-100 text-slate-600",
-  brand: "bg-brand-50 text-brand-700",
-  green: "bg-green-50 text-green-700",
-  amber: "bg-amber-50 text-amber-700",
-  red: "bg-red-50 text-red-700",
+  slate: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
+  brand: "bg-brand-50 text-brand-700 dark:bg-indigo-500/15 dark:text-indigo-300",
+  green: "bg-green-50 text-green-700 dark:bg-green-500/15 dark:text-green-400",
+  amber: "bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400",
+  red: "bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-400",
 } as const;
 
 export function Badge({ tone = "slate", children, className = "" }: { tone?: keyof typeof BADGE_TONES; children: ReactNode; className?: string }) {
@@ -48,13 +50,15 @@ export function Badge({ tone = "slate", children, className = "" }: { tone?: key
 
 export function Tabs<T extends string>({ tabs, active, onChange }: { tabs: { id: T; label: string; icon?: ReactNode }[]; active: T; onChange: (id: T) => void }) {
   return (
-    <div className="flex gap-1 rounded-lg bg-slate-100 p-1">
+    <div className="flex gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-800">
       {tabs.map((t) => (
         <button
           key={t.id}
           onClick={() => onChange(t.id)}
           className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
-            active === t.id ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
+            active === t.id
+              ? "bg-white text-slate-800 shadow-sm dark:bg-slate-700 dark:text-slate-100"
+              : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
           }`}
         >
           {t.icon}
@@ -73,7 +77,7 @@ export function ScoreRing({ score, size = 56 }: { score: number; size?: number }
   return (
     <div className="relative shrink-0" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
-        <circle cx={size / 2} cy={size / 2} r={radius} stroke="#e2e8f0" strokeWidth={5} fill="none" />
+        <circle cx={size / 2} cy={size / 2} r={radius} className="stroke-slate-200 dark:stroke-slate-700" strokeWidth={5} fill="none" />
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -87,7 +91,7 @@ export function ScoreRing({ score, size = 56 }: { score: number; size?: number }
           style={{ transition: "stroke-dashoffset 0.5s ease" }}
         />
       </svg>
-      <div className="absolute inset-0 flex items-center justify-center text-sm font-bold text-slate-800">{score}</div>
+      <div className="absolute inset-0 flex items-center justify-center text-sm font-bold text-slate-800 dark:text-slate-100">{score}</div>
     </div>
   );
 }
@@ -95,9 +99,9 @@ export function ScoreRing({ score, size = 56 }: { score: number; size?: number }
 export function EmptyState({ icon, title, description }: { icon: ReactNode; title: string; description?: string }) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2 px-8 text-center">
-      <div className="mb-1 flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">{icon}</div>
-      <p className="text-sm font-medium text-slate-600">{title}</p>
-      {description && <p className="text-xs text-slate-400">{description}</p>}
+      <div className="mb-1 flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">{icon}</div>
+      <p className="text-sm font-medium text-slate-600 dark:text-slate-300">{title}</p>
+      {description && <p className="text-xs text-slate-400 dark:text-slate-500">{description}</p>}
     </div>
   );
 }

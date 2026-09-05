@@ -7,7 +7,8 @@ import { ArchitectureCanvas } from "@/components/ArchitectureCanvas";
 import { ChatPanel } from "@/components/ChatPanel";
 import { ComparePanel } from "@/components/ComparePanel";
 import { SimulationPanel } from "@/components/SimulationPanel";
-import { Tabs } from "@/components/ui";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { Spinner, Tabs } from "@/components/ui";
 import { VersionHistory } from "@/components/VersionHistory";
 import type { Project } from "@/lib/api";
 import { api } from "@/lib/api";
@@ -32,6 +33,7 @@ export default function Home() {
   const [projectId, setProjectId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [mode, setMode] = useState<Mode>("chat");
+  const [initializing, setInitializing] = useState(true);
 
   const [rawState, setRawState] = useState<ArchitectureState | null>(null);
   const [rawLayout, setRawLayout] = useState<LayoutMap>({});
@@ -70,6 +72,8 @@ export default function Home() {
         }
       } catch (e) {
         setInitError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setInitializing(false);
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -170,96 +174,103 @@ export default function Home() {
   const displayDiff = compareResult ? compareResult.result.diff : diff;
   const displaySimulation = compareResult ? null : simulationResult; // simulation overlays the live graph only, not a compare snapshot
 
-  if (initError) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-slate-50 px-6 text-center text-sm text-red-600">
-        Could not reach the backend at NEXT_PUBLIC_API_URL: {initError}
-      </div>
-    );
-  }
-
   const viewingHistorical = !compareResult && activeVersionId !== null && activeVersionId !== latestVersionId;
 
   return (
-    <div className="flex h-screen flex-col bg-slate-50">
-      <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4">
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white shadow-sm shadow-brand-600/30">
-            <Boxes size={17} />
+    <div className="h-screen bg-background p-3">
+      <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-surface shadow-xl shadow-slate-900/5 dark:border-slate-800 dark:shadow-black/20">
+        <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 dark:border-slate-800 dark:bg-slate-900">
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white shadow-sm shadow-brand-600/30">
+              <Boxes size={17} />
+            </div>
+            <div className="leading-tight">
+              <h1 className="text-sm font-semibold text-slate-800 dark:text-slate-100">AI Architect</h1>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                {viewingHistorical ? "editing will branch from here" : latestVersionId ? "editing latest version" : "new project"}
+              </p>
+            </div>
           </div>
-          <div className="leading-tight">
-            <h1 className="text-sm font-semibold text-slate-800">AI Architect</h1>
-            <p className="text-[11px] text-slate-400">
-              {viewingHistorical ? "editing will branch from here" : latestVersionId ? "editing latest version" : "new project"}
-            </p>
-          </div>
-        </div>
-      </header>
+          <ThemeToggle />
+        </header>
 
-      <div className="flex min-h-0 flex-1">
-        <div className="flex w-[380px] shrink-0 flex-col border-r border-slate-200 bg-white">
-          {compareResult ? (
-            <ComparePanel result={compareResult.result} onExit={() => setCompareResult(null)} />
-          ) : (
-            <>
-              {activeVersionId && (
-                <div className="border-b border-slate-200 p-2.5">
-                  <Tabs
-                    active={mode}
-                    onChange={setMode}
-                    tabs={[
-                      { id: "chat", label: "Chat", icon: <MessageSquare size={13} /> },
-                      { id: "analyze", label: "Analyze", icon: <Gauge size={13} /> },
-                      { id: "simulate", label: "Simulate", icon: <Activity size={13} /> },
-                    ]}
-                  />
+        {initError ? (
+          <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-red-600 dark:text-red-400">
+            Could not reach the backend at NEXT_PUBLIC_API_URL: {initError}
+          </div>
+        ) : initializing ? (
+          <div className="flex flex-1 items-center justify-center gap-2 text-sm text-slate-400 dark:text-slate-500">
+            <Spinner className="h-4 w-4" /> Loading…
+          </div>
+        ) : (
+          <div className="flex min-h-0 flex-1">
+            <div className="flex w-[380px] shrink-0 flex-col border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+              {compareResult ? (
+                <div key="compare" className="flex min-h-0 flex-1 animate-fade-in flex-col">
+                  <ComparePanel result={compareResult.result} onExit={() => setCompareResult(null)} />
+                </div>
+              ) : (
+                <>
+                  {activeVersionId && (
+                    <div className="border-b border-slate-200 p-2.5 dark:border-slate-800">
+                      <Tabs
+                        active={mode}
+                        onChange={setMode}
+                        tabs={[
+                          { id: "chat", label: "Chat", icon: <MessageSquare size={13} /> },
+                          { id: "analyze", label: "Analyze", icon: <Gauge size={13} /> },
+                          { id: "simulate", label: "Simulate", icon: <Activity size={13} /> },
+                        ]}
+                      />
+                    </div>
+                  )}
+                  <div key={mode} className="min-h-0 flex-1 animate-fade-in">
+                    {mode === "analyze" && projectId && activeVersionId ? (
+                      <AnalyzerPanel projectId={projectId} versionId={activeVersionId} onExit={() => setMode("chat")} />
+                    ) : mode === "simulate" && projectId && activeVersionId && rawState ? (
+                      <SimulationPanel
+                        projectId={projectId}
+                        versionId={activeVersionId}
+                        state={rawState}
+                        result={simulationResult}
+                        onResult={setSimulationResult}
+                        onExit={() => setMode("chat")}
+                      />
+                    ) : (
+                      <ChatPanel messages={messages} onSend={handleSend} busy={busy || !projectId} />
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="flex min-w-0 flex-1 flex-col">
+              {viewingHistorical && (
+                <div className="flex items-center justify-between border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-400">
+                  <span>Viewing an earlier version. New edits will branch off from here.</span>
+                  {latestVersionId && projectId && (
+                    <button className="flex items-center gap-1 font-medium underline" onClick={() => loadVersion(projectId, latestVersionId)}>
+                      <ArrowLeft size={12} /> Back to latest
+                    </button>
+                  )}
                 </div>
               )}
               <div className="min-h-0 flex-1">
-                {mode === "analyze" && projectId && activeVersionId ? (
-                  <AnalyzerPanel projectId={projectId} versionId={activeVersionId} onExit={() => setMode("chat")} />
-                ) : mode === "simulate" && projectId && activeVersionId && rawState ? (
-                  <SimulationPanel
-                    projectId={projectId}
-                    versionId={activeVersionId}
-                    state={rawState}
-                    result={simulationResult}
-                    onResult={setSimulationResult}
-                    onExit={() => setMode("chat")}
-                  />
-                ) : (
-                  <ChatPanel messages={messages} onSend={handleSend} busy={busy || !projectId} />
-                )}
+                <ArchitectureCanvas state={displayState} layout={displayLayout} diff={displayDiff} simulation={displaySimulation} />
               </div>
-            </>
-          )}
-        </div>
-
-        <div className="flex min-w-0 flex-1 flex-col">
-          {viewingHistorical && (
-            <div className="flex items-center justify-between border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800">
-              <span>Viewing an earlier version. New edits will branch off from here.</span>
-              {latestVersionId && projectId && (
-                <button className="flex items-center gap-1 font-medium underline" onClick={() => loadVersion(projectId, latestVersionId)}>
-                  <ArrowLeft size={12} /> Back to latest
-                </button>
-              )}
             </div>
-          )}
-          <div className="min-h-0 flex-1">
-            <ArchitectureCanvas state={displayState} layout={displayLayout} diff={displayDiff} simulation={displaySimulation} />
-          </div>
-        </div>
 
-        {projectId && (
-          <div className="w-[240px] shrink-0 border-l border-slate-200 bg-white">
-            <VersionHistory
-              projectId={projectId}
-              activeVersionId={activeVersionId}
-              refreshKey={versionsRefreshKey}
-              onSelect={(vid) => loadVersion(projectId, vid)}
-              onCompare={handleCompare}
-            />
+            {projectId && (
+              <div className="w-[240px] shrink-0 border-l border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+                <VersionHistory
+                  projectId={projectId}
+                  activeVersionId={activeVersionId}
+                  refreshKey={versionsRefreshKey}
+                  onSelect={(vid) => loadVersion(projectId, vid)}
+                  onCompare={handleCompare}
+                />
+              </div>
+            )}
           </div>
         )}
       </div>

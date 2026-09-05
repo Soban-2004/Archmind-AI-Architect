@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Background, BackgroundVariant, Controls, ReactFlow, type NodeTypes } from "@xyflow/react";
+import { Background, BackgroundVariant, Controls, MiniMap, ReactFlow, type NodeTypes } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { Network } from "lucide-react";
 import { toFlowElements } from "@/lib/diffView";
@@ -39,8 +39,9 @@ export function ArchitectureCanvas({ state, layout, diff, simulation }: Props) {
 
   return (
     <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} fitView proOptions={{ hideAttribution: true }}>
-      <Background variant={BackgroundVariant.Dots} gap={20} size={1.5} color="#cbd5e1" />
+      <Background variant={BackgroundVariant.Dots} gap={20} size={1.5} color="var(--rf-dot-color)" />
       <Controls showInteractive={false} />
+      {nodes.length > 5 && <MiniMap pannable zoomable nodeStrokeWidth={0} bgColor="transparent" maskColor="rgba(100,116,139,0.08)" />}
     </ReactFlow>
   );
 }

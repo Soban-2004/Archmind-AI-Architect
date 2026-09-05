@@ -36,7 +36,7 @@ export function ChatPanel({ messages, onSend, busy }: Props) {
             {messages.map((m, i) => (
               <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
                 {m.role === "assistant" && (
-                  <div className="mr-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-600">
+                  <div className="mr-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-600 dark:text-indigo-300">
                     <MessageSquare size={13} />
                   </div>
                 )}
@@ -44,7 +44,7 @@ export function ChatPanel({ messages, onSend, busy }: Props) {
                   className={`max-w-[82%] whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-[13px] leading-relaxed shadow-sm ${
                     m.role === "user"
                       ? "rounded-br-sm bg-brand-600 text-white"
-                      : "rounded-bl-sm border border-slate-200 bg-white text-slate-700"
+                      : "rounded-bl-sm border border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
                   }`}
                 >
                   {m.content}
@@ -52,7 +52,7 @@ export function ChatPanel({ messages, onSend, busy }: Props) {
               </div>
             ))}
             {busy && (
-              <div className="flex items-center gap-2 pl-9 text-xs text-slate-400">
+              <div className="flex items-center gap-2 pl-9 text-xs text-slate-400 dark:text-slate-500">
                 <Spinner className="h-3.5 w-3.5" />
                 thinking…
               </div>
@@ -60,9 +60,9 @@ export function ChatPanel({ messages, onSend, busy }: Props) {
           </div>
         )}
       </div>
-      <form onSubmit={handleSubmit} className="flex gap-2 border-t border-slate-200 bg-white p-3">
+      <form onSubmit={handleSubmit} className="flex gap-2 border-t border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
         <input
-          className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm placeholder:text-slate-400 focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
+          className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm placeholder:text-slate-400 focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:bg-slate-800 dark:focus:ring-brand-500/20"
           placeholder="Type a message…"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
