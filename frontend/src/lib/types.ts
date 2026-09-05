@@ -150,6 +150,42 @@ export interface ScorecardAnswer {
   cited_rule_ids: string[];
 }
 
+// Mirrors backend/app/models/simulation.py
+export type LoadStatus = "ok" | "warning" | "overloaded" | "killed";
+
+export interface NodeLoad {
+  node_id: string;
+  node_name: string;
+  incoming_rps: number;
+  capacity_rps: number;
+  utilization_pct: number;
+  status: LoadStatus;
+  basis: string;
+}
+
+export interface EdgeLoad {
+  edge_id: string;
+  from_id: string;
+  to_id: string;
+  rps: number;
+}
+
+export interface SimulationFinding {
+  order: number;
+  node_id: string;
+  node_name: string;
+  message: string;
+}
+
+export interface SimulationResult {
+  scenario: string;
+  multiplier: number;
+  killed_node_ids: string[];
+  loads: NodeLoad[];
+  edge_loads: EdgeLoad[];
+  findings: SimulationFinding[];
+}
+
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;

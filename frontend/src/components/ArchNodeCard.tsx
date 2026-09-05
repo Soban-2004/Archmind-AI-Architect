@@ -1,5 +1,5 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import type { ArchNode, DiffStatus, NodeKind } from "@/lib/types";
+import type { ArchNode, DiffStatus, LoadStatus, NodeKind } from "@/lib/types";
 
 const KIND_STYLE: Record<NodeKind, { bg: string; border: string; label: string }> = {
   service: { bg: "bg-blue-50", border: "border-blue-400", label: "SERVICE" },
@@ -21,18 +21,31 @@ const DIFF_BADGE: Record<DiffStatus, { text: string; className: string }> = {
   changed: { text: "CHANGED", className: "bg-amber-600 text-white" },
 };
 
+const SIM_RING: Record<LoadStatus, string> = {
+  ok: "ring-2 ring-green-400",
+  warning: "ring-2 ring-amber-500",
+  overloaded: "ring-4 ring-red-600 animate-pulse",
+  killed: "opacity-30 border-dashed border-slate-400 grayscale",
+};
+
+const SIM_BADGE: Record<LoadStatus, { text: string; className: string } | null> = {
+  ok: null,
+  warning: { text: "WARNING", className: "bg-amber-600 text-white" },
+  overloaded: { text: "OVERLOADED", className: "bg-red-600 text-white" },
+  killed: { text: "KILLED", className: "bg-slate-500 text-white" },
+};
+
 export function ArchNodeCard({ data }: NodeProps) {
   const node = data.archNode as ArchNode;
   const diffStatus = data.diffStatus as DiffStatus | undefined;
+  const simStatus = data.simStatus as LoadStatus | undefined;
   const style = KIND_STYLE[node.node_kind];
-  const badge = diffStatus ? DIFF_BADGE[diffStatus] : null;
+
+  const ring = simStatus ? SIM_RING[simStatus] : diffStatus ? DIFF_RING[diffStatus] : "";
+  const badge = simStatus ? SIM_BADGE[simStatus] : diffStatus ? DIFF_BADGE[diffStatus] : null;
 
   return (
-    <div
-      className={`relative rounded-lg border-2 ${style.border} ${style.bg} px-3 py-2 shadow-sm w-[190px] ${
-        diffStatus ? DIFF_RING[diffStatus] : ""
-      }`}
-    >
+    <div className={`relative rounded-lg border-2 ${style.border} ${style.bg} px-3 py-2 shadow-sm w-[190px] ${ring}`}>
       {badge && (
         <span
           className={`absolute -top-2 -right-2 rounded px-1.5 py-0.5 text-[9px] font-bold ${badge.className}`}

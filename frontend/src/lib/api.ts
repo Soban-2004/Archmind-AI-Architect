@@ -1,4 +1,4 @@
-import type { ChatResponse, CompareResult, Scorecard, ScorecardAnswer, VersionDiff, VersionRow, VersionSummary } from "./types";
+import type { ChatResponse, CompareResult, Scorecard, ScorecardAnswer, SimulationResult, VersionDiff, VersionRow, VersionSummary } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -63,4 +63,10 @@ export const api = {
       `/projects/${projectId}/versions/${versionId}/scorecard/ask`,
       { method: "POST", body: JSON.stringify({ question }) }
     ),
+
+  simulate: (projectId: string, versionId: string, multiplier: number, killNodeIds: string[]) =>
+    request<SimulationResult>(`/projects/${projectId}/versions/${versionId}/simulate`, {
+      method: "POST",
+      body: JSON.stringify({ multiplier, kill_node_ids: killNodeIds }),
+    }),
 };

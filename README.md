@@ -33,17 +33,29 @@ Currently implemented:
   is scalability only 62?") get an LLM-authored explanation that can only
   cite findings the rule engine actually produced — the score itself is
   never computed or touched by the LLM.
+- **Phase 7 (stretch)** — traffic/failure simulation: pick a load
+  multiplier (1x/10x/50x/100x) and/or kill a component, and a deterministic
+  capacity-propagation model (**explicitly a heuristic based on declared
+  per-component assumptions, not a real load test or discrete-event
+  simulator** — spec §11 requires this be stated plainly, so it's said
+  again here) shows which components exceed their assumed capacity, in
+  what order, and why. The canvas overlays this live: nodes glow
+  green/amber/red/pulsing-red by utilization, killed nodes desaturate, and
+  edges animate with their projected req/s. This is a dedicated control
+  panel, not a chat request — deliberately routed around the LLM entirely
+  (spec §7: an unambiguous "10x traffic" or "kill Redis" request is a
+  no-LLM-call case) so it's instant and free.
 
-Phases 1–4 have been run end-to-end against a real Groq key and a real
-Supabase database (not just unit-tested against mocks) — see "Live testing
-findings" below for the two real bugs that surfaced and how they were
+Phases 1–4 and 7 have been run end-to-end against a real Groq key and a
+real Supabase database (not just unit-tested against mocks) — see "Live
+testing findings" below for the real bugs that surfaced and how they were
 fixed.
 
 ## Live testing findings
 
-Running the full interview → edit → tier → analyze flow against a real
-model surfaced two real issues neither unit tests nor synthetic test data
-caught:
+Running the full interview → edit → tier → analyze → simulate flow against
+a real model surfaced four real issues neither unit tests nor synthetic
+test data caught:
 
 1. **Groq model naming drift.** `llama-3.3-70b-versatile` (the model this
    was originally built against) had been retired from Groq's catalog by
@@ -77,6 +89,37 @@ messages during manual `curl` testing — traced to the Windows terminal's
 handling of piped UTF-8 output, not the actual data (confirmed the Python
 string holds the correct `U+2014` codepoint). The real JSON served over
 HTTP is unaffected; a browser renders it correctly.
+
+Building and testing Phase 7 (simulation) against the same live project
+surfaced two more real issues:
+
+3. **Conversation history isn't scoped to the branch being edited.**
+   Requesting "add a read replica" against the student-tier version (after
+   an earlier production-tier request in the same project) produced a
+   confused clarifying question — the model saw the flat per-project
+   message log, including the unrelated production-tier request, and
+   couldn't tell which architecture was actually being discussed. Worked
+   around live by making the request self-contained ("modify the CURRENT
+   architecture I'm viewing right now"); the real fix — scoping
+   conversation history to the active branch, or having the system prompt
+   explicitly disambiguate which version is in play — is a documented gap,
+   not yet implemented. Worth fixing before Phase 3 branching sees heavy
+   use.
+4. **The read-replica sharing rule missed its own target on the first
+   try.** The simulator's Rule 4 originally only redistributed load when
+   one caller's outgoing edges fanned out to a primary *and* a replica
+   together. But the model — reasonably — represented the fix as a
+   `primary -> replica` replication edge instead, which that rule never
+   looked at. Result: re-running the simulation after adding a replica
+   showed the replica sitting at 0 load and the primary completely
+   unchanged, i.e. the fix-it flow's core promise (spec's Phase 7
+   acceptance criterion) silently didn't work. Fixed by moving the
+   write/read split to fire off the primary's own replication edge(s)
+   regardless of who calls it (`backend/app/services/simulator.py`).
+   Re-verified on the same real before/after versions: primary DB
+   utilization dropped from 200% to 130% at 100x traffic after adding one
+   replica, with the replica itself landing at 70% — the split's declared
+   30/70 write/read math, working exactly as documented.
 
 ## Project layout
 
@@ -243,6 +286,31 @@ clarifying questions, then renders the first architecture on the canvas.
   recompute or contradict it, only cite specific `rule_id`s; any cited id
   that isn't a real finding on that scorecard is dropped before the answer
   reaches the API response.
+
+## Phase 7 design notes
+
+- **The whole model is declared in one place.** `backend/app/services/simulator.py`'s
+  module docstring lists all six propagation rules together — traffic
+  entry, full fan-out per edge, cache discount, primary/replica read
+  split, kill-node bypass/failure, and the ok/warning/overloaded
+  thresholds. Nothing about how load moves through the graph lives
+  anywhere else, so the whole heuristic is auditable in one read.
+- **Capacity numbers are a separate, versioned table**
+  (`backend/app/analyzer/capacity.py`), not inline guesses — every
+  `NodeLoad` in a result carries a `basis` string naming exactly which
+  declared assumption produced its capacity figure, so a finding is never
+  presented as an unexplained number.
+- **No LLM involved anywhere in this phase.** A traffic multiplier and a
+  node-kill list are exactly the kind of unambiguous input spec §7 calls
+  out as a no-LLM-call case — the whole feature is a dedicated control
+  panel + a pure function, deliberately kept off the interview loop.
+- **Known limitation:** the fan-out rule (a node forwards its full
+  incoming load down every outgoing edge) is deliberately conservative —
+  it will over-count load on architectures with genuinely branching logic
+  (e.g. a cache-hit path vs. a cache-miss path that only sometimes reaches
+  the database), since the schema has no per-edge branch-probability
+  field to draw on. Flagged as over-cautious rather than silently
+  under-counting, consistent with a tool whose job is to surface risk.
 
 ## What's next (not yet built)
 

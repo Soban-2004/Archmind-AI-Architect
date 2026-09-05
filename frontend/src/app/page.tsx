@@ -5,13 +5,14 @@ import { AnalyzerPanel } from "@/components/AnalyzerPanel";
 import { ArchitectureCanvas } from "@/components/ArchitectureCanvas";
 import { ChatPanel } from "@/components/ChatPanel";
 import { ComparePanel } from "@/components/ComparePanel";
+import { SimulationPanel } from "@/components/SimulationPanel";
 import { VersionHistory } from "@/components/VersionHistory";
 import type { Project } from "@/lib/api";
 import { api } from "@/lib/api";
 import { buildDiffDisplayState } from "@/lib/diffView";
 import { computeIncrementalLayout } from "@/lib/incrementalLayout";
 import { computeDagreLayout, type LayoutMap } from "@/lib/layout";
-import type { ArchitectureState, ChatMessage, CompareResult, VersionDiff, VersionRow } from "@/lib/types";
+import type { ArchitectureState, ChatMessage, CompareResult, SimulationResult, VersionDiff, VersionRow } from "@/lib/types";
 
 const STORAGE_KEY = "ai-architect-project-id";
 
@@ -41,6 +42,8 @@ export default function Home() {
 
   const [compareResult, setCompareResult] = useState<{ result: CompareResult; state: ArchitectureState; layout: LayoutMap } | null>(null);
   const [analyzerOpen, setAnalyzerOpen] = useState(false);
+  const [simulationOpen, setSimulationOpen] = useState(false);
+  const [simulationResult, setSimulationResult] = useState<SimulationResult | null>(null);
 
   const [busy, setBusy] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
@@ -88,6 +91,7 @@ export default function Home() {
     }
 
     setCompareResult(null);
+    setSimulationResult(null); // stale for a different version's graph
     setGhostLayoutHint({}); // no in-memory hint when jumping to an arbitrary version
     setRawState(version.state);
     setRawLayout(layout);
@@ -122,6 +126,7 @@ export default function Home() {
         setRawState(result.version.state);
         setRawLayout(newLayout);
         setDiff(result.diff);
+        setSimulationResult(null); // stale now that the graph changed
         setActiveVersionId(result.version.id);
         setLatestVersionId(result.version.id);
         setVersionsRefreshKey((k) => k + 1);
@@ -150,6 +155,7 @@ export default function Home() {
         layout = computeDagreLayout(versionB.state);
       }
       setAnalyzerOpen(false);
+      setSimulationOpen(false);
       setCompareResult({ result, state: versionB.state, layout });
     } catch (e) {
       setMessages((prev) => [
@@ -171,6 +177,7 @@ export default function Home() {
   }, [displayState, compareResult, ghostLayoutHint, rawLayout]);
 
   const displayDiff = compareResult ? compareResult.result.diff : diff;
+  const displaySimulation = compareResult ? null : simulationResult; // simulation overlays the live graph only, not a compare snapshot
 
   if (initError) {
     return (
@@ -189,6 +196,15 @@ export default function Home() {
           <ComparePanel result={compareResult.result} onExit={() => setCompareResult(null)} />
         ) : analyzerOpen && projectId && activeVersionId ? (
           <AnalyzerPanel projectId={projectId} versionId={activeVersionId} onExit={() => setAnalyzerOpen(false)} />
+        ) : simulationOpen && projectId && activeVersionId && rawState ? (
+          <SimulationPanel
+            projectId={projectId}
+            versionId={activeVersionId}
+            state={rawState}
+            result={simulationResult}
+            onResult={setSimulationResult}
+            onExit={() => setSimulationOpen(false)}
+          />
         ) : (
           <>
             <div className="border-b border-slate-200 px-4 py-3 flex items-center justify-between">
@@ -199,12 +215,28 @@ export default function Home() {
                 </p>
               </div>
               {activeVersionId && (
-                <button
-                  onClick={() => setAnalyzerOpen(true)}
-                  className="text-[10px] font-semibold rounded px-1.5 py-0.5 bg-slate-100 text-slate-500 hover:bg-slate-200"
-                >
-                  ANALYZE
-                </button>
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => {
+                      setCompareResult(null);
+                      setSimulationOpen(false);
+                      setAnalyzerOpen(true);
+                    }}
+                    className="text-[10px] font-semibold rounded px-1.5 py-0.5 bg-slate-100 text-slate-500 hover:bg-slate-200"
+                  >
+                    ANALYZE
+                  </button>
+                  <button
+                    onClick={() => {
+                      setCompareResult(null);
+                      setAnalyzerOpen(false);
+                      setSimulationOpen(true);
+                    }}
+                    className="text-[10px] font-semibold rounded px-1.5 py-0.5 bg-slate-100 text-slate-500 hover:bg-slate-200"
+                  >
+                    SIMULATE
+                  </button>
+                </div>
               )}
             </div>
             <div className="flex-1 min-h-0">
@@ -226,7 +258,7 @@ export default function Home() {
           </div>
         )}
         <div className="flex-1 min-h-0">
-          <ArchitectureCanvas state={displayState} layout={displayLayout} diff={displayDiff} />
+          <ArchitectureCanvas state={displayState} layout={displayLayout} diff={displayDiff} simulation={displaySimulation} />
         </div>
       </div>
 
