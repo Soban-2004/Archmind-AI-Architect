@@ -11,9 +11,10 @@ import type { ArchitectureState, ArchNode, SimulationResult, VersionDiff } from 
 import { ArchNodeCard } from "./ArchNodeCard";
 import { FlowEdge } from "./FlowEdge";
 import { NodeDetailCard } from "./NodeDetailCard";
+import { TrafficSourceNode } from "./TrafficSourceNode";
 import { EmptyState } from "./ui";
 
-const nodeTypes: NodeTypes = { archNode: ArchNodeCard };
+const nodeTypes: NodeTypes = { archNode: ArchNodeCard, trafficSource: TrafficSourceNode };
 const edgeTypes: EdgeTypes = { flow: FlowEdge };
 
 const MINIMAP_KIND_COLOR: Record<string, string> = {

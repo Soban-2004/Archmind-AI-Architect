@@ -108,7 +108,6 @@ export default function Home() {
         setInitializing(false);
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function loadVersion(pid: string, versionId: string, preloaded?: VersionRow) {
