@@ -100,6 +100,7 @@ class InterviewTurnOutput(BaseModel):
 
     action: Literal["ask_question", "propose_architecture", "generate_tier"]
     question: Optional[str] = None
+    quick_replies: Optional[list[str]] = None  # short tappable answers for `question`, e.g. ["$0", "$50/mo", "$500/mo"] — omit for genuinely open-ended questions
     commands: Optional[list[MutationCommand]] = None
     summary: Optional[str] = None  # short natural-language note for the chat log
     tier_label: Optional[str] = None  # required when action == "generate_tier", e.g. "$0 Student Tier"

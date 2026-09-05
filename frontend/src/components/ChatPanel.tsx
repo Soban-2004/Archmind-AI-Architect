@@ -1,18 +1,27 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { MessageSquare, SendHorizontal, Sparkles } from "lucide-react";
 import type { ChatMessage } from "@/lib/types";
-import { EmptyState, Spinner } from "./ui";
+import { EmptyState, Spinner, TypewriterText } from "./ui";
 
 interface Props {
   messages: ChatMessage[];
   onSend: (message: string) => Promise<void>;
   busy: boolean;
+  onConsumeAnimation: (index: number) => void;
 }
 
-export function ChatPanel({ messages, onSend, busy }: Props) {
+export function ChatPanel({ messages, onSend, busy, onConsumeAnimation }: Props) {
   const [draft, setDraft] = useState("");
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  // Force-scroll to the newest message every time one arrives, regardless
+  // of where the user had scrolled to — matches how the composer being
+  // focused always keeps the conversation moving forward.
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages.length, busy]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -21,6 +30,13 @@ export function ChatPanel({ messages, onSend, busy }: Props) {
     setDraft("");
     await onSend(message);
   }
+
+  async function handleQuickReply(reply: string) {
+    if (busy) return;
+    await onSend(reply);
+  }
+
+  const lastAssistantIndex = [...messages].map((m) => m.role).lastIndexOf("assistant");
 
   return (
     <div className="flex h-full flex-col">
@@ -40,14 +56,33 @@ export function ChatPanel({ messages, onSend, busy }: Props) {
                     <MessageSquare size={13} />
                   </div>
                 )}
-                <div
-                  className={`max-w-[82%] whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-[13px] leading-relaxed shadow-sm ${
-                    m.role === "user"
-                      ? "rounded-br-sm bg-brand-600 text-white"
-                      : "rounded-bl-sm border border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-                  }`}
-                >
-                  {m.content}
+                <div className="flex max-w-[82%] flex-col gap-2">
+                  <div
+                    className={`whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-[13px] leading-relaxed shadow-sm ${
+                      m.role === "user"
+                        ? "rounded-br-sm bg-brand-600 text-white"
+                        : "rounded-bl-sm border border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                    }`}
+                  >
+                    {m.role === "assistant" ? (
+                      <TypewriterText text={m.content} active={!!m.animate} onDone={() => onConsumeAnimation(i)} />
+                    ) : (
+                      m.content
+                    )}
+                  </div>
+                  {m.role === "assistant" && i === lastAssistantIndex && !busy && m.quickReplies && m.quickReplies.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {m.quickReplies.map((reply) => (
+                        <button
+                          key={reply}
+                          onClick={() => handleQuickReply(reply)}
+                          className="rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-medium text-brand-700 transition-colors hover:bg-brand-100 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300 dark:hover:bg-indigo-500/20"
+                        >
+                          {reply}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -57,6 +92,7 @@ export function ChatPanel({ messages, onSend, busy }: Props) {
                 thinking…
               </div>
             )}
+            <div ref={bottomRef} />
           </div>
         )}
       </div>

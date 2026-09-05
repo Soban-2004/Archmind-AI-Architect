@@ -312,6 +312,61 @@ clarifying questions, then renders the first architecture on the canvas.
   field to draw on. Flagged as over-cautious rather than silently
   under-counting, consistent with a tool whose job is to surface risk.
 
+## UI/UX overhaul: chat + canvas
+
+A user-generated architecture (a swipe-based stock app) surfaced two more
+real prompt bugs by inspection alone, on top of a full interaction-design
+pass over chat and the canvas:
+
+- **Two more real prompt bugs, found by reading a live-generated diagram**
+  (not synthetic test data): (1) the model wired `frontend -> CDN` —
+  backwards, since a CDN sits in front of the frontend serving its assets
+  rather than being called by it; (2) the model added a CDN, load
+  balancer, and API gateway for a project with no stated scale beyond
+  "modern, simple app" — over-provisioned for an early-stage idea. Both
+  fixed directly in the interview prompt (`backend/app/llm/prompts.py`):
+  explicit edge-direction rules for infra nodes, and an explicit "don't
+  add production infra unless the stated constraints call for it"
+  instruction. Re-verified live: a fresh $0/hobby-scoped project now gets
+  zero CDN/LB/gateway nodes, with its object-storage node correctly
+  pointing *into* the frontend, not the reverse.
+- **Quick-reply chips.** `InterviewTurnOutput` gained a `quick_replies`
+  field — the model populates 3-5 short tappable options whenever a
+  question has a natural small answer set (budget/scale/yes-no), always
+  including an escape hatch ("Not sure"/"Other") since the options are
+  never claimed to be exhaustive. Tapping one sends it exactly like typing
+  it — no new command type, same `ask_question` path.
+- **Typewriter reveal, not token streaming.** The interview loop's output
+  is one structured JSON object end to end (that's the mutation-command
+  contract, not an oversight) — Groq's JSON mode doesn't map cleanly onto
+  "stream words as the model writes them" the way freeform chat
+  completions do, since a client can't safely render a half-formed JSON
+  document. Instead the *already-received* text is revealed progressively
+  on the frontend (`components/ui.tsx`'s `TypewriterText`), which gets the
+  smooth felt-sense of streaming without a backend rewrite or a
+  partial-JSON parser.
+- **Force-scroll to the newest message** on every new message regardless
+  of where the user had scrolled — standard chat UX, wasn't there before.
+- **Resizable chat panel** via a drag handle between it and the canvas,
+  clamped 300–640px, plus a **collapsible version-history rail** (chevron
+  toggle, slides to a 44px icon strip).
+- **Click any node for details** (`NodeDetailCard.tsx`): name, kind, every
+  set attribute, and — when a simulation is active — its live utilization
+  bar and the exact finding message if it's flagged, without leaving the
+  canvas.
+- **MiniMap fix:** it was rendering empty because React Flow's MiniMap
+  can't introspect an arbitrary custom node component to guess a fill
+  color — it needs an explicit `nodeColor` callback, which was missing.
+  Fixed by keying the minimap's color off the same node-kind palette used
+  on the canvas itself.
+- **Traffic particles, not just dashed lines** (`FlowEdge.tsx`): a custom
+  edge type animates small circles along the connection path via SVG
+  `<animateMotion>` — the technique service-mesh visualizations
+  (Kiali/Istio) use for "data flowing through the pipe." Speed and
+  particle count scale with simulated load status (overloaded = fast
+  triple particles, ok = slow single), so the canvas shows where traffic
+  is pooling up, not just which nodes are colored red.
+
 ## What's next (not yet built)
 
 Phase 5 — existing-project ingestion (repo/ZIP → static analysis →

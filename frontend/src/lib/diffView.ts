@@ -51,12 +51,15 @@ export function toFlowElements(
 
   const edges: Edge[] = state.edges.map((e) => {
     const status = edgeStatusByKey.get(`${e.from_id}->${e.to_id}`);
+    const flowing = e.sync_async === "async_" && status !== "removed";
     return {
       id: e.id,
+      type: "flow",
       source: e.from_id,
       target: e.to_id,
       label: e.protocol,
-      animated: e.sync_async === "async_" && status !== "removed",
+      animated: flowing,
+      data: { flowing },
       style: edgeStyle(status),
       labelStyle: { fontSize: 11 },
     };

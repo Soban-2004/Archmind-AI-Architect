@@ -91,7 +91,7 @@ export interface VersionDiff {
 }
 
 export type ChatResponse =
-  | { kind: "question"; question: string }
+  | { kind: "question"; question: string; quick_replies: string[] }
   | { kind: "architecture"; summary: string; version: VersionRow; diff: VersionDiff | null }
   | { kind: "error"; error: string };
 
@@ -189,4 +189,8 @@ export interface SimulationResult {
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+  quickReplies?: string[];
+  /** Only true for the message just added this session — drives the
+   * typewriter reveal; history loaded from the server renders instantly. */
+  animate?: boolean;
 }

@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Activity, ArrowLeft, Boxes, Gauge, MessageSquare } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Activity, ArrowLeft, Boxes, ChevronLeft, ChevronRight, Gauge, MessageSquare } from "lucide-react";
 import { AnalyzerPanel } from "@/components/AnalyzerPanel";
 import { ArchitectureCanvas } from "@/components/ArchitectureCanvas";
 import { ChatPanel } from "@/components/ChatPanel";
 import { ComparePanel } from "@/components/ComparePanel";
 import { SimulationPanel } from "@/components/SimulationPanel";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { Spinner, Tabs } from "@/components/ui";
+import { IconButton, Spinner, Tabs } from "@/components/ui";
 import { VersionHistory } from "@/components/VersionHistory";
 import type { Project } from "@/lib/api";
 import { api } from "@/lib/api";
@@ -18,6 +18,10 @@ import { computeDagreLayout, type LayoutMap } from "@/lib/layout";
 import type { ArchitectureState, ChatMessage, CompareResult, SimulationResult, VersionDiff, VersionRow } from "@/lib/types";
 
 const STORAGE_KEY = "ai-architect-project-id";
+const MIN_PANEL_WIDTH = 300;
+const MAX_PANEL_WIDTH = 640;
+const HISTORY_WIDTH = 240;
+const HISTORY_RAIL_WIDTH = 44;
 type Mode = "chat" | "analyze" | "simulate";
 
 /** Fill in positions dagre-fresh for any node the known layout doesn't
@@ -51,6 +55,34 @@ export default function Home() {
 
   const [busy, setBusy] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
+
+  const [panelWidth, setPanelWidth] = useState(380);
+  const [historyCollapsed, setHistoryCollapsed] = useState(false);
+  const appRef = useRef<HTMLDivElement>(null);
+  const resizingRef = useRef(false);
+
+  useEffect(() => {
+    function onMove(e: MouseEvent) {
+      if (!resizingRef.current || !appRef.current) return;
+      const rect = appRef.current.getBoundingClientRect();
+      setPanelWidth(Math.min(MAX_PANEL_WIDTH, Math.max(MIN_PANEL_WIDTH, e.clientX - rect.left)));
+    }
+    function onUp() {
+      resizingRef.current = false;
+      document.body.style.cursor = "";
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, []);
+
+  function startResizing() {
+    resizingRef.current = true;
+    document.body.style.cursor = "col-resize";
+  }
 
   useEffect(() => {
     (async () => {
@@ -114,9 +146,9 @@ export default function Home() {
       // (spec §6 Phase 3: tiers are siblings off a shared base, not a chain).
       const result = await api.sendChatMessage(projectId, message, activeVersionId);
       if (result.kind === "question") {
-        setMessages((prev) => [...prev, { role: "assistant", content: result.question }]);
+        setMessages((prev) => [...prev, { role: "assistant", content: result.question, quickReplies: result.quick_replies, animate: true }]);
       } else if (result.kind === "architecture") {
-        setMessages((prev) => [...prev, { role: "assistant", content: result.summary }]);
+        setMessages((prev) => [...prev, { role: "assistant", content: result.summary, animate: true }]);
 
         const isTier = result.version.kind === "tier";
         // A tier is a fresh generation (unrelated node ids), not an
@@ -137,13 +169,17 @@ export default function Home() {
         setLatestVersionId(result.version.id);
         setVersionsRefreshKey((k) => k + 1);
       } else {
-        setMessages((prev) => [...prev, { role: "assistant", content: `⚠️ ${result.error}` }]);
+        setMessages((prev) => [...prev, { role: "assistant", content: `⚠️ ${result.error}`, animate: true }]);
       }
     } catch (e) {
-      setMessages((prev) => [...prev, { role: "assistant", content: `⚠️ ${e instanceof Error ? e.message : String(e)}` }]);
+      setMessages((prev) => [...prev, { role: "assistant", content: `⚠️ ${e instanceof Error ? e.message : String(e)}`, animate: true }]);
     } finally {
       setBusy(false);
     }
+  }
+
+  function handleConsumeAnimation(index: number) {
+    setMessages((prev) => prev.map((m, i) => (i === index ? { ...m, animate: false } : m)));
   }
 
   async function handleCompare(versionAId: string, versionBId: string) {
@@ -178,7 +214,7 @@ export default function Home() {
 
   return (
     <div className="h-screen bg-background p-3">
-      <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-surface shadow-xl shadow-slate-900/5 dark:border-slate-800 dark:shadow-black/20">
+      <div ref={appRef} className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-surface shadow-xl shadow-slate-900/5 dark:border-slate-800 dark:shadow-black/20">
         <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 dark:border-slate-800 dark:bg-slate-900">
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white shadow-sm shadow-brand-600/30">
@@ -204,7 +240,7 @@ export default function Home() {
           </div>
         ) : (
           <div className="flex min-h-0 flex-1">
-            <div className="flex w-[380px] shrink-0 flex-col border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+            <div style={{ width: panelWidth }} className="flex shrink-0 flex-col border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
               {compareResult ? (
                 <div key="compare" className="flex min-h-0 flex-1 animate-fade-in flex-col">
                   <ComparePanel result={compareResult.result} onExit={() => setCompareResult(null)} />
@@ -237,11 +273,19 @@ export default function Home() {
                         onExit={() => setMode("chat")}
                       />
                     ) : (
-                      <ChatPanel messages={messages} onSend={handleSend} busy={busy || !projectId} />
+                      <ChatPanel messages={messages} onSend={handleSend} busy={busy || !projectId} onConsumeAnimation={handleConsumeAnimation} />
                     )}
                   </div>
                 </>
               )}
+            </div>
+
+            {/* Drag handle to resize the left panel */}
+            <div
+              onMouseDown={startResizing}
+              className="group relative w-1 shrink-0 cursor-col-resize bg-slate-200 transition-colors hover:bg-brand-400 dark:bg-slate-800 dark:hover:bg-brand-500"
+            >
+              <div className="absolute inset-y-0 -left-1 -right-1" />
             </div>
 
             <div className="flex min-w-0 flex-1 flex-col">
@@ -261,14 +305,26 @@ export default function Home() {
             </div>
 
             {projectId && (
-              <div className="w-[240px] shrink-0 border-l border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-                <VersionHistory
-                  projectId={projectId}
-                  activeVersionId={activeVersionId}
-                  refreshKey={versionsRefreshKey}
-                  onSelect={(vid) => loadVersion(projectId, vid)}
-                  onCompare={handleCompare}
-                />
+              <div
+                style={{ width: historyCollapsed ? HISTORY_RAIL_WIDTH : HISTORY_WIDTH }}
+                className="relative shrink-0 border-l border-slate-200 bg-white transition-[width] duration-200 dark:border-slate-800 dark:bg-slate-900"
+              >
+                <IconButton
+                  onClick={() => setHistoryCollapsed((v) => !v)}
+                  className="absolute -left-3.5 top-3.5 z-10 h-7 w-7 border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800"
+                  title={historyCollapsed ? "Show history" : "Hide history"}
+                >
+                  {historyCollapsed ? <ChevronLeft size={13} /> : <ChevronRight size={13} />}
+                </IconButton>
+                {!historyCollapsed && (
+                  <VersionHistory
+                    projectId={projectId}
+                    activeVersionId={activeVersionId}
+                    refreshKey={versionsRefreshKey}
+                    onSelect={(vid) => loadVersion(projectId, vid)}
+                    onCompare={handleCompare}
+                  />
+                )}
               </div>
             )}
           </div>

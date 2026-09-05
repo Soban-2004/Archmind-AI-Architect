@@ -22,16 +22,25 @@ export function applySimulation(nodes: Node[], edges: Edge[], sim: SimulationRes
   const simEdges = edges.map((e) => {
     const targetStatus = statusByNode.get(e.target);
     const rps = rpsByEdge.get(e.id);
+    const flowing = targetStatus !== "killed";
     return {
       ...e,
-      animated: targetStatus !== "killed",
+      animated: flowing,
       label: rps !== undefined ? `${Math.round(rps)} rps` : e.label,
       style: simEdgeStyle(targetStatus),
       labelStyle: { fontSize: 11, fontWeight: 600 },
+      data: { ...e.data, flowing, flowSpeed: flowSpeedFor(targetStatus), flowCount: targetStatus === "overloaded" ? 3 : targetStatus === "warning" ? 2 : 1 },
     };
   });
 
   return { nodes: simNodes, edges: simEdges };
+}
+
+function flowSpeedFor(status?: LoadStatus): number {
+  // seconds per lap — faster particles read as "more traffic pressure"
+  if (status === "overloaded") return 0.5;
+  if (status === "warning") return 0.85;
+  return 1.4;
 }
 
 function simEdgeStyle(status?: LoadStatus) {

@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { useEffect, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 
 // Small shared design-system primitives so every panel (chat, analyzer,
 // compare, simulate) reads as one product instead of four separately
@@ -104,6 +104,42 @@ export function EmptyState({ icon, title, description }: { icon: ReactNode; titl
       {description && <p className="text-xs text-slate-400 dark:text-slate-500">{description}</p>}
     </div>
   );
+}
+
+/**
+ * Reveals `text` progressively rather than all at once. Our LLM calls
+ * return one structured JSON object, not a token stream (see README —
+ * that's a deliberate consequence of the mutation-command contract, not
+ * an oversight), so this is a typewriter reveal of the final response
+ * rather than literal token-by-token streaming from the model. It gets
+ * the smooth, alive feel users expect from a chat UI without pretending
+ * the generation itself was streamed.
+ */
+export function TypewriterText({ text, active, onDone }: { text: string; active: boolean; onDone?: () => void }) {
+  // Lazy initial state — a message's `text`/`active` never change after
+  // this component mounts (only whether it's still animating does, via
+  // onDone), so the whole reveal is driven by one interval started once.
+  const [shown, setShown] = useState(() => (active ? 0 : text.length));
+
+  useEffect(() => {
+    if (!active) return; // already showing full text via the lazy init above
+    let i = 0;
+    const step = Math.max(1, Math.round(text.length / 40)); // ~40 reveal ticks regardless of length
+    const id = setInterval(() => {
+      i += step;
+      if (i >= text.length) {
+        setShown(text.length);
+        clearInterval(id);
+        onDone?.();
+      } else {
+        setShown(i);
+      }
+    }, 16);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return <span className="whitespace-pre-wrap">{text.slice(0, shown)}</span>;
 }
 
 export function Spinner({ className = "" }: { className?: string }) {

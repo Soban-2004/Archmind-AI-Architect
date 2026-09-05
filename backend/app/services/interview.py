@@ -21,6 +21,7 @@ MAX_ENGINE_RETRIES = 2  # additional retries when mutation validation itself fai
 class ChatTurnResult:
     kind: str  # "question" | "architecture" | "error"
     question: str | None = None
+    quick_replies: list[str] | None = None
     summary: str | None = None
     version: dict | None = None
     diff: VersionDiff | None = None
@@ -127,7 +128,7 @@ async def handle_chat_turn(project_id: UUID, user_message: str, base_version_id:
 
         if turn.action == "ask_question":
             await repo.add_message(project_id, "assistant", turn.question or "")
-            return ChatTurnResult(kind="question", question=turn.question)
+            return ChatTurnResult(kind="question", question=turn.question, quick_replies=turn.quick_replies)
 
         commands = turn.commands or []
         is_tier = turn.action == "generate_tier"
