@@ -1,4 +1,5 @@
 import { AlertTriangle, Cloud, Database, Globe, Layers, Server, X } from "lucide-react";
+import { getComponentInfo } from "@/lib/componentInfo";
 import type { ArchNode, NodeKind, NodeLoad, SimulationFinding } from "@/lib/types";
 import { IconButton } from "./ui";
 
@@ -39,6 +40,7 @@ export function NodeDetailCard({ node, load, finding, onClose }: Props) {
   const fields = Object.entries(FIELD_LABEL)
     .filter(([key]) => node[key] !== undefined && node[key] !== null && node[key] !== "")
     .map(([key, label]) => ({ label, value: String(node[key]).replace(/_/g, " ") }));
+  const info = getComponentInfo(node);
 
   return (
     <div className="animate-fade-in absolute bottom-4 left-4 z-10 w-72 rounded-xl border border-slate-200 bg-white/95 p-4 shadow-lg backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
@@ -58,6 +60,24 @@ export function NodeDetailCard({ node, load, finding, onClose }: Props) {
           <X size={13} />
         </IconButton>
       </div>
+
+      {info && (
+        <div className="mt-3 border-t border-slate-100 pt-3 dark:border-slate-800">
+          <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">{info.description}</p>
+          {info.examples && info.examples.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {info.examples.map((ex) => (
+                <span
+                  key={ex}
+                  className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                >
+                  {ex}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {fields.length > 0 && (
         <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 border-t border-slate-100 pt-3 dark:border-slate-800">

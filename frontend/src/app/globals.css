@@ -92,11 +92,12 @@ body {
 .react-flow__controls-button:hover {
   background: #f8fafc;
 }
-.react-flow__edge-label {
-  background: #f8fafc;
-  padding: 1px 4px;
-  border-radius: 4px;
-  color: #334155;
+.react-flow__edge-textbg {
+  fill: #f8fafc;
+}
+.react-flow__edge-text {
+  fill: #334155;
+  font-size: 11px;
 }
 .react-flow__minimap {
   border-radius: 10px;
@@ -119,9 +120,11 @@ body {
 .dark .react-flow__controls-button path {
   fill: #94a3b8;
 }
-.dark .react-flow__edge-label {
-  background: #0f172a;
-  color: #cbd5e1;
+.dark .react-flow__edge-textbg {
+  fill: #0f172a;
+}
+.dark .react-flow__edge-text {
+  fill: #cbd5e1;
 }
 .dark .react-flow__minimap {
   border-color: #1e293b;
