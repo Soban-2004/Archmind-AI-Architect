@@ -30,9 +30,8 @@ export function computeIncrementalLayout(
     if (neighborIds.length > 0) {
       const cx = neighborIds.reduce((sum, id) => sum + layout[id].x, 0) / neighborIds.length;
       const cy = neighborIds.reduce((sum, id) => sum + layout[id].y, 0) / neighborIds.length;
-      let x = cx + NODE_WIDTH + 60;
-      const y0 = cy;
-      let y = y0;
+      const x = cx + NODE_WIDTH + 60;
+      let y = cy;
       let guard = 0;
       while (
         Object.values(layout).some((p) => Math.abs(p.x - x) < NODE_WIDTH && Math.abs(p.y - y) < NODE_HEIGHT) &&
