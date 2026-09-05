@@ -1,13 +1,15 @@
 "use client";
 
 import { useMemo } from "react";
-import { Background, Controls, ReactFlow, type NodeTypes } from "@xyflow/react";
+import { Background, BackgroundVariant, Controls, ReactFlow, type NodeTypes } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import { Network } from "lucide-react";
 import { toFlowElements } from "@/lib/diffView";
 import type { LayoutMap } from "@/lib/layout";
 import { applySimulation } from "@/lib/simView";
 import type { ArchitectureState, SimulationResult, VersionDiff } from "@/lib/types";
 import { ArchNodeCard } from "./ArchNodeCard";
+import { EmptyState } from "./ui";
 
 const nodeTypes: NodeTypes = { archNode: ArchNodeCard };
 
@@ -27,16 +29,18 @@ export function ArchitectureCanvas({ state, layout, diff, simulation }: Props) {
 
   if (!state || state.nodes.length === 0) {
     return (
-      <div className="flex h-full items-center justify-center text-slate-400 text-sm">
-        No architecture yet — answer a few questions in the chat to generate one.
-      </div>
+      <EmptyState
+        icon={<Network size={22} />}
+        title="No architecture yet"
+        description="Answer a few questions in the chat to generate one."
+      />
     );
   }
 
   return (
     <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} fitView proOptions={{ hideAttribution: true }}>
-      <Background />
-      <Controls />
+      <Background variant={BackgroundVariant.Dots} gap={20} size={1.5} color="#cbd5e1" />
+      <Controls showInteractive={false} />
     </ReactFlow>
   );
 }

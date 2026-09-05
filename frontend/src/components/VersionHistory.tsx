@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { GitBranch, History, Pencil, Sparkles } from "lucide-react";
 import { api } from "@/lib/api";
 import type { VersionSummary } from "@/lib/types";
+import { Button } from "./ui";
 
 interface Props {
   projectId: string;
@@ -12,11 +14,11 @@ interface Props {
   onCompare: (versionAId: string, versionBId: string) => void;
 }
 
-const KIND_LABEL: Record<string, string> = {
-  initial: "Initial",
-  edit: "Edit",
-  tier: "Tier",
-  reconstruction: "Reconstructed",
+const KIND_META: Record<string, { label: string; icon: typeof Sparkles; dot: string }> = {
+  initial: { label: "Initial", icon: Sparkles, dot: "bg-brand-500" },
+  edit: { label: "Edit", icon: Pencil, dot: "bg-slate-400" },
+  tier: { label: "Tier", icon: GitBranch, dot: "bg-purple-500" },
+  reconstruction: { label: "Reconstructed", icon: History, dot: "bg-orange-500" },
 };
 
 export function VersionHistory({ projectId, activeVersionId, refreshKey, onSelect, onCompare }: Props) {
@@ -45,60 +47,65 @@ export function VersionHistory({ projectId, activeVersionId, refreshKey, onSelec
   function toggleSelected(id: string) {
     setSelected((prev) => {
       if (prev.includes(id)) return prev.filter((x) => x !== id);
-      if (prev.length >= 2) return [prev[1], id]; // keep the most recent two picks
+      if (prev.length >= 2) return [prev[1], id];
       return [...prev, id];
     });
   }
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-slate-200 px-3 py-3 flex items-center justify-between">
-        <h2 className="text-xs font-semibold text-slate-500 tracking-wide">VERSION HISTORY</h2>
-        <button
-          onClick={toggleCompareMode}
-          className={`text-[10px] font-semibold rounded px-1.5 py-0.5 ${
-            compareMode ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-500"
-          }`}
-        >
-          COMPARE
-        </button>
+      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3.5">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">History</h2>
+        <Button size="sm" variant={compareMode ? "primary" : "secondary"} onClick={toggleCompareMode}>
+          Compare
+        </Button>
       </div>
 
       {compareMode && (
-        <div className="px-3 py-2 border-b border-slate-100 text-[11px] text-slate-500">
+        <div className="border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-[11px] text-slate-500">
           Pick two versions to compare.
           {selected.length === 2 && (
-            <button
-              className="mt-1 block w-full rounded bg-blue-600 text-white text-xs font-medium py-1"
-              onClick={() => onCompare(selected[0], selected[1])}
-            >
+            <Button size="sm" className="mt-2 w-full" onClick={() => onCompare(selected[0], selected[1])}>
               Compare selected
-            </button>
+            </Button>
           )}
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto">
-        {versions.length === 0 && <p className="px-3 py-3 text-xs text-slate-400">No versions yet.</p>}
-        {versions.map((v, i) => {
-          const isSelected = selected.includes(v.id);
-          return (
-            <button
-              key={v.id}
-              onClick={() => (compareMode ? toggleSelected(v.id) : onSelect(v.id))}
-              className={`block w-full text-left px-3 py-2 text-xs border-b border-slate-100 hover:bg-slate-50 ${
-                !compareMode && v.id === activeVersionId ? "bg-blue-50 border-l-2 border-l-blue-500 pl-[10px]" : ""
-              } ${compareMode && isSelected ? "bg-blue-50 border-l-2 border-l-blue-500 pl-[10px]" : ""}`}
-            >
-              <div className="font-medium text-slate-700">
-                {compareMode && <input type="checkbox" checked={isSelected} readOnly className="mr-1.5 align-middle" />}
-                v{i + 1} · {KIND_LABEL[v.kind] ?? v.kind}
-                {v.label ? ` · ${v.label}` : ""}
-              </div>
-              <div className="text-slate-400">{new Date(v.created_at).toLocaleTimeString()}</div>
-            </button>
-          );
-        })}
+      <div className="flex-1 overflow-y-auto px-3 py-2">
+        {versions.length === 0 && <p className="px-1 py-3 text-xs text-slate-400">No versions yet.</p>}
+        <div className="relative">
+          {versions.length > 1 && <div className="absolute top-2 bottom-2 left-[15px] w-px bg-slate-200" />}
+          {versions.map((v, i) => {
+            const meta = KIND_META[v.kind] ?? KIND_META.edit;
+            const Icon = meta.icon;
+            const isSelected = compareMode ? selected.includes(v.id) : v.id === activeVersionId;
+            return (
+              <button
+                key={v.id}
+                onClick={() => (compareMode ? toggleSelected(v.id) : onSelect(v.id))}
+                className={`relative mb-0.5 flex w-full items-start gap-2.5 rounded-lg px-1.5 py-2 text-left transition-colors hover:bg-slate-50 ${
+                  isSelected ? "bg-brand-50" : ""
+                }`}
+              >
+                <div
+                  className={`z-10 flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full text-white ${
+                    isSelected ? meta.dot : "bg-slate-300"
+                  }`}
+                >
+                  <Icon size={13} />
+                </div>
+                <div className="min-w-0 pt-1">
+                  <div className={`truncate text-xs font-medium ${isSelected ? "text-brand-700" : "text-slate-700"}`}>
+                    v{i + 1} · {meta.label}
+                    {v.label ? ` · ${v.label}` : ""}
+                  </div>
+                  <div className="text-[11px] text-slate-400">{new Date(v.created_at).toLocaleTimeString()}</div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

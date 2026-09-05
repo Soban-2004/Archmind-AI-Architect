@@ -1,6 +1,8 @@
 "use client";
 
+import { GitCompare, X } from "lucide-react";
 import type { CompareResult, DiffStatus } from "@/lib/types";
+import { IconButton } from "./ui";
 
 interface Props {
   result: CompareResult;
@@ -29,37 +31,38 @@ export function ComparePanel({ result, onExit }: Props) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-slate-200 px-4 py-3 flex items-center justify-between">
-        <div>
-          <h1 className="text-sm font-semibold text-slate-800">Compare</h1>
-          <p className="text-xs text-slate-400">
-            {rows.length} structural difference{rows.length === 1 ? "" : "s"}
-          </p>
+      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3.5">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-100 text-brand-600">
+            <GitCompare size={15} />
+          </div>
+          <div>
+            <h1 className="text-sm font-semibold text-slate-800">Compare</h1>
+            <p className="text-[11px] text-slate-400">
+              {rows.length} structural difference{rows.length === 1 ? "" : "s"}
+            </p>
+          </div>
         </div>
-        <button onClick={onExit} className="text-xs text-blue-600 underline">
-          Exit compare
-        </button>
+        <IconButton onClick={onExit}>
+          <X size={16} />
+        </IconButton>
       </div>
 
       {explanation.overall_summary && (
-        <div className="px-4 py-3 text-xs text-slate-600 border-b border-slate-100 bg-slate-50">
+        <div className="border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-xs leading-relaxed text-slate-600">
           {explanation.overall_summary}
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+      <div className="flex-1 space-y-2 overflow-y-auto px-4 py-3">
         {rows.length === 0 && <p className="text-xs text-slate-400">No structural differences.</p>}
         {rows.map((row) => (
-          <div key={row.ref} className="rounded-md border border-slate-200 px-3 py-2">
+          <div key={row.ref} className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 shadow-sm">
             <div className="flex items-center gap-2">
-              <span className={`text-[10px] font-bold rounded px-1.5 py-0.5 ${STATUS_STYLE[row.status]}`}>
-                {row.status.toUpperCase()}
-              </span>
-              <span className="text-sm font-medium text-slate-700">{row.label}</span>
+              <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${STATUS_STYLE[row.status]}`}>{row.status}</span>
+              <span className="text-[13px] font-medium text-slate-700">{row.label}</span>
             </div>
-            {explanationByRef.has(row.ref) && (
-              <p className="mt-1 text-xs text-slate-500">{explanationByRef.get(row.ref)}</p>
-            )}
+            {explanationByRef.has(row.ref) && <p className="mt-1 text-xs leading-relaxed text-slate-500">{explanationByRef.get(row.ref)}</p>}
           </div>
         ))}
       </div>
