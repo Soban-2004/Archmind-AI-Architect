@@ -26,6 +26,13 @@ Currently implemented:
   and gets the deterministic structural diff plus an LLM narration that's
   only allowed to reference facts actually present in that diff — anything
   else is filtered out before it reaches the UI.
+- **Phase 4** — the Analyzer: a versioned, deterministic rule engine scores
+  any version across 7 categories (scalability, reliability, security,
+  cost, observability, performance, maintainability), citing the exact
+  node/edge facts that triggered each finding. Follow-up questions ("why
+  is scalability only 62?") get an LLM-authored explanation that can only
+  cite findings the rule engine actually produced — the score itself is
+  never computed or touched by the LLM.
 
 ## Project layout
 
@@ -165,9 +172,36 @@ clarifying questions, then renders the first architecture on the canvas.
   not to apply patterns mechanically. There is no code path that turns a
   pattern into a command directly.
 
+## Phase 4 design notes
+
+- **The rule engine is plain Python, not a DSL.** Each rule in
+  `backend/app/analyzer/rules.py` is a function
+  `ArchitectureState -> list[Finding]`, registered in `ALL_RULES`. This
+  keeps them easy to read and test individually, at the cost of not being
+  data-driven — adding a rule means adding a function, not editing a config
+  file. `RULES_VERSION` is bumped whenever a condition or point value
+  changes, so a Scorecard stays attributable to the exact rules that
+  produced it (spec's "explicit, versioned rule set").
+- **Scoring formula:** every category starts at 100; each fired finding
+  subtracts its severity's points (minor 5 / moderate 15 / major 30),
+  floored at 0; the overall score is the unweighted mean of the 7 category
+  scores. `score_architecture` is a pure function — re-running it on an
+  unchanged state is byte-identical, which is what makes it possible to
+  test §10's "analyzer consistency" requirement directly (see the
+  determinism assertion in the commit history / test script).
+- **11 rules ship at v1**, deliberately not exhaustive — one or more per
+  category, each citing real node/edge ids as evidence rather than a
+  vague category-level statement. `no_replica` fires under *both*
+  scalability and reliability per the spec's own example, from one shared
+  condition check.
+- **The "why" Q&A is the same grounding pattern as Phase 3's compare
+  view**: the LLM gets the already-computed Scorecard and is told never to
+  recompute or contradict it, only cite specific `rule_id`s; any cited id
+  that isn't a real finding on that scorecard is dropped before the answer
+  reaches the API response.
+
 ## What's next (not yet built)
 
-Phase 4 — the rule-based Analyzer/scorecard (scalability, reliability,
-security, cost, observability, performance, maintainability), with
-deterministic scoring and LLM-authored explanations of already-computed
-results (never LLM-computed scores).
+Phase 5 — existing-project ingestion (repo/ZIP → static analysis →
+evidence graph → LLM reasoning over evidence → Architecture State via the
+same validated mutation commands used everywhere else).

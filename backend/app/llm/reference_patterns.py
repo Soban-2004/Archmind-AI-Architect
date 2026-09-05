@@ -26,7 +26,9 @@ the specific request, do not apply these mechanically or all at once):
 - availability_target 99.95% or higher, or explicit "production" /
   "enterprise" framing: add redundancy (replica + multiple service
   instances), add an explicit queue for decoupling, mark every external
-  dependency's criticality (hard vs soft) explicitly.
+  dependency's criticality (hard vs soft) explicitly, and add an
+  infra_node of type "observability" (e.g. Datadog, Prometheus+Grafana)
+  for logging/metrics/tracing.
 - consistency_requirement = "strong": prefer a single primary relational
   database for the affected data over an eventually-consistent store; be
   cautious adding a cache without also describing an invalidation

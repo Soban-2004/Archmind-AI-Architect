@@ -111,6 +111,45 @@ export interface CompareResult {
   explanation: CompareExplanation;
 }
 
+// Mirrors backend/app/models/analysis.py
+export type Category =
+  | "scalability"
+  | "reliability"
+  | "security"
+  | "cost"
+  | "observability"
+  | "performance"
+  | "maintainability";
+
+export type Severity = "minor" | "moderate" | "major";
+
+export interface Finding {
+  rule_id: string;
+  category: Category;
+  severity: Severity;
+  points: number;
+  message: string;
+  evidence_node_ids: string[];
+  evidence_edge_ids: string[];
+}
+
+export interface CategoryScore {
+  category: Category;
+  score: number;
+  findings: Finding[];
+}
+
+export interface Scorecard {
+  rules_version: string;
+  overall_score: number;
+  categories: CategoryScore[];
+}
+
+export interface ScorecardAnswer {
+  answer: string;
+  cited_rule_ids: string[];
+}
+
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;

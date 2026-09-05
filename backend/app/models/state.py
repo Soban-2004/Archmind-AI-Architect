@@ -110,6 +110,7 @@ class InfraType(str, Enum):
     api_gateway = "api_gateway"
     object_storage = "object_storage"
     container_runtime = "container_runtime"
+    observability = "observability"  # monitoring/logging/tracing stack (e.g. Datadog, Prometheus+Grafana)
 
 
 class InfraNode(BaseModel):

@@ -1,5 +1,6 @@
 import json
 
+from app.models.analysis import Scorecard, ScorecardAnswer
 from app.models.commands import InterviewTurnOutput
 from app.models.compare import CompareExplanation
 from app.models.diff import VersionDiff
@@ -96,6 +97,42 @@ Version B constraints: {constraints_b}
 Version A decisions (ADRs): {adrs_a}
 Version B decisions (ADRs): {adrs_b}
 """
+
+
+SCORECARD_QA_SYSTEM_PROMPT = """You are explaining an already-computed architecture Scorecard.
+
+The score is FINAL and was computed by a deterministic rule engine, not by
+you — never recompute, adjust, second-guess, or contradict a category
+score. Your only job is to answer the user's question about it, citing the
+SPECIFIC findings (rule_id + message, which already reference real node/
+edge facts) that explain the score. Do not invent findings that aren't in
+the scorecard below, and do not give generic advice disconnected from the
+actual findings ("add more redundancy" is not acceptable on its own —
+quote the specific finding that says so).
+
+Put every rule_id you actually relied on in `cited_rule_ids`. Do not
+invent rule_ids that aren't in the scorecard below.
+
+Output ONLY valid JSON matching this schema:
+{schema}
+
+Scorecard (rules_version={rules_version}, overall_score={overall_score}):
+{scorecard}
+
+Architecture state (for extra context on the cited findings' evidence):
+{state}
+"""
+
+
+def build_scorecard_qa_prompt(state: ArchitectureState, scorecard: Scorecard) -> str:
+    schema = ScorecardAnswer.model_json_schema()
+    return SCORECARD_QA_SYSTEM_PROMPT.format(
+        schema=schema,
+        rules_version=scorecard.rules_version,
+        overall_score=scorecard.overall_score,
+        scorecard=scorecard.model_dump_json(),
+        state=state.model_dump_json(),
+    )
 
 
 def build_system_prompt() -> str:

@@ -1,4 +1,4 @@
-import type { ChatResponse, CompareResult, VersionDiff, VersionRow, VersionSummary } from "./types";
+import type { ChatResponse, CompareResult, Scorecard, ScorecardAnswer, VersionDiff, VersionRow, VersionSummary } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -54,4 +54,13 @@ export const api = {
 
   compare: (projectId: string, versionAId: string, versionBId: string) =>
     request<CompareResult>(`/projects/${projectId}/compare?version_a=${versionAId}&version_b=${versionBId}`),
+
+  getScorecard: (projectId: string, versionId: string) =>
+    request<Scorecard>(`/projects/${projectId}/versions/${versionId}/scorecard`),
+
+  askScorecard: (projectId: string, versionId: string, question: string) =>
+    request<{ scorecard: Scorecard; answer: ScorecardAnswer }>(
+      `/projects/${projectId}/versions/${versionId}/scorecard/ask`,
+      { method: "POST", body: JSON.stringify({ question }) }
+    ),
 };

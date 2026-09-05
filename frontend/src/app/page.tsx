@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { AnalyzerPanel } from "@/components/AnalyzerPanel";
 import { ArchitectureCanvas } from "@/components/ArchitectureCanvas";
 import { ChatPanel } from "@/components/ChatPanel";
 import { ComparePanel } from "@/components/ComparePanel";
@@ -39,6 +40,7 @@ export default function Home() {
   const [versionsRefreshKey, setVersionsRefreshKey] = useState(0);
 
   const [compareResult, setCompareResult] = useState<{ result: CompareResult; state: ArchitectureState; layout: LayoutMap } | null>(null);
+  const [analyzerOpen, setAnalyzerOpen] = useState(false);
 
   const [busy, setBusy] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
@@ -147,6 +149,7 @@ export default function Home() {
       if (!layout || Object.keys(layout).length === 0) {
         layout = computeDagreLayout(versionB.state);
       }
+      setAnalyzerOpen(false);
       setCompareResult({ result, state: versionB.state, layout });
     } catch (e) {
       setMessages((prev) => [
@@ -184,13 +187,25 @@ export default function Home() {
       <div className="w-[380px] border-r border-slate-200 flex flex-col">
         {compareResult ? (
           <ComparePanel result={compareResult.result} onExit={() => setCompareResult(null)} />
+        ) : analyzerOpen && projectId && activeVersionId ? (
+          <AnalyzerPanel projectId={projectId} versionId={activeVersionId} onExit={() => setAnalyzerOpen(false)} />
         ) : (
           <>
-            <div className="border-b border-slate-200 px-4 py-3">
-              <h1 className="text-sm font-semibold text-slate-800">AI Architect</h1>
-              <p className="text-xs text-slate-400">
-                {viewingHistorical ? "editing will branch from here" : latestVersionId ? "editing latest version" : "new project"}
-              </p>
+            <div className="border-b border-slate-200 px-4 py-3 flex items-center justify-between">
+              <div>
+                <h1 className="text-sm font-semibold text-slate-800">AI Architect</h1>
+                <p className="text-xs text-slate-400">
+                  {viewingHistorical ? "editing will branch from here" : latestVersionId ? "editing latest version" : "new project"}
+                </p>
+              </div>
+              {activeVersionId && (
+                <button
+                  onClick={() => setAnalyzerOpen(true)}
+                  className="text-[10px] font-semibold rounded px-1.5 py-0.5 bg-slate-100 text-slate-500 hover:bg-slate-200"
+                >
+                  ANALYZE
+                </button>
+              )}
             </div>
             <div className="flex-1 min-h-0">
               <ChatPanel messages={messages} onSend={handleSend} busy={busy || !projectId} />

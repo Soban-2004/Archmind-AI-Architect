@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import chat, compare, projects
+from app.api.routes import analyzer, chat, compare, projects
 from app.config import settings
 from app.db.client import close_pool, get_pool
 
@@ -27,6 +27,7 @@ app.add_middleware(
 app.include_router(projects.router)
 app.include_router(chat.router)
 app.include_router(compare.router)
+app.include_router(analyzer.router)
 
 
 @app.get("/health")
