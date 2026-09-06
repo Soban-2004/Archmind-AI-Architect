@@ -123,21 +123,20 @@ export default function Home() {
       api.updateLayout(pid, versionId, layout).catch(() => {});
     }
 
-    let versionDiff: VersionDiff | null = null;
-    if (version.parent_version_id) {
-      try {
-        versionDiff = await api.getDiff(pid, versionId);
-      } catch {
-        versionDiff = null;
-      }
-    }
-
     setCompareResult(null);
     setSimulationResult(null); // stale for a different version's graph
     setGhostLayoutHint({}); // no in-memory hint when jumping to an arbitrary version
     setRawState(version.state);
     setRawLayout(layout);
-    setDiff(versionDiff);
+    // No diff here — this just loads a version's actual current state, not
+    // a "what changed" view. `diff` (and its removed-node ghosts) is only
+    // ever set right after a live edit in handleSend, and explicitly via
+    // the Compare panel. Setting it here too used to mean reloading the
+    // page, or clicking any version in history, permanently showed
+    // whatever that version's most recent edit had removed — a removed
+    // node that's still visible, with the simulator having no idea it
+    // exists, isn't "the design", it's a leftover from the last edit.
+    setDiff(null);
     setActiveVersionId(versionId);
   }
 

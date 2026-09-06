@@ -31,6 +31,16 @@ export function applySimulation(nodes: Node[], edges: Edge[], sim: SimulationRes
   }));
 
   const simEdges = edges.map((e) => {
+    // A ghost/removed edge (ArchitectureCanvas is showing a diff overlay —
+    // see buildDiffDisplayState) has a target the backend never simulated
+    // at all, since it's not part of the current real state — its status
+    // is genuinely absent, not "healthy". Treating "no data" the same as
+    // "ok" here was the actual bug: it silently overwrote the edge's
+    // correct dashed/removed styling with a healthy green one and lit up
+    // traffic particles flowing into a node that no longer exists. Leave
+    // any edge with no real sim data completely untouched instead.
+    if (!statusByNode.has(e.target)) return e;
+
     const targetStatus = statusByNode.get(e.target);
     const rps = rpsByEdge.get(e.id);
     const flowing = targetStatus !== "killed";
