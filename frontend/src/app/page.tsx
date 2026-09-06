@@ -231,6 +231,30 @@ export default function Home() {
     }
   }
 
+  /** Direct node edit from the canvas (NodeDetailCard's edit mode) — no
+   * chat round-trip, no LLM call. Mirrors handleSend's "architecture"
+   * branch (new version, incremental layout, diff overlay, chat-visible
+   * summary) since it goes through the identical apply/finalize path
+   * server-side, just triggered by a UI action instead of a message.
+   * Errors are re-thrown so NodeDetailCard's own save button can show
+   * them inline instead of silently failing. */
+  async function handleNodeSave(nodeId: string, attributes: Record<string, unknown>) {
+    if (!projectId || !activeVersionId) return;
+    const result = await api.updateNode(projectId, activeVersionId, nodeId, attributes);
+    const newLayout = computeIncrementalLayout(rawState, rawLayout, result.version.state);
+    api.updateLayout(projectId, result.version.id, newLayout).catch(() => {});
+
+    setGhostLayoutHint(rawLayout);
+    setRawState(result.version.state);
+    setRawLayout(newLayout);
+    setDiff(result.diff);
+    setSimulationResult(null); // stale now that the graph changed
+    setActiveVersionId(result.version.id);
+    setLatestVersionId(result.version.id);
+    setVersionsRefreshKey((k) => k + 1);
+    setMessages((prev) => [...prev, { role: "assistant", content: result.summary, animate: true }]);
+  }
+
   function handleNodePositionsChange(updates: LayoutMap) {
     // Only the live editable graph persists drags — a compare snapshot has
     // no single version id of its own to write a layout onto here.
@@ -387,6 +411,7 @@ export default function Home() {
                   diff={displayDiff}
                   simulation={displaySimulation}
                   onNodePositionsChange={compareResult ? undefined : handleNodePositionsChange}
+                  onNodeSave={compareResult ? undefined : handleNodeSave}
                   busy={!compareResult && busy}
                 />
               </div>

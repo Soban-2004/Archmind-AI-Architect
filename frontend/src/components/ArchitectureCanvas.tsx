@@ -53,9 +53,13 @@ interface Props {
    * replicas, and observability can genuinely take a minute or two) never
    * reads as the canvas being frozen or broken. */
   busy?: boolean;
+  /** Enables direct editing from the NodeDetailCard (click a node -> edit
+   * a field -> save, no chat round-trip). Omit for a read-only canvas
+   * (the compare view has no single active version to edit onto). */
+  onNodeSave?: (nodeId: string, attributes: Record<string, unknown>) => Promise<void>;
 }
 
-export function ArchitectureCanvas({ state, layout, diff, simulation, onNodePositionsChange, busy = false }: Props) {
+export function ArchitectureCanvas({ state, layout, diff, simulation, onNodePositionsChange, busy = false, onNodeSave }: Props) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   // A drag needs to move a node the instant the pointer moves, well before
   // any position update could round-trip up to the parent's `layout` state
@@ -146,7 +150,13 @@ export function ArchitectureCanvas({ state, layout, diff, simulation, onNodePosi
         )}
       </ReactFlow>
       {selectedNode && (
-        <NodeDetailCard node={selectedNode} load={selectedLoad} finding={selectedFinding} onClose={() => setSelectedNodeId(null)} />
+        <NodeDetailCard
+          node={selectedNode}
+          load={selectedLoad}
+          finding={selectedFinding}
+          onClose={() => setSelectedNodeId(null)}
+          onSave={onNodeSave}
+        />
       )}
       <CanvasLoadingOverlay active={busy} />
     </div>

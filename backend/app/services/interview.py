@@ -8,7 +8,7 @@ from app.db import repository as repo
 from app.llm.factory import get_judge_provider, get_llm_provider
 from app.llm.prompts import build_judge_prompt, build_system_prompt
 from app.llm.tokens import estimate_messages_tokens, estimate_tokens
-from app.models.commands import AnnotateDecisionCommand
+from app.models.commands import AnnotateDecisionCommand, UpdateNodeCommand
 from app.models.diff import VersionDiff
 from app.models.judge import JudgeVerdict
 from app.models.state import ADR, ArchitectureState, TriggeredBy, empty_state, gen_id
@@ -353,3 +353,27 @@ async def handle_chat_turn(project_id: UUID, user_message: str, base_version_id:
         )
 
     return ChatTurnResult(kind="error", error="Unexpected: exhausted retries without returning.")
+
+
+async def direct_update_node(project_id: UUID, base_version_id: UUID, node_id: str, attributes: dict) -> ChatTurnResult:
+    """A direct node edit from the canvas UI (click a node, tweak a field,
+    save) — Tier 1 (spec §7): deterministic, no LLM call at all, same
+    philosophy as try_deterministic_command, just triggered by a UI action
+    instead of a parsed chat message. Goes through the exact same
+    apply_commands validation (including the connectivity registry) and
+    _finalize path as every other edit, so it produces a real versioned,
+    diffed, ADR'd change — not a side-channel that bypasses the rest of
+    the system's guarantees."""
+    base_version = await repo.get_version(base_version_id)
+    if base_version is None or base_version["project_id"] != project_id:
+        return ChatTurnResult(kind="error", error="base_version_id not found")
+
+    current_state = _state_from_row(base_version)
+    result = apply_commands(current_state, [UpdateNodeCommand(id=node_id, attributes=attributes)])
+    if not result.ok:
+        return ChatTurnResult(kind="error", error="; ".join(e.error for e in result.errors))
+
+    assert result.state is not None
+    node = result.state.get_node(node_id)
+    summary = f"Updated {node.name if node else node_id}."
+    return await _finalize(project_id, current_state, result.state, base_version["id"], "edit", summary, model_provided_decision=False)

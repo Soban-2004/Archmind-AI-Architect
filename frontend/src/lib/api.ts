@@ -65,6 +65,15 @@ export const api = {
       body: JSON.stringify({ layout }),
     }),
 
+  /** Direct node edit from the canvas — deterministic, no LLM call. Returns
+   * the same shape as a chat "architecture" response (new version + diff)
+   * since it goes through the identical apply/finalize path. */
+  updateNode: (projectId: string, versionId: string, nodeId: string, attributes: Record<string, unknown>) =>
+    request<{ summary: string; version: VersionRow; diff: VersionDiff | null }>(
+      `/projects/${projectId}/versions/${versionId}/nodes/${nodeId}`,
+      { method: "PATCH", body: JSON.stringify({ attributes }) }
+    ),
+
   sendChatMessage: (projectId: string, message: string, baseVersionId?: string | null) =>
     request<ChatResponse>(`/projects/${projectId}/chat`, {
       method: "POST",

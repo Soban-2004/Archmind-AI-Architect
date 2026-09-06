@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException
 from app.db import repository as repo
 from app.models.state import ArchitectureState, empty_state
 from app.services.diff import diff_states
+from app.services.interview import direct_update_node
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -77,6 +78,22 @@ async def put_version_layout(project_id: UUID, version_id: UUID, body: dict):
         raise HTTPException(400, "body must be {'layout': {node_id: {x, y}}}")
     await repo.update_version_layout(version_id, layout)
     return {"ok": True}
+
+
+@router.patch("/{project_id}/versions/{version_id}/nodes/{node_id}")
+async def update_node_direct(project_id: UUID, version_id: UUID, node_id: str, body: dict):
+    """Direct node edit from the canvas (click a node, tweak a field,
+    save) — deterministic, no LLM call (see services/interview.py's
+    direct_update_node). Branches a new version off `version_id` exactly
+    like a chat edit would, just skipping the interview loop entirely."""
+    attributes = body.get("attributes")
+    if not isinstance(attributes, dict) or not attributes:
+        raise HTTPException(400, "body must be {'attributes': {...}}")
+
+    result = await direct_update_node(project_id, version_id, node_id, attributes)
+    if result.kind == "error":
+        raise HTTPException(400, result.error)
+    return {"summary": result.summary, "version": result.version, "diff": result.diff}
 
 
 @router.get("/{project_id}/versions/{version_id}/diff")
