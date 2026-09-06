@@ -21,6 +21,30 @@ async def create_project(body: dict):
     return project
 
 
+@router.get("")
+async def list_projects():
+    return await repo.list_projects()
+
+
+@router.patch("/{project_id}")
+async def rename_project(project_id: UUID, body: dict):
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(400, "name is required")
+    project = await repo.rename_project(project_id, name)
+    if project is None:
+        raise HTTPException(404, "project not found")
+    return project
+
+
+@router.delete("/{project_id}")
+async def delete_project(project_id: UUID):
+    deleted = await repo.delete_project(project_id)
+    if not deleted:
+        raise HTTPException(404, "project not found")
+    return {"ok": True}
+
+
 @router.get("/{project_id}")
 async def get_project(project_id: UUID):
     project = await repo.get_project(project_id)

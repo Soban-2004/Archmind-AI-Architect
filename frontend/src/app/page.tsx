@@ -6,6 +6,7 @@ import { AnalyzerPanel } from "@/components/AnalyzerPanel";
 import { ArchitectureCanvas } from "@/components/ArchitectureCanvas";
 import { ChatPanel } from "@/components/ChatPanel";
 import { ComparePanel } from "@/components/ComparePanel";
+import { ProjectSwitcher } from "@/components/ProjectSwitcher";
 import { SimulationPanel } from "@/components/SimulationPanel";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { IconButton, Spinner, Tabs } from "@/components/ui";
@@ -35,6 +36,7 @@ function ensureFullLayout(state: ArchitectureState, known: LayoutMap): LayoutMap
 
 export default function Home() {
   const [projectId, setProjectId] = useState<string | null>(null);
+  const [projectName, setProjectName] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [mode, setMode] = useState<Mode>("chat");
   const [initializing, setInitializing] = useState(true);
@@ -98,22 +100,67 @@ export default function Home() {
           project = await api.getProject(existing);
         } else {
           const created = await api.createProject("New Project");
-          localStorage.setItem(STORAGE_KEY, created.id);
           project = { ...created, latest_version: null };
         }
-        setProjectId(project.id);
-
-        if (project.latest_version) {
-          setLatestVersionId(project.latest_version.id);
-          await loadVersion(project.id, project.latest_version.id, project.latest_version);
-        }
+        await openProject(project);
       } catch (e) {
         setInitError(e instanceof Error ? e.message : String(e));
       } finally {
         setInitializing(false);
       }
     })();
+    // Deliberately run once on mount only — openProject is a fresh
+    // function reference every render, and re-running this on every
+    // reference change would re-trigger project creation/loading in a loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /** Loads a project as the active one — used on first load, and by the
+   * project switcher. Resets every piece of per-project state (chat
+   * transcript included: the backend keeps the real message history, but
+   * this app has never reloaded it into the UI on open, same gap that
+   * already exists on a plain page refresh — switching projects isn't
+   * introducing a new inconsistency, just inheriting an existing one). */
+  async function openProject(project: Project) {
+    localStorage.setItem(STORAGE_KEY, project.id);
+    setProjectId(project.id);
+    setProjectName(project.name);
+    setMessages([]);
+    setMode("chat");
+    setCompareResult(null);
+    setSimulationResult(null);
+    setSessionTokens(0);
+    setActiveVersionId(null);
+    setLatestVersionId(null);
+    setRawState(null);
+    setRawLayout({});
+    setGhostLayoutHint({});
+    setDiff(null);
+
+    if (project.latest_version) {
+      setLatestVersionId(project.latest_version.id);
+      await loadVersion(project.id, project.latest_version.id, project.latest_version);
+    }
+  }
+
+  async function handleSwitchProject(id: string) {
+    if (id === projectId) return;
+    try {
+      const project = await api.getProject(id);
+      await openProject(project);
+    } catch (e) {
+      setInitError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function handleCreateProject() {
+    try {
+      const created = await api.createProject("New Project");
+      await openProject({ ...created, latest_version: null });
+    } catch (e) {
+      setInitError(e instanceof Error ? e.message : String(e));
+    }
+  }
 
   async function loadVersion(pid: string, versionId: string, preloaded?: VersionRow) {
     const version = preloaded ?? (await api.getVersion(pid, versionId));
@@ -249,8 +296,13 @@ export default function Home() {
               <Boxes size={17} />
             </div>
             <div className="leading-tight">
-              <h1 className="text-sm font-semibold text-slate-800 dark:text-slate-100">AI Architect</h1>
-              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+              <ProjectSwitcher
+                projectId={projectId}
+                projectName={projectName || "AI Architect"}
+                onSwitch={handleSwitchProject}
+                onCreate={handleCreateProject}
+              />
+              <p className="px-2 text-[11px] text-slate-400 dark:text-slate-500">
                 {viewingHistorical ? "editing will branch from here" : latestVersionId ? "editing latest version" : "new project"}
               </p>
             </div>

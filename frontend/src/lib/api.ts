@@ -21,12 +21,31 @@ export interface Project {
   latest_version: VersionRow | null;
 }
 
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  created_at: string;
+  last_activity_at: string | null;
+  node_count: number | null;
+}
+
 export const api = {
   createProject: (name: string) =>
     request<{ id: string; name: string; created_at: string }>("/projects", {
       method: "POST",
       body: JSON.stringify({ name }),
     }),
+
+  listProjects: () => request<ProjectSummary[]>("/projects"),
+
+  renameProject: (projectId: string, name: string) =>
+    request<{ id: string; name: string; created_at: string }>(`/projects/${projectId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name }),
+    }),
+
+  deleteProject: (projectId: string) =>
+    request<{ ok: boolean }>(`/projects/${projectId}`, { method: "DELETE" }),
 
   getProject: (projectId: string) => request<Project>(`/projects/${projectId}`),
 

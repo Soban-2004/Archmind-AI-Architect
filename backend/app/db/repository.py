@@ -22,6 +22,50 @@ async def get_project(project_id: UUID) -> Optional[dict]:
     return dict(row) if row else None
 
 
+async def list_projects() -> list[dict]:
+    """Every project, newest-activity-first — a project with no versions
+    yet (created but abandoned before the first message) sorts by its own
+    created_at instead. node_count/last_activity_at come from each
+    project's own most recent version via a lateral join, so this is one
+    query rather than N+1."""
+    pool = await get_pool()
+    rows = await pool.fetch(
+        """
+        select p.id, p.name, p.created_at,
+               lv.created_at as last_activity_at,
+               lv.node_count
+        from projects p
+        left join lateral (
+            select v.created_at, jsonb_array_length(v.state -> 'nodes') as node_count
+            from versions v
+            where v.project_id = p.id
+            order by v.created_at desc
+            limit 1
+        ) lv on true
+        order by coalesce(lv.created_at, p.created_at) desc
+        """
+    )
+    return [dict(r) for r in rows]
+
+
+async def rename_project(project_id: UUID, name: str) -> Optional[dict]:
+    pool = await get_pool()
+    row = await pool.fetchrow(
+        "update projects set name = $2 where id = $1 returning id, name, created_at",
+        project_id,
+        name,
+    )
+    return dict(row) if row else None
+
+
+async def delete_project(project_id: UUID) -> bool:
+    """Cascades to that project's versions/adrs/messages (schema.sql's `on
+    delete cascade`) — one statement, no manual cleanup needed."""
+    pool = await get_pool()
+    result = await pool.execute("delete from projects where id = $1", project_id)
+    return result != "DELETE 0"
+
+
 async def create_version(
     project_id: UUID,
     state: ArchitectureState,
