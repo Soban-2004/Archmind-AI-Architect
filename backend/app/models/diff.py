@@ -49,3 +49,14 @@ class VersionDiff(BaseModel):
 
     def is_empty(self) -> bool:
         return not (self.nodes or self.edges or self.constraints)
+
+    def valid_refs(self) -> set[str]:
+        """Every ref an LLM narration over this diff (compare.py's
+        CompareExplanation, migration.py's MigrationBlueprint) is allowed
+        to cite — a node id, "edge:<key>", or "constraint:<type>". Shared
+        in one place so both consumers enforce groundedness the same
+        way, rather than two copies of the same set-building logic."""
+        refs = {n.id for n in self.nodes}
+        refs |= {f"edge:{e.key}" for e in self.edges}
+        refs |= {f"constraint:{c.type}" for c in self.constraints}
+        return refs

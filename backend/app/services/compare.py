@@ -21,13 +21,6 @@ class VersionNotFound(Exception):
     pass
 
 
-def _valid_refs(diff: VersionDiff) -> set[str]:
-    refs = {n.id for n in diff.nodes}
-    refs |= {f"edge:{e.key}" for e in diff.edges}
-    refs |= {f"constraint:{c.type}" for c in diff.constraints}
-    return refs
-
-
 async def compare_versions(project_id: UUID, version_a_id: UUID, version_b_id: UUID) -> CompareResult:
     row_a = await repo.get_version(version_a_id)
     row_b = await repo.get_version(version_b_id)
@@ -55,6 +48,6 @@ async def compare_versions(project_id: UUID, version_a_id: UUID, version_b_id: U
         # diff; never let an LLM hiccup hide the (deterministic) diff itself.
         return CompareResult(diff=diff, explanation=CompareExplanation(entries=[], overall_summary="Explanation unavailable."))
 
-    valid_refs = _valid_refs(diff)
+    valid_refs = diff.valid_refs()
     grounded_entries = [e for e in raw_explanation.entries if e.ref in valid_refs]
     return CompareResult(diff=diff, explanation=CompareExplanation(entries=grounded_entries, overall_summary=raw_explanation.overall_summary))

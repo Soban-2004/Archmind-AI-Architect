@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import analyzer, chat, compare, ingestion, projects, simulation
+from app.api.routes import analyzer, chat, compare, ingestion, migration, projects, simulation
 from app.config import settings
 from app.db.client import close_pool, get_pool
 
@@ -36,6 +36,7 @@ app.include_router(compare.router)
 app.include_router(analyzer.router)
 app.include_router(simulation.router)
 app.include_router(ingestion.router)
+app.include_router(migration.router)
 
 
 @app.get("/health")

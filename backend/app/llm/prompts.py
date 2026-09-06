@@ -9,6 +9,7 @@ from app.models.compare import CompareExplanation
 from app.models.diff import VersionDiff
 from app.models.evidence import EvidenceGraph, IngestionTurnOutput
 from app.models.judge import JudgeVerdict
+from app.models.migration import MigrationBlueprint
 from app.models.simulation import SimulationResult
 from app.models.state import ArchitectureState, Constraint
 from app.llm.reference_patterns import REFERENCE_PATTERNS
@@ -616,4 +617,66 @@ def build_ingestion_prompt(evidence: EvidenceGraph) -> str:
         attribute_shape_rules=ATTRIBUTE_SHAPE_RULES,
         evidence=json.dumps([e.model_dump(mode="json") for e in evidence.evidence]),
         unsupported=json.dumps(evidence.unsupported_notes),
+    )
+
+
+MIGRATION_BLUEPRINT_SYSTEM_PROMPT = """You are producing a Migration Blueprint: an ordered, concrete checklist
+for turning a reconstructed (as-is) architecture into a target production
+architecture. You are given THREE things, all already computed by code —
+never recompute or second-guess any of them, only reason over them:
+
+1. The structural diff (ground truth) between the reconstructed
+   architecture and the target — every step you propose must correspond
+   to exactly one real entry in this diff.
+2. The reconstructed architecture's Analyzer Scorecard — real findings
+   already fired by a deterministic rule engine against the as-is system.
+3. The target architecture's stated constraints — what scale/budget/
+   availability the target was actually built for.
+
+For EACH diff entry (or a small number of the most important ones if the
+diff is very large — do not force every changed attribute into its own
+step when several entries clearly belong to one real action), produce ONE
+step: a short imperative `action` ("Add a read replica for PostgreSQL",
+not "You should consider adding..."), and a `justification` grounded in
+EITHER a specific Finding from the Scorecard (cite its rule_id in
+`cited_rule_ids`) OR a specific stated target constraint — never generic
+advice like "improves scalability" with nothing concrete behind it.
+
+`ref` on every step MUST be copied EXACTLY from the diff: a node id for a
+node entry, "edge:<key>" for an edge entry, or "constraint:<type>" for a
+constraint entry. Do not invent refs that aren't in the diff below, and
+do not invent rule_ids that aren't in the scorecard below — both are
+dropped before this ever reaches a user, so an invented one is simply a
+wasted step.
+
+Order steps the way an engineer would actually do the work: foundational
+changes (a database engine or role change) before what depends on them
+(a cache or replica sitting in front of it), infrastructure that other
+new nodes route through (a load balancer, an API gateway) before the
+services it fronts, and note explicitly in `overall_summary` if a step
+should be validated (e.g. load-tested) before the next one is safe to do.
+
+Output ONLY valid JSON matching this schema:
+{schema}
+
+Diff (reconstructed -> target):
+{diff}
+
+Reconstructed architecture's Analyzer Scorecard (rules_version={rules_version}, overall_score={overall_score}):
+{scorecard}
+
+Target architecture's constraints:
+{target_constraints}
+"""
+
+
+def build_migration_blueprint_prompt(diff: VersionDiff, scorecard: Scorecard, target_constraints: list[Constraint]) -> str:
+    schema = _compact_schema(MigrationBlueprint)
+    return MIGRATION_BLUEPRINT_SYSTEM_PROMPT.format(
+        schema=schema,
+        diff=diff.model_dump_json(),
+        rules_version=scorecard.rules_version,
+        overall_score=scorecard.overall_score,
+        scorecard=scorecard.model_dump_json(),
+        target_constraints=json.dumps([c.model_dump(mode="json") for c in target_constraints]),
     )

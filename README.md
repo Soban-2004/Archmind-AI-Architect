@@ -55,6 +55,17 @@ Currently implemented:
   see "Existing-project ingestion" below for what's covered so far
   (Python + Docker Compose, live-verified) and what's still ahead (JS/TS
   live-testing, GitHub URL cloning, frontend UI).
+- **Phase 6 (built, offline-tested)** — Migration Blueprint: run the
+  Analyzer against a reconstructed architecture, diff it against a
+  generated target production tier (both via existing Phase 3/4 machinery,
+  no new pipeline), and produce an ordered, per-step checklist grounded in
+  specific Analyzer findings and/or the target's stated constraints —
+  same code-enforced-groundedness pattern as Phase 3's compare view. See
+  "Migration Blueprint" below: the deterministic/grounding logic is
+  proven (44/44 tests, real diff + real scorecard, only the LLM call
+  faked); real end-to-end verification against live model output is
+  queued behind the same Groq daily-quota constraint documented above,
+  not skipped.
 
 Phases 1–4 and 7 have been run end-to-end against a real Groq key and a
 real Supabase database (not just unit-tested against mocks) — see "Live
@@ -973,10 +984,62 @@ run above instead.
   upload screen wired to it.
 - Kubernetes YAML (spec's own stretch item within Phase 5, not a blocker).
 
-## Phase 6 — not yet started
+## Phase 6 — Migration Blueprint, built and offline-tested, live verification pending
 
-Reconstructed-vs-ideal comparison and Migration Blueprint generation,
-combining Phase 4 (Analyzer) with Phase 5's output — run the Analyzer
-against a reconstructed architecture, generate a target production tier,
-diff the two, and produce an ordered, evidence-and-finding-justified list
-of concrete steps to close the gap. Depends on Phase 5 being solid first.
+Combines Phase 4 (Analyzer) with Phase 5's output into the flagship
+workflow: "take my existing project and show me how to make it
+production-ready." Deliberately reuses rather than reimplements — the
+only genuinely new piece is turning "here's what changed, here's why the
+as-is system scored what it scored, here's what the target needs" into
+an ordered, grounded checklist:
+
+1. **The target production tier isn't a new code path at all** — it's
+   the existing Phase 3 `action="generate_tier"` chat flow, called
+   against the reconstructed project like any other tier request (e.g.
+   "generate a production tier for 500,000 users, a $2000/month budget,
+   and 99.9% availability").
+2. **The diff is the existing Phase 2/3 diff engine** (`diff_states`),
+   unchanged — reconstructed-vs-target, same deterministic ground truth
+   `/compare` already uses for any two versions.
+3. **The Analyzer score is the existing Phase 4 rule engine**
+   (`score_architecture`), run against the reconstructed (as-is) state —
+   real findings, not anything new computed for this.
+4. **The new part**: `services/migration.py` + a new prompt
+   (`MIGRATION_BLUEPRINT_SYSTEM_PROMPT`, `llm/prompts.py`) that takes
+   those three already-computed, already-correct things and produces an
+   ordered `MigrationBlueprint` — one step per (or per small group of)
+   diff entries, each with a short imperative `action` and a
+   `justification` grounded in a specific Finding's `rule_id` and/or the
+   target's actual stated constraints.
+
+**Groundedness enforced in code, the established pattern**
+(`CompareExplanation`, `ScorecardAnswer`, the judge's check 7): every
+step's `ref` must match a real entry in the deterministic diff, and every
+`cited_rule_ids` entry must match a Finding the Analyzer actually
+produced — anything that doesn't is dropped before it reaches a user, an
+invented ref costs the model a wasted step, not a chance to slip
+something ungrounded through. `VersionDiff.valid_refs()` was factored out
+of `compare.py`'s private helper into a shared method so both consumers
+enforce this exactly the same way instead of two copies that could drift.
+
+**Tested offline** (`tests/test_migration.py`, 5 new, 44/44 total) the
+same way `test_ingestion.py` tests Phase 5's grounding filter: real diff,
+real Analyzer scorecard, only the LLM call faked — an invented `ref` is
+dropped and the remaining steps renumbered to a clean sequence; an
+invented `cited_rule_ids` entry is stripped from an otherwise-valid step,
+not treated as disqualifying; an empty diff short-circuits without an LLM
+call at all; a real LLM failure falls back to the still-useful
+deterministic diff+scorecard rather than losing them.
+
+**Live end-to-end verification is queued, not skipped.** Attempted
+against the real Phase 5 sample project (ingest → generate a real target
+tier → call the new endpoint) and hit the same Groq daily-quota wall this
+session had already found and documented — the ingestion step itself
+succeeded live (persisted a real project, 3 correctly-cited nodes,
+confirmed via `/projects`), but the tier-generation call needs more
+headroom than was left in the rolling daily window at the time. The code
+path is real, wired into `main.py`, and exercised end-to-end offline; the
+one thing not yet captured is the real model's actual blueprint text
+against real data, which needs the quota to clear (or the paid tier this
+README has already made the case for) to finish honestly rather than
+faked.
