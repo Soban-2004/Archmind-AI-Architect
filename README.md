@@ -566,6 +566,43 @@ utilization (warning), not comfortably idle. Not a crisis, but real
 information the silent fallback had been quietly hiding as "everything's
 fine at 10 rps."
 
+## Registry rule 3 was itself over-broad: it blocked the frontend calling the API at all
+
+The user pushed back on the "why is there no movement leaving the
+frontend" explanation instead of accepting it, and they were right to:
+registry rule 3 ("a load_balancer/api_gateway routes callers TO a
+service, the reverse is backwards") was written generally enough to also
+block `frontend -> load_balancer` — but that's not backwards, it's the
+actual real-world direction: the user's browser, running the frontend's
+code, is what calls the API. The rule was correctly stopping a *backend*
+from circularly calling its own fronting load balancer; it just never
+carved out the one caller that's supposed to call in; the frontend.
+Rule 5 (added earlier) already blocks the *reverse* of this edge — a
+load_balancer routing traffic TO a frontend — so the two rules were never
+redundant, rule 3 just had a real gap on the other direction.
+
+Fixed by exempting `frontend`/`edge_cdn` service types from rule 3's
+restriction, and added an explicit positive prompt instruction (the
+frontend calling the backend is real traffic and belongs in the diagram,
+distinct from the CDN edge which only serves static assets) so the
+architect adds this edge going forward instead of relying on it being
+merely allowed. `CONNECTIVITY_RULES_VERSION` bumped to v3.
+
+Verified thoroughly, not just the new case: 13 cases covering the full
+prior regression (all 10 earlier cases, unchanged) plus the fix itself
+(`frontend -> load_balancer` and `frontend -> api_gateway` now allowed)
+plus confirming rule 4's bypass check still holds with the new allowance
+(`frontend -> api_gateway` directly, when a load_balancer already fronts
+that gateway, is still correctly rejected — the frontend can enter at the
+top of the chain, not skip into the middle of it). Added the missing edge
+to the real Stock Hinge project the same deterministic way as the earlier
+fixes, and confirmed live via the simulate endpoint: the new edge now
+carries load, and — a real, unplanned improvement this produced — the
+Load Balancer is no longer treated as a second independent traffic entry
+point once it has a real incoming edge from the frontend, so the whole
+system now simulates as one single connected chain from the user in
+instead of two disconnected entry points that happened to be summed.
+
 ## What's next (not yet built)
 
 Phase 5 — existing-project ingestion (repo/ZIP → static analysis →

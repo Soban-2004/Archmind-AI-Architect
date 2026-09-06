@@ -113,6 +113,17 @@ CRITICAL RULES:
   which bypasses the routing layer for no reason. If a load_balancer or
   api_gateway fronts a service, every caller of that service goes through
   it, with no exceptions carved out.
+- The frontend calling the backend IS real traffic and belongs in the
+  diagram: add an edge from the frontend to whatever actually fronts the
+  backend (the load_balancer if one exists, else the api_gateway, else
+  the backend service itself) — this is the user's browser, running the
+  frontend's code, making the actual API request, not the frontend
+  server calling out. Never leave this edge out just because the CDN
+  already has an edge to the frontend for its static assets — those are
+  two different kinds of traffic (loading the app vs. the app calling the
+  API) and both get their own edge. A CDN or object_storage node is the
+  only kind of thing that should ever be the frontend's SOLE incoming
+  edge with no corresponding outgoing edge to the backend chain.
 - Edge direction must match which side actually depends on the other, not
   which side is "in front" visually. A CDN sits in front of the frontend
   to serve its static assets — the frontend does not call the CDN, so the

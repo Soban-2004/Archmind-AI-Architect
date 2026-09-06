@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from app.models.state import ArchitectureState, Node
 
-CONNECTIVITY_RULES_VERSION = "v2"  # v2: added rule 5 (load_balancer/api_gateway -> static frontend)
+CONNECTIVITY_RULES_VERSION = "v3"  # v3: rule 3 no longer blocks frontend -> load_balancer/api_gateway (the frontend IS the real origin of API traffic)
 
 _FRONTING_INFRA_TYPES = {"load_balancer", "api_gateway"}
 _ROUTING_INFRA_TYPES = _FRONTING_INFRA_TYPES | {"cdn"}
@@ -45,12 +45,25 @@ def check_edge_validity(source: Node, target: Node, working: ArchitectureState) 
     if target.node_kind == "infra_node" and target.type == "cdn":
         return f"'{target.name}' is a CDN — nothing should call it as a destination, a CDN only ever points outward to what it serves or its origin"
 
-    # Rule 3: a load_balancer/api_gateway routes callers TO a service; the
-    # reverse (a service/database/queue/external_dependency calling INTO
-    # one) is backwards. Only another routing infra_node (e.g. a CDN or a
-    # chained load_balancer -> api_gateway) may point into one.
-    if target.node_kind == "infra_node" and target.type in _FRONTING_INFRA_TYPES and source.node_kind != "infra_node":
-        return f"'{source.name}' ({source.node_kind}) cannot call '{target.name}' — a {target.type} routes callers TO a service, the edge direction is backwards"
+    # Rule 3: a load_balancer/api_gateway routes callers TO a BACKEND
+    # service; a backend calling back into its own fronting
+    # load_balancer/api_gateway is backwards and circular. The frontend is
+    # the one deliberate exception, not an oversight: the frontend IS the
+    # real-world origin of API traffic (the user's browser, running the
+    # frontend's code, is what actually calls the API) — blocking that
+    # edge was a real bug, caught live ("the frontend should call the API,
+    # which has to hit the load balancer... why is there no movement").
+    # Rule 5 below still blocks the reverse of THIS edge (a load_balancer/
+    # api_gateway routing traffic TO a static frontend, implying it runs
+    # multiple server instances, which it doesn't) — the two rules are
+    # about opposite edge directions, not the same case twice.
+    if (
+        target.node_kind == "infra_node"
+        and target.type in _FRONTING_INFRA_TYPES
+        and source.node_kind != "infra_node"
+        and not (source.node_kind == "service" and source.type in _STATIC_SERVICE_TYPES)
+    ):
+        return f"'{source.name}' ({source.node_kind}) cannot call '{target.name}' — a {target.type} routes callers TO a backend service, the edge direction is backwards"
 
     # Rule 4: no caller may bypass a load_balancer/api_gateway that already
     # fronts the same target — the exact shape of the real bug found live
