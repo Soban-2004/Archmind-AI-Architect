@@ -6,7 +6,7 @@ from uuid import UUID
 
 from app.db import repository as repo
 from app.llm.factory import get_judge_provider, get_llm_provider
-from app.llm.prompts import build_advisory_prompt, build_analysis_prompt, build_judge_prompt, build_system_prompt
+from app.llm.prompts import build_advisory_prompt, build_analysis_prompt, build_judge_prompt, build_system_prompt, state_for_edit_prompt
 from app.llm.tokens import estimate_messages_tokens, estimate_tokens
 from app.models.advisory import AdvisoryAnswer, AnalysisAnswer
 from app.models.commands import AnnotateDecisionCommand, UpdateNodeCommand
@@ -112,11 +112,19 @@ def _friendly_provider_error(e: Exception) -> str:
     return f"The AI provider request failed: {msg}"
 
 
-async def _run_judge(user_message: str, new_state: ArchitectureState) -> JudgeVerdict | None:
+async def _run_judge(user_message: str, new_state: ArchitectureState, commands: list) -> JudgeVerdict | None:
     """A second, independent model (Gemini — see llm/gemini_provider.py)
     reviewing the architect's (Groq's) proposed architecture for
     structural correctness against a fixed checklist (llm/prompts.py's
-    JUDGE_SYSTEM_PROMPT) before it's accepted. Returns None — judge
+    JUDGE_SYSTEM_PROMPT) before it's accepted. `commands` (this turn's
+    raw proposed commands, not just the resulting state) is what makes
+    check 7 possible — the judge previously only ever saw the FINAL state,
+    with no way to tell a node that existed before this turn from one just
+    added, so it structurally could not ask "does what changed actually
+    match the request" — found live: a proposal that added an entirely
+    unrelated node passed every one of the original 6 checks, since none
+    of them are about relevance to the request at all, just structural
+    correctness of whatever's in the final diagram. Returns None — judge
     skipped, proposal used as-is — when no judge is configured
     (GEMINI_API_KEY unset) or the judge call itself fails; a second
     opinion is a quality improvement, not something the whole turn should
@@ -126,7 +134,7 @@ async def _run_judge(user_message: str, new_state: ArchitectureState) -> JudgeVe
     if judge is None:
         return None
     try:
-        prompt = build_judge_prompt(user_message, new_state.constraints, new_state)
+        prompt = build_judge_prompt(user_message, new_state.constraints, new_state, commands)
         verdict = await judge.structured_json(prompt, "Review this architecture.", JudgeVerdict)
         logger.info("judge verdict: approved=%s issues=%s", verdict.approved, [(i.severity, i.description) for i in verdict.issues])
         return verdict
@@ -302,7 +310,20 @@ async def handle_chat_turn(project_id: UUID, user_message: str, base_version_id:
 
     provider = get_llm_provider()
     system_prompt = build_system_prompt()
-    system_prompt += f"\n\nCurrent architecture state (may be empty for a brand new project):\n{current_state.model_dump_json()}"
+    # state_for_edit_prompt (llm/prompts.py) drops `adrs` entirely (history
+    # never needed to correctly wire a new node/edge) and caps the two
+    # free-text prose fields (responsibilities/notes) — everything else
+    # (ids, types, roles) stays exact, since a mutation command references
+    # those directly and truncating an id would silently break it. On the
+    # real, live Stock Hinge project (13 nodes, 13 ADRs accumulated over 17
+    # versions) the ADR exclusion alone was ~1,200 of the tokens the
+    # pre-flight gate below counts against every single edit request —
+    # completely independent of project topology size or how targeted the
+    # edit itself is, so it was the single biggest lever available without
+    # changing what the model actually needs to see; the text cap is
+    # front-loaded ahead of when it'll matter, for whenever a project's
+    # free-text fields grow verbose over many future edits.
+    system_prompt += f"\n\nCurrent architecture state (may be empty for a brand new project):\n{state_for_edit_prompt(current_state)}"
 
     # Stop sending the full history on every request (the actual incident
     # this guards against: a long project's whole message log pushed one
@@ -422,7 +443,7 @@ async def handle_chat_turn(project_id: UUID, user_message: str, base_version_id:
             await repo.add_message(project_id, "assistant", answer, version_id=parent_id)
             return ChatTurnResult(kind="answer", summary=answer, usage=total_usage)
 
-        verdict = await _run_judge(user_message, new_state)
+        verdict = await _run_judge(user_message, new_state, commands)
         if verdict is not None:
             _add_usage(getattr(get_judge_provider(), "last_usage", None))
             blocking = [i for i in verdict.issues if i.severity == "blocking"]

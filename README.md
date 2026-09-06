@@ -761,6 +761,125 @@ project's full state alone would have cost) with the version count
 unchanged (17 before, 17 after both calls) confirmed via the real
 `/versions` endpoint, not just by reading the code.
 
+## Chasing "raise the token ceiling": evaluated Gemini and Ollama Cloud as the architect, kept Groq
+
+Two real questions from the user, both worth answering with live evidence
+rather than opinion: "is there any LLM with a higher per-minute token
+limit" and, once alternatives were on the table, "run a test and give the
+actual comparison." Groq's `openai/gpt-oss-120b` free tier is confirmed
+(its own docs) at 30 RPM / **8,000 TPM** / 200K TPD — the exact number
+this codebase had already calibrated against empirically. Gemini and
+Ollama Cloud were tried as real alternatives for the architect role
+specifically, since that's the one call that actually hits this ceiling.
+
+Real A/B test methodology: the exact real system prompt, the exact real
+Stock Hinge state, and the exact real failing request ("add one more
+backend and make sure its under our cost") sent to each candidate, with
+every resulting command run through the real `apply_commands` validation
+— not just "is it valid JSON."
+
+**Ollama Cloud** genuinely disproved an earlier assumption: its `format`
+field (a JSON-schema-constrained output mode) worked cleanly, fast
+(1.8-6.5s vs Gemini's 8.8-38.1s), valid JSON every time. But across
+repeated real trials, `gpt-oss:120b` on Ollama Cloud invented components
+the user never asked for — a fabricated "User Profile Service" wired to
+real infrastructure, later a "Stock Recommendation Backend" — schema-valid,
+registry-valid, and (before this session's fix) judge-valid, since
+nothing in the original 6-item judge checklist checks whether a proposal
+actually addresses the request. Smaller (`gpt-oss:20b`) and other
+catalog models (`qwen3.5:122b`, `deepseek-v4-pro`, `glm-5.3`,
+`mistral-large-3`, `minimax-m3`) were also tried — most aren't accessible
+on this account's plan at all (HTTP 402, subscription required, or 404,
+wrong/unavailable tag), narrowing the real usable set to the two gpt-oss
+variants.
+
+**Gemini** failed differently — safely (asking a clarifying question
+instead of guessing) two-thirds of the time rather than acting, and
+surfaced something more important than any TPM number: its free tier for
+`gemini-3.6-flash` caps at **20 requests PER DAY**, not just per minute —
+a hard quota this session's own testing exhausted mid-investigation,
+which meant the app's live judge pass (already running on Gemini) went
+silently unavailable for the rest of that day. That's a materially
+different, much tighter constraint than the TPM figure alone suggested,
+and it retroactively invalidated an earlier recommendation in this same
+investigation to move the architect to Gemini — 20 requests/day is
+unusable for an interactive chat regardless of how large each one can be.
+
+Conclusion: neither alternative beat Groq's real, already-proven
+production behavior on the request that started this. The actual fix was
+never the model — it was the fixed prompt/schema/state overhead per
+request (see the next two sections), which is what was actually eating
+the budget on every request regardless of provider.
+
+## Judge check 7: does the proposal actually address what was asked
+
+A direct, real gap found via the Ollama Cloud testing above: the judge's
+original 6 checks are all about structural correctness of whatever ends
+up in the final diagram — edge direction, bypass, duplicates, unwired
+nodes, unjustified infra, addressing named overloads. None of them ask
+whether the proposal's actual changes have anything to do with the
+request. A fabricated, well-formed, correctly-wired "User Profile
+Service" — added in response to "add one more backend" — violated zero
+of the original 6 rules and would have sailed through review.
+
+Fixed by adding check 7 (relevance) and, critically, giving the judge
+something it never had before: `commands` — this turn's actual proposed
+changes, not just the resulting final state. The judge previously only
+ever saw the end state, with no way to tell a node that existed before
+this turn from one just added, so it structurally could not have asked
+"does what changed match the request" even if instructed to — the prompt
+change and the new input are both necessary, not just the checklist item.
+`build_judge_prompt` and `_run_judge` both took a `commands` parameter.
+
+Verified directly: fed the judge the exact hallucinated "User Profile
+Service" commands captured from the Ollama Cloud testing above —
+`approved: False`, `blocking: "The proposal added an unrelated 'User
+Profile Service' backend node rather than properly handling the request
+to add backend capacity or scale the backend."` Then verified the limits
+of the fix, honestly, via 8 more real end-to-end runs with Ollama Cloud
+as architect: the check catches what it's supposed to when the judge
+actually runs, but the judge itself failed on 2 of those 8 runs (once a
+transient 503, once the Gemini daily-quota exhaustion above) — when the
+judge can't run at all, `_run_judge` returns `None` and the proposal is
+accepted unreviewed, same as before this fix. A judge check is only as
+reliable as the judge's own provider being available, which this session
+just demonstrated isn't guaranteed on a free tier under real load.
+
+## Free-text truncation: summarize only what can safely be summarized
+
+A user proposal worth taking seriously on its own terms: "a compactizer
+LLM that summarizes if the token size goes beyond some limit... only the
+ones which can be summarized." Right instinct, and worth being precise
+about which parts of the payload that actually describes. Checked the
+schema directly: `Service.responsibilities` and `Edge.notes` are the
+ONLY free-text prose fields anywhere in `ArchitectureState` — everything
+else (ids, types, roles, engine names) is either a short atomic value or
+something a mutation command references directly by id, where losing
+precision would silently break correctness (a paraphrased id doesn't
+resolve to a real node), not just verbosity.
+
+Implemented as a deliberately plain deterministic character cap
+(`state_for_edit_prompt`, llm/prompts.py — `MAX_FREE_TEXT_CHARS = 100`),
+not an actual summarizer LLM call. Reasoning: on the only two fields
+that are genuinely safe to compact, a hard truncation captures
+essentially all the value a real summarizer would, for zero added
+latency, zero added cost, and — the more important reason, given
+everything else this session found testing Ollama Cloud and Gemini as
+alternatives — zero added risk of the summarizer itself dropping
+something that mattered. Adding another LLM call to solve a token-budget
+problem would mean adding another real point of imprecision to a
+pipeline that's already spent an entire session finding out how real
+that risk is.
+
+Doesn't move the needle on the real Stock Hinge project (the longest
+`responsibilities` field there is 56 characters, well under the 100-char
+cap) — this is deliberately front-loaded ahead of when it'll matter, for
+whenever a project's free-text fields grow verbose over many future
+edits. Measured on a synthetic 50-node/50-edge project with realistically
+verbose text in both fields: the state alone drops from ~7,900 tokens
+untruncated to ~6,000 truncated. Also applied to the Scorecard Q&A
+prompt's state serialization for the same reasoning.
+
 ## What's next (not yet built)
 
 Phase 5 — existing-project ingestion (repo/ZIP → static analysis →

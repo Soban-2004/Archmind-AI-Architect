@@ -1,5 +1,7 @@
 import json
 
+from pydantic import BaseModel
+
 from app.models.advisory import AdvisoryAnswer, AnalysisAnswer
 from app.models.analysis import Scorecard, ScorecardAnswer
 from app.models.commands import InterviewTurnOutput
@@ -9,6 +11,39 @@ from app.models.judge import JudgeVerdict
 from app.models.simulation import SimulationResult
 from app.models.state import ArchitectureState, Constraint
 from app.llm.reference_patterns import REFERENCE_PATTERNS
+
+
+def _compact_schema(model: type[BaseModel]) -> str:
+    """Pydantic's model_json_schema() puts a "title" on every single field
+    (always just the field name title-cased -- "from_id" -> "From Id",
+    never anything the model doesn't already know from the property name
+    itself) and, on a discriminated command like AddNodeCommand, a
+    "default" that's a pure echo of its "const" (op="add_node" carries
+    both). Neither helps the model comply with the shape; both are pure
+    Pydantic-generated decoration -- stripped here before a schema is ever
+    inlined into a prompt. InterviewTurnOutput's schema (the single
+    biggest fixed cost in every edit-turn prompt, since it recursively
+    includes the whole 7-variant MutationCommand union) drops from ~1,332
+    to ~1,006 estimated tokens from this alone -- a real, measured slice
+    of the token-budget ceiling documented in services/interview.py,
+    independent of project size or how targeted the edit itself is."""
+
+    def strip(obj):
+        if isinstance(obj, dict):
+            out = {}
+            for k, v in obj.items():
+                if k == "title":
+                    continue
+                if k == "default" and obj.get("const") is not None and v == obj.get("const"):
+                    continue
+                out[k] = strip(v)
+            return out
+        if isinstance(obj, list):
+            return [strip(v) for v in obj]
+        return obj
+
+    return json.dumps(strip(model.model_json_schema()), separators=(",", ":"))
+
 
 # Shared by every prompt whose free-text output lands in a chat bubble or
 # Q&A panel (all now rendered as real markdown, not plain text — see
@@ -256,15 +291,69 @@ Architecture state (for extra context on the cited findings' evidence):
 
 
 def build_scorecard_qa_prompt(state: ArchitectureState, scorecard: Scorecard) -> str:
-    schema = ScorecardAnswer.model_json_schema()
+    schema = _compact_schema(ScorecardAnswer)
     return SCORECARD_QA_SYSTEM_PROMPT.format(
         schema=schema,
         rules_version=scorecard.rules_version,
         overall_score=scorecard.overall_score,
         scorecard=scorecard.model_dump_json(),
-        state=state.model_dump_json(),
+        # Every Finding cites real node/edge ids (evidence_node_ids/
+        # evidence_edge_ids), never an ADR, so this state is only ever
+        # needed for topology context — state_for_edit_prompt's exact same
+        # adrs-exclusion + free-text cap applies here too, despite the
+        # name (it's really "state for any prompt that needs topology
+        # context but not a mutation-capable full state").
+        state=state_for_edit_prompt(state),
         formatting=RESPONSE_FORMATTING_GUIDANCE,
     )
+
+
+MAX_FREE_TEXT_CHARS = 100  # see state_for_edit_prompt below
+
+
+def state_for_edit_prompt(state: ArchitectureState) -> str:
+    """The current architecture state as shown to the model for an edit
+    turn or the Scorecard Q&A — everything except `adrs` (historical
+    decision rationale, never needed to correctly wire a new node/edge —
+    nothing in these prompts ever asks the model to read past ADRs), and
+    with the schema's only two free-text prose fields (Service.
+    responsibilities, Edge.notes) capped at MAX_FREE_TEXT_CHARS.
+
+    Deliberately a plain deterministic truncation, not an LLM summary
+    call: every OTHER field here (ids, types, roles, engine names) is
+    either a short atomic value or something a mutation command
+    references directly by id — summarizing or compressing any of THOSE
+    risks silently breaking a command's correctness (a paraphrased id
+    doesn't resolve to a real node) or losing the exact fact a decision
+    depends on. `responsibilities`/`notes` are the only fields in the
+    whole schema that are free prose, are never referenced by id
+    anywhere, and are genuinely fine to lose detail from. And since
+    they're short, simple sentences, a hard character cap captures
+    essentially all of the value a real summarizer LLM call would, for a
+    fraction of a token's worth of code and zero added latency, zero
+    added cost, and zero added chance of the summarizer itself dropping
+    something that mattered — a real, measured risk this session ran
+    into directly with every alternative LLM tried today.
+
+    Doesn't move the needle on any real project tested this session (the
+    longest responsibilities field seen is 56 characters) — this is
+    deliberately front-loaded before it needs to be, since these are
+    exactly the fields a model tends to keep making more verbose across
+    many edits. Measured on a synthetic 50-node/50-edge project with
+    realistically verbose text in both fields: ~7,900 tokens for the
+    state alone, untruncated, down to ~6,000 truncated — real, measured
+    headroom on exactly the project sizes where the fixed system-prompt
+    cost alone would otherwise leave little room to spare."""
+    data = state.model_dump(mode="json", exclude={"adrs"})
+    for n in data["nodes"]:
+        resp = n.get("responsibilities")
+        if resp and len(resp) > MAX_FREE_TEXT_CHARS:
+            n["responsibilities"] = resp[:MAX_FREE_TEXT_CHARS].rstrip() + "…"
+    for e in data["edges"]:
+        notes = e.get("notes")
+        if notes and len(notes) > MAX_FREE_TEXT_CHARS:
+            e["notes"] = notes[:MAX_FREE_TEXT_CHARS].rstrip() + "…"
+    return json.dumps(data)
 
 
 def _compact_topology(state: ArchitectureState) -> str:
@@ -311,7 +400,7 @@ Question: {question}
 
 
 def build_advisory_prompt(state: ArchitectureState, question: str) -> str:
-    schema = AdvisoryAnswer.model_json_schema()
+    schema = _compact_schema(AdvisoryAnswer)
     topology = _compact_topology(state)
     constraints = json.dumps([c.model_dump(mode="json") for c in state.constraints])
     return ADVISORY_SYSTEM_PROMPT.format(
@@ -345,7 +434,7 @@ User's question: {question}
 
 
 def build_analysis_prompt(result: SimulationResult, question: str) -> str:
-    schema = AnalysisAnswer.model_json_schema()
+    schema = _compact_schema(AnalysisAnswer)
     loads = json.dumps([l.model_dump(mode="json") for l in result.loads])
     findings = json.dumps([f.model_dump(mode="json") for f in result.findings])
     return ANALYSIS_SYSTEM_PROMPT.format(
@@ -387,6 +476,20 @@ as an issue (severity "blocking" for something structurally wrong,
    two — and any fix must actually be wired to the real component(s) that
    were overloaded, not to some other node that happens to be nearby in
    the diagram.
+7. Relevance: look at "Commands proposed this turn" below — the actual
+   node/edge/constraint additions and changes this proposal makes, as
+   opposed to what already existed before this turn. Every one of them
+   must be something the user's request actually calls for, directly or
+   as a reasonable necessary consequence of it. A proposal that adds a
+   node or edge with nothing to do with the request — even a well-formed
+   one that violates none of the other 6 checks — is a "blocking" issue.
+   This is the one check about intent rather than structure: did this
+   proposal actually do what was asked, or did it quietly do something
+   else instead? (Real example this check exists to catch: asked to "add
+   one more backend", a proposal instead added an unrelated new "User
+   Profile Service" node, wired it to the real database and cache, and
+   called it done — well-formed, wired correctly, and violated nothing
+   above, but not what was asked.)
 
 Do not flag anything not on this list — you are not redesigning the
 architecture or offering opinions on style, just checking these specific,
@@ -402,27 +505,32 @@ Constraints: {constraints}
 Proposed architecture — nodes: {nodes}
 
 Proposed architecture — edges: {edges}
+
+Commands proposed this turn (what actually changed, vs. what already
+existed before this turn — see check 7):
+{commands}
 """
 
 
-def build_judge_prompt(user_message: str, constraints: list[Constraint], state: ArchitectureState) -> str:
-    schema = JudgeVerdict.model_json_schema()
+def build_judge_prompt(user_message: str, constraints: list[Constraint], state: ArchitectureState, commands: list) -> str:
+    schema = _compact_schema(JudgeVerdict)
     return JUDGE_SYSTEM_PROMPT.format(
         schema=schema,
         user_message=user_message,
         constraints=json.dumps([c.model_dump() for c in constraints]),
         nodes=json.dumps([n.model_dump() for n in state.nodes]),
         edges=json.dumps([e.model_dump() for e in state.edges]),
+        commands=json.dumps([c.model_dump(mode="json") for c in commands]),
     )
 
 
 def build_system_prompt() -> str:
-    schema = InterviewTurnOutput.model_json_schema()
+    schema = _compact_schema(InterviewTurnOutput)
     return INTERVIEW_SYSTEM_PROMPT.format(schema=schema, reference_patterns=REFERENCE_PATTERNS)
 
 
 def build_compare_prompt(diff: VersionDiff, state_a: ArchitectureState, state_b: ArchitectureState) -> str:
-    schema = CompareExplanation.model_json_schema()
+    schema = _compact_schema(CompareExplanation)
     return COMPARE_SYSTEM_PROMPT.format(
         schema=schema,
         diff=diff.model_dump_json(),
