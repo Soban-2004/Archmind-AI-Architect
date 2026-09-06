@@ -177,6 +177,17 @@ export default function Home() {
     }
   }
 
+  function handleNodePositionsChange(updates: LayoutMap) {
+    // Only the live editable graph persists drags — a compare snapshot has
+    // no single version id of its own to write a layout onto here.
+    if (!projectId || !activeVersionId || compareResult) return;
+    setRawLayout((prev) => {
+      const next = { ...prev, ...updates };
+      api.updateLayout(projectId, activeVersionId, next).catch(() => {});
+      return next;
+    });
+  }
+
   function handleConsumeAnimation(index: number) {
     setMessages((prev) => prev.map((m, i) => (i === index ? { ...m, animate: false } : m)));
   }
@@ -299,7 +310,13 @@ export default function Home() {
                 </div>
               )}
               <div className="min-h-0 flex-1">
-                <ArchitectureCanvas state={displayState} layout={displayLayout} diff={displayDiff} simulation={displaySimulation} />
+                <ArchitectureCanvas
+                  state={displayState}
+                  layout={displayLayout}
+                  diff={displayDiff}
+                  simulation={displaySimulation}
+                  onNodePositionsChange={compareResult ? undefined : handleNodePositionsChange}
+                />
               </div>
             </div>
 

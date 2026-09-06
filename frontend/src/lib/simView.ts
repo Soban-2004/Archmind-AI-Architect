@@ -34,13 +34,14 @@ export function applySimulation(nodes: Node[], edges: Edge[], sim: SimulationRes
     const targetStatus = statusByNode.get(e.target);
     const rps = rpsByEdge.get(e.id);
     const flowing = targetStatus !== "killed";
+    const intensity = intensityFor(rps ?? 0);
     return {
       ...e,
       animated: flowing,
       label: rps !== undefined ? `${Math.round(rps)} rps` : e.label,
       style: simEdgeStyle(targetStatus),
       labelStyle: { fontSize: 11, fontWeight: 600 },
-      data: { ...e.data, flowing, flowSpeed: flowSpeedFor(targetStatus), flowCount: targetStatus === "overloaded" ? 3 : targetStatus === "warning" ? 2 : 1 },
+      data: { ...e.data, flowing, flowSpeed: intensity.speed, flowCount: intensity.count },
     };
   });
 
@@ -70,28 +71,42 @@ export function applySimulation(nodes: Node[], edges: Edge[], sim: SimulationRes
   const entryEdges: Edge[] = entryNodes.map((n) => {
     const status = statusByNode.get(n.id);
     const flowing = status !== "killed";
+    const rps = rpsByNode.get(n.id) ?? 0;
+    const intensity = intensityFor(rps);
     return {
       id: `${TRAFFIC_SOURCE_ID}->${n.id}`,
       type: "flow",
       source: TRAFFIC_SOURCE_ID,
       target: n.id,
-      label: `${Math.round(rpsByNode.get(n.id) ?? 0)} rps`,
+      label: `${Math.round(rps)} rps`,
       animated: flowing,
       selectable: false,
       style: simEdgeStyle(status),
       labelStyle: { fontSize: 11, fontWeight: 600 },
-      data: { flowing, flowSpeed: flowSpeedFor(status), flowCount: status === "overloaded" ? 3 : status === "warning" ? 2 : 1 },
+      data: { flowing, flowSpeed: intensity.speed, flowCount: intensity.count },
     };
   });
 
   return { nodes: [trafficSourceNode, ...simNodes], edges: [...entryEdges, ...simEdges] };
 }
 
-function flowSpeedFor(status?: LoadStatus): number {
-  // seconds per lap — faster particles read as "more traffic pressure"
-  if (status === "overloaded") return 0.5;
-  if (status === "warning") return 0.85;
-  return 1.4;
+/**
+ * How busy an edge *looks* — speed (seconds per lap) and particle count —
+ * scaled continuously off its actual projected req/s, not just the
+ * 3-value ok/warning/overloaded status. Two edges both sitting comfortably
+ * under capacity used to render identically whether they carried 5 rps or
+ * 95 rps; now volume of traffic reads directly off the animation itself,
+ * while color/stroke-width (see simEdgeStyle) stays the separate signal
+ * for "how close to breaking" this edge's target is. Not literally one
+ * particle per request per second (unreadable past a handful of req/s) —
+ * just a monotonic mapping so more requests always looks like more
+ * requests, continuously, all the way up.
+ */
+function intensityFor(rps: number): { speed: number; count: number } {
+  const r = Math.max(0, rps);
+  const count = Math.min(8, 1 + Math.floor(r / 12));
+  const speed = Math.max(0.3, 1.6 - Math.min(1.3, r / 60));
+  return { speed, count };
 }
 
 function simEdgeStyle(status?: LoadStatus) {

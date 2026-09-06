@@ -1,7 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Background, BackgroundVariant, Controls, MiniMap, ReactFlow, type EdgeTypes, type Node, type NodeTypes } from "@xyflow/react";
+import { useCallback, useMemo, useState } from "react";
+import {
+  Background,
+  BackgroundVariant,
+  Controls,
+  MiniMap,
+  ReactFlow,
+  type Edge,
+  type EdgeTypes,
+  type Node,
+  type NodeChange,
+  type NodeTypes,
+} from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { Network } from "lucide-react";
 import { toFlowElements } from "@/lib/diffView";
@@ -30,16 +41,53 @@ interface Props {
   layout: LayoutMap;
   diff?: VersionDiff | null;
   simulation?: SimulationResult | null;
+  /** Called once per drag (on release) with just the node(s) that moved,
+   * so the caller can persist positions back onto the active version's
+   * layout — letting future incremental edits carry a user's manual
+   * arrangement forward instead of resetting it. Omit for a read-only
+   * canvas (e.g. the compare view). */
+  onNodePositionsChange?: (updates: LayoutMap) => void;
 }
 
-export function ArchitectureCanvas({ state, layout, diff, simulation }: Props) {
+export function ArchitectureCanvas({ state, layout, diff, simulation, onNodePositionsChange }: Props) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  // A drag needs to move a node the instant the pointer moves, well before
+  // any position update could round-trip up to the parent's `layout` state
+  // and back down as a prop. So dragged positions live here as a small
+  // overlay on top of the prop-derived layout, applied live by
+  // onNodesChange (a real event handler, not an effect) and left in place
+  // even after the drag is persisted upward — by then the parent's layout
+  // carries the same coordinates anyway, so the overlay is just a no-op.
+  const [dragOverrides, setDragOverrides] = useState<LayoutMap>({});
 
-  const { nodes, edges } = useMemo(() => {
-    if (!state) return { nodes: [], edges: [] };
+  const { nodes: baseNodes, edges } = useMemo(() => {
+    if (!state) return { nodes: [] as Node[], edges: [] as Edge[] };
     const base = toFlowElements(state, layout, diff);
     return simulation ? applySimulation(base.nodes, base.edges, simulation) : base;
   }, [state, layout, diff, simulation]);
+
+  const nodes = useMemo(
+    () => baseNodes.map((n) => (dragOverrides[n.id] ? { ...n, position: dragOverrides[n.id] } : n)),
+    [baseNodes, dragOverrides]
+  );
+
+  const onNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      const moved: LayoutMap = {};
+      const released: LayoutMap = {};
+      for (const c of changes) {
+        if (c.type === "position" && c.position) {
+          moved[c.id] = c.position;
+          // `dragging: false` fires once on release — only persist then,
+          // not on every intermediate pointer-move frame of the drag.
+          if (c.dragging === false) released[c.id] = c.position;
+        }
+      }
+      if (Object.keys(moved).length > 0) setDragOverrides((prev) => ({ ...prev, ...moved }));
+      if (Object.keys(released).length > 0) onNodePositionsChange?.(released);
+    },
+    [onNodePositionsChange]
+  );
 
   const selectedNode = selectedNodeId ? (state?.nodes.find((n) => n.id === selectedNodeId) ?? null) : null;
   const selectedLoad = selectedNodeId ? simulation?.loads.find((l) => l.node_id === selectedNodeId) : undefined;
@@ -62,6 +110,7 @@ export function ArchitectureCanvas({ state, layout, diff, simulation }: Props) {
         edges={edges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
+        onNodesChange={onNodesChange}
         fitView
         proOptions={{ hideAttribution: true }}
         onNodeClick={(_, node) => setSelectedNodeId(node.id)}
