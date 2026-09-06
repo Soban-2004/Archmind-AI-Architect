@@ -45,6 +45,16 @@ Currently implemented:
   panel, not a chat request — deliberately routed around the LLM entirely
   (spec §7: an unambiguous "10x traffic" or "kill Redis" request is a
   no-LLM-call case) so it's instant and free.
+- **Phase 5 (in progress)** — existing-project ingestion: upload a repo
+  ZIP, and a deterministic pipeline (file discovery -> per-language static
+  extraction -> Evidence Graph) hands the LLM only discrete, source-
+  attributed facts — never raw code — which it reconstructs into an
+  Architecture State via the SAME validated mutation commands as every
+  other path. Every proposed node's citations are checked against real
+  evidence ids in code before being accepted, not trusted at face value —
+  see "Existing-project ingestion" below for what's covered so far
+  (Python + Docker Compose, live-verified) and what's still ahead (JS/TS
+  live-testing, GitHub URL cloning, frontend UI).
 
 Phases 1–4 and 7 have been run end-to-end against a real Groq key and a
 real Supabase database (not just unit-tested against mocks) — see "Live
@@ -880,8 +890,93 @@ verbose text in both fields: the state alone drops from ~7,900 tokens
 untruncated to ~6,000 truncated. Also applied to the Scorecard Q&A
 prompt's state serialization for the same reasoning.
 
-## What's next (not yet built)
+## Existing-project ingestion (Phase 5) — first vertical slice
 
-Phase 5 — existing-project ingestion (repo/ZIP → static analysis →
-evidence graph → LLM reasoning over evidence → Architecture State via the
-same validated mutation commands used everywhere else).
+Started, and deliberately scoped to one thing proven end to end before
+broadening: Python + Docker Compose, a ZIP upload, live-verified against
+a real sample project rather than just unit-tested against mocks.
+
+**Pipeline** (`backend/app/services/ingestion*.py`), matching the spec's
+own 4 steps:
+1. **Discovery** (`ingestion_discovery.py`) — walks the upload, applying
+   real `.gitignore` semantics (`pathspec`, not a hand-rolled
+   approximation — glob negation and anchoring are genuinely easy to get
+   subtly wrong by hand), skips vendored directories and lockfiles
+   outright, caps individual file size at 200KB.
+2. **Extraction** (`ingestion_extract.py`) — Python via the stdlib `ast`
+   module (a real parser, so it can't be fooled by a comment or a string
+   that happens to look like an import, and gives exact line numbers for
+   free); JS/TS via regex over source text, matching the spec's own
+   framing ("communication detectable via code patterns" — patterns, not
+   a full parser, which would be real dependency weight this MVP doesn't
+   need yet); Docker Compose as real YAML. Every fact keeps its literal
+   source location (`backend/cache.py:4`, not just a filename).
+3. **Evidence Graph** (`models/evidence.py`) — a flat list of `{id, fact,
+   detail, source}`, the same "small, concrete, citable facts, never
+   prose" shape as everything else the LLM is ever handed in this
+   codebase (a Finding, a diff entry, a simulation result).
+4. **Reconstruction** — a new prompt (`INGESTION_SYSTEM_PROMPT`,
+   `llm/prompts.py`) that never sees raw code, only the Evidence Graph,
+   and builds via the exact same `add_node`/`add_edge` commands and
+   `apply_commands` validation as every other architecture-producing
+   path. The attribute-shape rules (`ATTRIBUTE_SHAPE_RULES`) were
+   factored out of the main interview prompt so both share one source of
+   truth instead of two copies that could quietly drift apart.
+
+**The grounding guarantee is enforced in code, not just requested in the
+prompt.** The model returns `citations: {ref: [evidence_id, ...]}`
+alongside its commands — `services/ingestion.py`'s `_filter_uncited_nodes`
+checks every `add_node`'s citation against the Evidence Graph's *real* ids
+before anything reaches `apply_commands`, and silently drops (and
+reports) any node the model couldn't actually point at real evidence for.
+An LLM confidently proposing a plausible-but-ungrounded component — the
+exact failure mode this session already measured happening for real with
+a different provider (see "Evaluated Gemini and Ollama Cloud" above) —
+gets caught here structurally, not hoped away.
+
+**Live-verified**, not just unit-tested: built a real sample project
+(FastAPI + Postgres + Redis + Docker Compose — the spec's own acceptance-
+criteria example) and ran the full pipeline against it for real.
+Deterministic discovery+extraction alone correctly found all 15 real
+facts (redis/postgres imports with exact line numbers, 3 REST routes, 2
+env vars, all 3 docker-compose services, the depends_on edges) with zero
+LLM cost. The real Groq call then reconstructed exactly 3 nodes (Backend
+API, PostgreSQL, Redis) with both critical edges (API→DB, API→cache)
+correctly directed, every node cited by multiple real evidence ids, and
+zero dropped/hallucinated nodes — a clean pass against the spec's own
+Phase 5 acceptance criteria on the first real try. The HTTP upload
+endpoint (`POST /ingest`, multipart ZIP + project name) was verified
+too — both its success path structurally (it's a thin wrapper over the
+same proven functions) and its failure path for real: a request hit the
+same Groq daily-quota wall this session had already found, and it failed
+cleanly with a real error and, confirmed by checking `/projects`
+afterward, zero orphaned project data.
+
+Offline regression tests (`backend/tests/test_ingestion.py`) cover the
+fully deterministic half — discovery's vendored/lockfile/.gitignore
+skipping, extraction's real fact-plus-source-location output for a
+realistic multi-file sample, a syntax-error file reported instead of
+crashing the whole pipeline, an empty repo producing nothing. The LLM
+reconstruction step itself isn't unit-tested, by the same reasoning
+already applied to every other LLM-facing path in this codebase — it
+needs a real model call to test meaningfully, so it's covered by the live
+run above instead.
+
+**Not yet built, deliberately deferred rather than half-done:**
+- JS/TS extraction exists (regex-based, mirrors the Python extractor's
+  shape) but hasn't been live-verified against a real reconstruction the
+  way the Python path has.
+- GitHub URL cloning — today's entry point is a ZIP upload only; a repo
+  URL would mean adding a `git clone` step ahead of the same discovery
+  pipeline, not a new pipeline.
+- No frontend UI yet — `POST /ingest` is real and working, but there's no
+  upload screen wired to it.
+- Kubernetes YAML (spec's own stretch item within Phase 5, not a blocker).
+
+## Phase 6 — not yet started
+
+Reconstructed-vs-ideal comparison and Migration Blueprint generation,
+combining Phase 4 (Analyzer) with Phase 5's output — run the Analyzer
+against a reconstructed architecture, generate a target production tier,
+diff the two, and produce an ordered, evidence-and-finding-justified list
+of concrete steps to close the gap. Depends on Phase 5 being solid first.

@@ -7,6 +7,7 @@ from app.models.analysis import Scorecard, ScorecardAnswer
 from app.models.commands import InterviewTurnOutput
 from app.models.compare import CompareExplanation
 from app.models.diff import VersionDiff
+from app.models.evidence import EvidenceGraph, IngestionTurnOutput
 from app.models.judge import JudgeVerdict
 from app.models.simulation import SimulationResult
 from app.models.state import ArchitectureState, Constraint
@@ -56,6 +57,22 @@ def _compact_schema(model: type[BaseModel]) -> str:
 # commands (advisory, analysis, Scorecard Q&A) — INTERVIEW_SYSTEM_PROMPT's
 # `question`/`summary` stay deliberately short by their own spec and don't
 # need it.
+# Shared by every prompt that emits add_node commands (the interview/edit/
+# tier prompt and the ingestion reconstruction prompt) so the exact
+# node_type -> attributes shape is defined in exactly one place — this was
+# duplicated once already and is exactly the kind of thing that silently
+# drifts out of sync between two copies over time.
+ATTRIBUTE_SHAPE_RULES = """Every add_node's `attributes` MUST match the shape for its `node_type`
+EXACTLY — the JSON Schema shows `attributes` as a generic object, so
+these are not visible there; use ONLY the values listed here, never a
+synonym:
+- node_type="service": {"type": one of "gateway" | "service" | "worker" | "frontend" | "edge_cdn" (use "service" for a generic backend service — NOT "backend"), "language"?: string, "responsibilities"?: string, "scaling_mode"?: "stateless" | "stateful"}
+- node_type="database": {"type": one of "relational" | "document" | "keyvalue" | "search" | "graph", "engine": string (e.g. "postgres", "redis"), "role"?: "primary" | "replica" | "cache"}
+- node_type="queue": {"type": one of "queue" | "pubsub" | "stream", "engine": string (e.g. "sqs", "kafka")}
+- node_type="external_dependency": {"type": one of "third_party_api" | "payment" | "market_data" | "auth_provider" | "storage" (use "third_party_api" for a generic external API — NOT "api"), "criticality"?: "hard" | "soft"}
+- node_type="infra_node": {"type": one of "cdn" | "load_balancer" | "api_gateway" | "object_storage" | "container_runtime" | "observability"}"""
+
+
 RESPONSE_FORMATTING_GUIDANCE = """
 Format your answer like a real chat assistant would (Markdown IS rendered,
 not shown as raw text):
@@ -130,15 +147,7 @@ You always operate in exactly one of three modes per turn:
 
 {reference_patterns}
 
-Every add_node's `attributes` MUST match the shape for its `node_type`
-EXACTLY — the JSON Schema below shows `attributes` as a generic object, so
-these are not visible there; use ONLY the values listed here, never a
-synonym:
-- node_type="service": {{"type": one of "gateway" | "service" | "worker" | "frontend" | "edge_cdn" (use "service" for a generic backend service — NOT "backend"), "language"?: string, "responsibilities"?: string, "scaling_mode"?: "stateless" | "stateful"}}
-- node_type="database": {{"type": one of "relational" | "document" | "keyvalue" | "search" | "graph", "engine": string (e.g. "postgres", "redis"), "role"?: "primary" | "replica" | "cache"}}
-- node_type="queue": {{"type": one of "queue" | "pubsub" | "stream", "engine": string (e.g. "sqs", "kafka")}}
-- node_type="external_dependency": {{"type": one of "third_party_api" | "payment" | "market_data" | "auth_provider" | "storage" (use "third_party_api" for a generic external API — NOT "api"), "criticality"?: "hard" | "soft"}}
-- node_type="infra_node": {{"type": one of "cdn" | "load_balancer" | "api_gateway" | "object_storage" | "container_runtime" | "observability"}}
+{attribute_shape_rules}
 
 CRITICAL RULES:
 - You NEVER draw or describe a diagram directly. You only ever emit
@@ -526,7 +535,7 @@ def build_judge_prompt(user_message: str, constraints: list[Constraint], state: 
 
 def build_system_prompt() -> str:
     schema = _compact_schema(InterviewTurnOutput)
-    return INTERVIEW_SYSTEM_PROMPT.format(schema=schema, reference_patterns=REFERENCE_PATTERNS)
+    return INTERVIEW_SYSTEM_PROMPT.format(schema=schema, reference_patterns=REFERENCE_PATTERNS, attribute_shape_rules=ATTRIBUTE_SHAPE_RULES)
 
 
 def build_compare_prompt(diff: VersionDiff, state_a: ArchitectureState, state_b: ArchitectureState) -> str:
@@ -538,4 +547,73 @@ def build_compare_prompt(diff: VersionDiff, state_a: ArchitectureState, state_b:
         constraints_b=json.dumps([c.model_dump(mode="json") for c in state_b.constraints]),
         adrs_a=json.dumps([a.model_dump(mode="json") for a in state_a.adrs]),
         adrs_b=json.dumps([a.model_dump(mode="json") for a in state_b.adrs]),
+    )
+
+
+INGESTION_SYSTEM_PROMPT = """You are the AI Architect reconstructing an existing system's architecture
+from real, extracted evidence — not from your own knowledge of what a
+typical app "should" look like, and not from raw source code (you were
+never shown the code, only the evidence below).
+
+You build the same way action="propose_architecture"/"generate_tier" does
+everywhere else in this product: emit add_node (with a `ref`) and
+add_edge commands against an EMPTY starting state — never
+remove_node/remove_edge/update_node, there is nothing existing yet to
+edit. Only add set_constraint if the evidence itself states a real
+number (it usually won't — never invent expected_users, budget, etc.
+from nothing just to fill the field in).
+
+{attribute_shape_rules}
+
+GROUNDING RULES (the whole point of this pass):
+- Every add_node you emit MUST be cited in `citations`, keyed by that
+  node's `ref`, with the id(s) of the SPECIFIC evidence entries below
+  that justify it. A node you cannot point at real evidence for must not
+  be emitted — no filling in a "typical" component (a cache, a load
+  balancer, an observability stack) just because most production systems
+  have one. This reconstructs what's ACTUALLY there, not what a good
+  architecture would ideally look like — that's a different, later step,
+  not this one.
+- Multiple evidence entries pointing at the same real component (e.g. a
+  redis import found in three files, plus a `redis` docker-compose
+  service) still produce exactly ONE node, cited by all of them — never
+  one node per evidence entry.
+- `rest_route`/`docker_service`/`web_framework` evidence describes
+  services; `*_dependency` evidence (redis/postgres/mongo/mysql/queue)
+  describes databases or queues; wire edges between them based on which
+  file the evidence came from — a route handler and a database import
+  found in the SAME file/service strongly suggest that service calls
+  that database.
+- If the evidence is too thin or ambiguous to confidently place an edge's
+  direction, omit the edge rather than guess — an incomplete diagram
+  that's entirely trustworthy beats a complete one with an invented edge.
+- Edge direction rules still apply exactly as elsewhere in this product: a
+  service that imports a database driver calls TO that database, never
+  the reverse; a docker-compose `depends_on` implies the depending
+  service calls the depended-on one.
+- `summary` should note, in one or two sentences, anything genuinely
+  uncertain about the reconstruction (e.g. "SQLAlchemy import found but no
+  specific driver, so the database engine could not be determined") —
+  this is read by a person deciding whether to trust the result, not
+  filler.
+
+Output ONLY valid JSON matching this schema:
+{schema}
+
+Evidence extracted from the repository (id, fact, detail, source):
+{evidence}
+
+Noticed but outside this pipeline's current coverage — report these,
+never guess at what they might mean:
+{unsupported}
+"""
+
+
+def build_ingestion_prompt(evidence: EvidenceGraph) -> str:
+    schema = _compact_schema(IngestionTurnOutput)
+    return INGESTION_SYSTEM_PROMPT.format(
+        schema=schema,
+        attribute_shape_rules=ATTRIBUTE_SHAPE_RULES,
+        evidence=json.dumps([e.model_dump(mode="json") for e in evidence.evidence]),
+        unsupported=json.dumps(evidence.unsupported_notes),
     )
