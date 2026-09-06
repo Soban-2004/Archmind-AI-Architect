@@ -442,6 +442,50 @@ counter's actual purpose (an approximate running total) but worth fixing
 properly (return usage instead of stashing it) before this matters under
 real concurrent load.
 
+## Component connectivity registry
+
+The judge pass above catches structural mistakes, but only after paying
+for a full architect call plus a judge call, and only as reliably as an
+LLM reasoning about a checklist. Extended the layer that was already the
+most reliable one instead: `backend/app/analyzer/registry.py` encodes the
+same real bugs found live this session as plain Python, checked by
+`mutation_engine.py` on every `add_edge` command before it's ever applied
+— no LLM call involved. Four rules, each traced to an actual bug found
+this session: an `external_dependency` can never be the caller of an edge
+(it's always a callee in this model); nothing calls a CDN as a
+destination; a `service`/`database`/`queue` can't call INTO a
+`load_balancer`/`api_gateway` (backwards — the exact shape of the very
+first CDN-direction bug); and no caller may bypass a
+`load_balancer`/`api_gateway` that already fronts its target (the exact
+shape of the duplicate-backend-node bug).
+
+Deliberately narrow — it rejects specific confirmed-bad *shapes*, not an
+exhaustive allowlist of every valid pairing, so it doesn't risk
+false-positive-rejecting a legitimate design this project hasn't seen
+before. Verified against all 4 rules directly (both the bad shape being
+rejected and the corresponding legitimate shape still being allowed, 8
+cases total) before ever touching the LLM.
+
+Live testing turned up something worth recording rather than quietly
+fixing: on a real run, the architect proposed a backwards
+`frontend -> load_balancer` edge, got the registry's rejection fed back
+as a retry, and on the *next* attempt proposed `frontend -> api_gateway`
+instead — the same category of mistake, just against a different node.
+The retry framing (`RETRY_SUFFIX` in `llm/prompts.py`) is worded for JSON-
+schema mistakes ("Fix it and return ONLY corrected JSON") and doesn't
+clearly tell the model this is a structural rule, not a formatting one —
+a plausible reason a retry can end up correcting the wrong thing. Not yet
+fixed; worth a structural-error-specific retry framing if this recurs.
+
+Also surfaced, incidentally, while stress-testing this: Groq's own
+*request-rate* limit (separate from the token-per-minute limit fixed
+earlier) started kicking in under this session's sheer testing volume —
+visible as 429s the `groq` SDK itself retries with growing backoff (7s,
+18s, 20s, 56s...) before ever reaching our code. Not a bug to fix, just
+the honest reason a turn can take over a minute even with every other fix
+in place — exactly what the loading-state work earlier in this log exists
+to make bearable.
+
 ## What's next (not yet built)
 
 Phase 5 — existing-project ingestion (repo/ZIP → static analysis →

@@ -304,6 +304,24 @@ async def handle_chat_turn(project_id: UUID, user_message: str, base_version_id:
 
         if not result.ok:
             retry_note = "; ".join(f"[cmd {e.command_index} {e.op}] {e.error}" for e in result.errors)
+            # Registry connectivity errors ("invalid connection: ...") are a
+            # different KIND of problem than a malformed-JSON retry, and the
+            # shared RETRY_SUFFIX ("Fix it and return ONLY corrected JSON")
+            # is worded for the latter — live testing showed a retry
+            # correctly avoid the exact rejected edge, but reproduce the
+            # same category of mistake against a different node
+            # (frontend -> load_balancer rejected, retried as
+            # frontend -> api_gateway). Spell out explicitly that this is a
+            # structural rule, not a formatting one, and that swapping the
+            # target doesn't fix it.
+            if any("invalid connection:" in e.error for e in result.errors):
+                retry_note = (
+                    "These are connection-direction rules, not JSON formatting problems — "
+                    "swapping which node the same kind of backwards edge points to does NOT fix "
+                    "this. Remove the offending edge(s) entirely, or reverse their direction: "
+                    + retry_note
+                )
+            logger.info("validation failed on attempt %d: %s", attempt, retry_note)
             if attempt < MAX_ENGINE_RETRIES:
                 continue
             return ChatTurnResult(kind="error", error=f"Could not apply proposed architecture: {retry_note}")

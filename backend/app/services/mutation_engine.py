@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from app.analyzer.registry import check_edge_validity
 from app.models.commands import (
     AddEdgeCommand,
     AddNodeCommand,
@@ -77,10 +78,19 @@ def _validate_command(cmd: MutationCommand, working: ArchitectureState, refs: di
             return CommandValidationError(command_index=index, op=cmd.op, error=f"invalid update attributes: {e}")
 
     elif isinstance(cmd, AddEdgeCommand):
-        if _resolve(cmd.from_id, refs, working) is None:
+        from_real_id = _resolve(cmd.from_id, refs, working)
+        if from_real_id is None:
             return CommandValidationError(command_index=index, op=cmd.op, error=f"dangling edge: from_id '{cmd.from_id}' is not an existing node id or an earlier ref in this batch")
-        if _resolve(cmd.to_id, refs, working) is None:
+        to_real_id = _resolve(cmd.to_id, refs, working)
+        if to_real_id is None:
             return CommandValidationError(command_index=index, op=cmd.op, error=f"dangling edge: to_id '{cmd.to_id}' is not an existing node id or an earlier ref in this batch")
+
+        source_node = working.get_node(from_real_id)
+        target_node = working.get_node(to_real_id)
+        assert source_node is not None and target_node is not None  # just resolved above
+        reason = check_edge_validity(source_node, target_node, working)
+        if reason is not None:
+            return CommandValidationError(command_index=index, op=cmd.op, error=f"invalid connection: {reason}")
 
     elif isinstance(cmd, RemoveEdgeCommand):
         if working.get_edge(cmd.id) is None:
