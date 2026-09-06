@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   BackgroundVariant,
@@ -23,6 +23,7 @@ import { ArchNodeCard } from "./ArchNodeCard";
 import { CanvasLoadingOverlay } from "./CanvasLoadingOverlay";
 import { FlowEdge } from "./FlowEdge";
 import { NodeDetailCard } from "./NodeDetailCard";
+import { SimulationDock, type SimDockProps } from "./SimulationDock";
 import { TrafficSourceNode } from "./TrafficSourceNode";
 import { EmptyState, IconButton } from "./ui";
 
@@ -57,11 +58,37 @@ interface Props {
    * a field -> save, no chat round-trip). Omit for a read-only canvas
    * (the compare view has no single active version to edit onto). */
   onNodeSave?: (nodeId: string, attributes: Record<string, unknown>) => Promise<void>;
+  /** Present exactly when the Simulate tab is active on a live (non-
+   * compare) canvas — renders the playback dock and enables click-a-node
+   * Kill/Revive from NodeDetailCard. Omit to render a plain canvas with
+   * no simulation controls at all. */
+  simDock?: SimDockProps;
 }
 
-export function ArchitectureCanvas({ state, layout, diff, simulation, onNodePositionsChange, busy = false, onNodeSave }: Props) {
+export function ArchitectureCanvas({ state, layout, diff, simulation, onNodePositionsChange, busy = false, onNodeSave, simDock }: Props) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [minimapVisible, setMinimapVisible] = useState(true);
+  const flowWrapperRef = useRef<HTMLDivElement>(null);
+
+  // "Pause" freezes the actual SVG particle animation in place rather than
+  // just hiding a boolean — these are native SMIL <animateMotion>
+  // elements (see FlowEdge.tsx), and pauseAnimations()/unpauseAnimations()
+  // on the SVG root is the real, purpose-built browser API for exactly
+  // this, applying to every particle at once without touching edge data.
+  // Depends on primitives, not the `simDock` object itself — it's a fresh
+  // object literal every render in the caller, which would otherwise
+  // re-run this on every render instead of only when playback actually
+  // toggles.
+  const dockActive = !!simDock;
+  const dockPlaying = simDock?.playing ?? false;
+  useEffect(() => {
+    if (!dockActive) return;
+    const svgs = flowWrapperRef.current?.querySelectorAll<SVGSVGElement>("svg");
+    svgs?.forEach((svg) => {
+      if (dockPlaying) svg.unpauseAnimations?.();
+      else svg.pauseAnimations?.();
+    });
+  }, [dockActive, dockPlaying]);
   // A drag needs to move a node the instant the pointer moves, well before
   // any position update could round-trip up to the parent's `layout` state
   // and back down as a prop. So dragged positions live here as a small
@@ -122,7 +149,7 @@ export function ArchitectureCanvas({ state, layout, diff, simulation, onNodePosi
   }
 
   return (
-    <div className="relative h-full w-full">
+    <div ref={flowWrapperRef} className="relative h-full w-full">
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -130,6 +157,12 @@ export function ArchitectureCanvas({ state, layout, diff, simulation, onNodePosi
         edgeTypes={edgeTypes}
         onNodesChange={onNodesChange}
         fitView
+        // Compact-to-fit, not flow-bigger: the whole diagram always scales
+        // to the available space rather than requiring a scrollbar, so
+        // extra chrome (the sim dock) just needs its own reserved margin
+        // rather than a layout rethink — leave real room at the bottom
+        // when the dock is showing so it never sits over a node.
+        fitViewOptions={simDock ? { padding: { top: "40px", left: "40px", right: "40px", bottom: "110px" } } : undefined}
         proOptions={{ hideAttribution: true }}
         onNodeClick={(_, node) => setSelectedNodeId(node.id)}
         onPaneClick={() => setSelectedNodeId(null)}
@@ -168,8 +201,11 @@ export function ArchitectureCanvas({ state, layout, diff, simulation, onNodePosi
           finding={selectedFinding}
           onClose={() => setSelectedNodeId(null)}
           onSave={onNodeSave}
+          killed={simDock?.killIds.includes(selectedNode.id)}
+          onToggleKill={simDock ? () => simDock.onToggleKill(selectedNode.id) : undefined}
         />
       )}
+      {simDock && <SimulationDock {...simDock} result={simulation ?? null} />}
       <CanvasLoadingOverlay active={busy} />
     </div>
   );

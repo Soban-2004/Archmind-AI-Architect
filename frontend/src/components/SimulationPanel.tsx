@@ -1,17 +1,15 @@
 "use client";
 
-import { useState } from "react";
-import { Activity, Skull, Wrench, X, Zap } from "lucide-react";
-import { api } from "@/lib/api";
+import { Activity, Skull, Wrench, X } from "lucide-react";
 import type { ArchitectureState, LoadStatus, SimulationResult } from "@/lib/types";
-import { Button, IconButton, ProgressBar, Spinner } from "./ui";
+import { Button, IconButton, ProgressBar } from "./ui";
 
 interface Props {
-  projectId: string;
-  versionId: string;
   state: ArchitectureState;
   result: SimulationResult | null;
-  onResult: (result: SimulationResult | null) => void;
+  killIds: string[];
+  onToggleKill: (nodeId: string) => void;
+  error: string | null;
   onExit: () => void;
   /** Hands a short, structured summary of the current overload findings to
    * the chat's architect agent and switches to it — the agent (not this
@@ -31,31 +29,15 @@ function buildFixRequest(result: SimulationResult): string {
   return `Simulation at ${result.scenario} shows these components under strain:\n${lines.join("\n")}\n\nPropose an edit to address this within the project's existing constraints.`;
 }
 
-const MULTIPLIER_PRESETS = [1, 10, 50, 100];
-
-export function SimulationPanel({ projectId, versionId, state, result, onResult, onExit, onFixInChat }: Props) {
-  const [multiplier, setMultiplier] = useState(1);
-  const [killIds, setKillIds] = useState<string[]>([]);
-  const [running, setRunning] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  function toggleKill(id: string) {
-    setKillIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-  }
-
-  async function handleRun() {
-    setRunning(true);
-    setError(null);
-    try {
-      const r = await api.simulate(projectId, versionId, multiplier, killIds);
-      onResult(r);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setRunning(false);
-    }
-  }
-
+/**
+ * The results/report side of simulation — playback controls (traffic
+ * multiplier, play/pause, killing a component) live on the canvas itself
+ * now (SimulationDock + click-a-node in NodeDetailCard), right next to
+ * what they're animating, rather than duplicated here. This panel is
+ * purely "read the report": what's under strain, and a currently-killed
+ * list you can revive from without leaving the sidebar.
+ */
+export function SimulationPanel({ state, result, killIds, onToggleKill, error, onExit, onFixInChat }: Props) {
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3.5 dark:border-slate-800">
@@ -70,75 +52,42 @@ export function SimulationPanel({ projectId, versionId, state, result, onResult,
         </IconButton>
       </div>
       <p className="px-4 pt-2.5 text-[11px] leading-snug text-slate-400 italic dark:text-slate-500">
-        Heuristic capacity model based on declared per-component assumptions — not a real load test.
+        Heuristic capacity model based on declared per-component assumptions — not a real load test. Press ▶
+        on the canvas below to run a scenario.
       </p>
 
-      <div className="space-y-3.5 border-b border-slate-100 px-4 py-3.5 dark:border-slate-800">
-        <div>
-          <p className="mb-1.5 flex items-center gap-1 text-xs font-medium text-slate-600 dark:text-slate-300">
-            <Zap size={12} /> Traffic multiplier
+      {killIds.length > 0 && (
+        <div className="border-b border-slate-100 px-4 py-2.5 dark:border-slate-800">
+          <p className="mb-1.5 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+            <Skull size={10} /> Killed
           </p>
-          <div className="flex gap-1.5">
-            {MULTIPLIER_PRESETS.map((m) => (
-              <button
-                key={m}
-                onClick={() => setMultiplier(m)}
-                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${
-                  multiplier === m
-                    ? "bg-brand-600 text-white shadow-sm"
-                    : "bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700"
-                }`}
-              >
-                {m}×
-              </button>
-            ))}
+          <div className="flex flex-wrap gap-1.5">
+            {killIds.map((id) => {
+              const node = state.nodes.find((n) => n.id === id);
+              return (
+                <button
+                  key={id}
+                  onClick={() => onToggleKill(id)}
+                  title="Revive"
+                  className="rounded-full bg-red-50 px-2.5 py-0.5 text-[11px] font-medium text-red-600 transition hover:bg-red-100 active:scale-95 dark:bg-red-500/10 dark:text-red-400 dark:hover:bg-red-500/20"
+                >
+                  {node?.name ?? id} ✕
+                </button>
+              );
+            })}
           </div>
         </div>
+      )}
 
-        <div>
-          <p className="mb-1.5 flex items-center gap-1 text-xs font-medium text-slate-600 dark:text-slate-300">
-            <Skull size={12} /> Kill a component
-          </p>
-          <div className="max-h-28 space-y-1 overflow-y-auto rounded-lg border border-slate-100 bg-slate-50 p-2 dark:border-slate-800 dark:bg-slate-800/50">
-            {state.nodes.map((n) => (
-              <label
-                key={n.id}
-                className="flex cursor-pointer items-center gap-1.5 rounded px-1 py-0.5 text-xs text-slate-600 transition-colors hover:bg-white dark:text-slate-300 dark:hover:bg-slate-700/60"
-              >
-                <input
-                  type="checkbox"
-                  checked={killIds.includes(n.id)}
-                  onChange={() => toggleKill(n.id)}
-                  className="h-3.5 w-3.5 rounded border-slate-300 text-brand-600 focus-visible:ring-2 focus-visible:ring-brand-400 dark:border-slate-600 dark:bg-slate-700"
-                />
-                {n.name}
-              </label>
-            ))}
-          </div>
-        </div>
-
-        <Button className="w-full" onClick={handleRun} disabled={running}>
-          {running ? (
-            <>
-              <Spinner className="h-3.5 w-3.5" /> Simulating…
-            </>
-          ) : (
-            "Run Simulation"
-          )}
-        </Button>
-        {error && <p className="text-xs text-red-600 dark:text-red-400">⚠️ {error}</p>}
-      </div>
+      {error && (
+        <p className="px-4 pt-2 text-xs text-red-600 dark:text-red-400">⚠️ {error}</p>
+      )}
 
       <div className="flex-1 overflow-y-auto px-4 py-3">
         {!result && <p className="text-xs text-slate-400 dark:text-slate-500">Run a scenario to see projected load per component.</p>}
         {result && (
           <>
-            <div className="flex items-center justify-between">
-              <p className="text-xs italic text-slate-500 dark:text-slate-400">Scenario: {result.scenario}</p>
-              <button onClick={() => onResult(null)} className="text-[10px] text-slate-400 underline dark:text-slate-500">
-                clear
-              </button>
-            </div>
+            <p className="text-xs italic text-slate-500 dark:text-slate-400">Scenario: {result.scenario}</p>
             {result.findings.length === 0 ? (
               <p className="mt-2 text-xs font-medium text-green-600 dark:text-green-400">No bottlenecks under this scenario.</p>
             ) : (

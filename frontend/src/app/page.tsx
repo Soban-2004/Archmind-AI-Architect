@@ -54,6 +54,15 @@ export default function Home() {
 
   const [compareResult, setCompareResult] = useState<{ result: CompareResult; state: ArchitectureState; layout: LayoutMap } | null>(null);
   const [simulationResult, setSimulationResult] = useState<SimulationResult | null>(null);
+  // Simulation controls — lifted here rather than owned by SimulationPanel
+  // because the dock living in the canvas (ArchitectureCanvas) and the
+  // results list in the sidebar (SimulationPanel) both need to read/write
+  // the same multiplier/kill-set/running state.
+  const [simMultiplier, setSimMultiplier] = useState(1);
+  const [simKillIds, setSimKillIds] = useState<string[]>([]);
+  const [simRunning, setSimRunning] = useState(false);
+  const [simPlaying, setSimPlaying] = useState(true); // pauses/resumes the particle animation, not the data
+  const [simError, setSimError] = useState<string | null>(null);
 
   const [busy, setBusy] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
@@ -287,6 +296,47 @@ export default function Home() {
     setMessages((prev) => prev.map((m, i) => (i === index ? { ...m, animate: false } : m)));
   }
 
+  async function handleRunSimulation(overrideKillIds?: string[]) {
+    if (!projectId || !activeVersionId) return;
+    setSimRunning(true);
+    setSimError(null);
+    try {
+      const r = await api.simulate(projectId, activeVersionId, simMultiplier, overrideKillIds ?? simKillIds);
+      setSimulationResult(r);
+      setSimPlaying(true);
+    } catch (e) {
+      setSimError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSimRunning(false);
+    }
+  }
+
+  /** Toggling a kill from the canvas (click a node -> Kill/Revive, see
+   * NodeDetailCard) re-runs immediately with the new set so the diagram
+   * feels live — unlike the multiplier, which you'd normally adjust a few
+   * times before caring about the result, killing a specific node is
+   * itself the thing you want to see the effect of right away. */
+  function handleToggleKill(nodeId: string) {
+    const next = simKillIds.includes(nodeId) ? simKillIds.filter((x) => x !== nodeId) : [...simKillIds, nodeId];
+    setSimKillIds(next);
+    if (simulationResult) void handleRunSimulation(next);
+  }
+
+  function handlePlayPause() {
+    if (!simulationResult) {
+      void handleRunSimulation();
+      return;
+    }
+    setSimPlaying((p) => !p);
+  }
+
+  function handleStopSimulation() {
+    setSimulationResult(null);
+    setSimKillIds([]);
+    setSimError(null);
+    setSimPlaying(true);
+  }
+
   async function handleCompare(versionAId: string, versionBId: string) {
     if (!projectId) return;
     try {
@@ -378,11 +428,11 @@ export default function Home() {
                       <AnalyzerPanel projectId={projectId} versionId={activeVersionId} onExit={() => setMode("chat")} />
                     ) : mode === "simulate" && projectId && activeVersionId && rawState ? (
                       <SimulationPanel
-                        projectId={projectId}
-                        versionId={activeVersionId}
                         state={rawState}
                         result={simulationResult}
-                        onResult={setSimulationResult}
+                        killIds={simKillIds}
+                        onToggleKill={handleToggleKill}
+                        error={simError}
                         onExit={() => setMode("chat")}
                         onFixInChat={handleFixInChat}
                       />
@@ -422,6 +472,20 @@ export default function Home() {
                   onNodePositionsChange={compareResult ? undefined : handleNodePositionsChange}
                   onNodeSave={compareResult ? undefined : handleNodeSave}
                   busy={!compareResult && busy}
+                  simDock={
+                    !compareResult && mode === "simulate"
+                      ? {
+                          multiplier: simMultiplier,
+                          onMultiplierChange: setSimMultiplier,
+                          playing: simPlaying,
+                          onPlayPause: handlePlayPause,
+                          onStop: handleStopSimulation,
+                          running: simRunning,
+                          killIds: simKillIds,
+                          onToggleKill: handleToggleKill,
+                        }
+                      : undefined
+                  }
                 />
               </div>
             </div>

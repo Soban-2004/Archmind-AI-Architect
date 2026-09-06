@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, Check, Cloud, Database, Globe, Layers, Pencil, Server, X } from "lucide-react";
+import { AlertTriangle, Check, Cloud, Database, Globe, Heart, Layers, Pencil, Server, Skull, X } from "lucide-react";
 import { getComponentInfo } from "@/lib/componentInfo";
 import type { ArchNode, NodeKind, NodeLoad, SimulationFinding } from "@/lib/types";
 import { IconButton, ProgressBar, Spinner } from "./ui";
@@ -48,9 +48,14 @@ interface Props {
   /** Omit to render read-only (e.g. the compare view's snapshot, which
    * has no single active version to edit onto). */
   onSave?: (nodeId: string, attributes: Record<string, unknown>) => Promise<void>;
+  /** Present exactly when the simulation dock is active — renders a Kill/
+   * Revive toggle so failure scenarios can be built by clicking nodes
+   * directly instead of hunting through a checkbox list. */
+  killed?: boolean;
+  onToggleKill?: () => void;
 }
 
-export function NodeDetailCard({ node, load, finding, onClose, onSave }: Props) {
+export function NodeDetailCard({ node, load, finding, onClose, onSave, killed, onToggleKill }: Props) {
   const meta = KIND_META[node.node_kind];
   const Icon = meta.Icon;
   const info = getComponentInfo(node);
@@ -130,6 +135,27 @@ export function NodeDetailCard({ node, load, finding, onClose, onSave }: Props) 
           </IconButton>
         </div>
       </div>
+
+      {onToggleKill && !editing && (
+        <button
+          onClick={onToggleKill}
+          className={`mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-medium transition active:scale-[0.98] ${
+            killed
+              ? "bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-500/10 dark:text-green-400 dark:hover:bg-green-500/20"
+              : "bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-500/10 dark:text-red-400 dark:hover:bg-red-500/20"
+          }`}
+        >
+          {killed ? (
+            <>
+              <Heart size={12} /> Revive
+            </>
+          ) : (
+            <>
+              <Skull size={12} /> Kill this node
+            </>
+          )}
+        </button>
+      )}
 
       {info && !editing && (
         <div className="mt-3 border-t border-slate-100 pt-3 dark:border-slate-800">
