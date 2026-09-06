@@ -4,12 +4,13 @@ structural rules for what edge shapes make sense at all, in the same spirit
 as capacity.py's declared capacity assumptions: not something the LLM (or
 the judge) has to reason about from scratch every single time, and not
 something inferred by the mutation engine's own prompt-facing error text
-either. This exists specifically so the four real edge-direction/bypass
-bugs found via live testing this session (CDN pointing the wrong way, a
-service calling a load balancer instead of the reverse, a caller bypassing
-a gateway that already fronts its target) get caught here, deterministically
-and for free, instead of relying on the LLM remembering a prompt rule or
-the judge catching it after the fact on a second, paid model call.
+either. This exists specifically so the real edge-direction/bypass bugs
+found via live testing this session (CDN pointing the wrong way, a service
+calling a load balancer instead of the reverse, a caller bypassing a
+gateway that already fronts its target, a load balancer routing directly to
+a static frontend) get caught here, deterministically and for free, instead
+of relying on the LLM remembering a prompt rule or the judge catching it
+after the fact on a second, paid model call.
 
 Deliberately narrow: this catches specific, confirmed-bad *shapes*, not an
 exhaustive closed-world allowlist of every valid pairing — the latter would
@@ -20,10 +21,11 @@ from __future__ import annotations
 
 from app.models.state import ArchitectureState, Node
 
-CONNECTIVITY_RULES_VERSION = "v1"
+CONNECTIVITY_RULES_VERSION = "v2"  # v2: added rule 5 (load_balancer/api_gateway -> static frontend)
 
 _FRONTING_INFRA_TYPES = {"load_balancer", "api_gateway"}
 _ROUTING_INFRA_TYPES = _FRONTING_INFRA_TYPES | {"cdn"}
+_STATIC_SERVICE_TYPES = {"frontend", "edge_cdn"}  # served by a CDN, not by running server instances
 
 
 def check_edge_validity(source: Node, target: Node, working: ArchitectureState) -> str | None:
@@ -65,5 +67,21 @@ def check_edge_validity(source: Node, target: Node, working: ArchitectureState) 
     if already_fronted_by and not (source.node_kind == "infra_node" and source.type in _ROUTING_INFRA_TYPES):
         fronting_names = ", ".join(working.get_node(fid).name for fid in already_fronted_by if working.get_node(fid))
         return f"'{target.name}' is already routed to by {fronting_names} — '{source.name}' calling it directly would bypass that routing layer"
+
+    # Rule 5: a load_balancer/api_gateway never targets a static frontend
+    # directly. A load balancer/gateway implies multiple running server
+    # instances to distribute across, which a static frontend has none of
+    # — its entry point is a CDN, not a load balancer, whether or not a
+    # CDN is also present. (Rule 3 above only catches a service calling
+    # INTO a load_balancer/api_gateway — the reverse direction, the
+    # routing layer correctly pointing OUT to something that shouldn't
+    # receive it, needed its own check.)
+    if (
+        source.node_kind == "infra_node"
+        and source.type in _FRONTING_INFRA_TYPES
+        and target.node_kind == "service"
+        and target.type in _STATIC_SERVICE_TYPES
+    ):
+        return f"'{source.name}' ({source.type}) cannot route to '{target.name}', a static {target.type} — a load balancer/API gateway implies multiple running server instances to distribute across, which a static frontend has none of; its entry point is a CDN"
 
     return None

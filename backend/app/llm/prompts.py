@@ -140,6 +140,13 @@ CRITICAL RULES:
   (type="frontend" or "edge_cdn" with no server-rendering need) — there are
   no instances to distribute across. A load balancer only belongs in front
   of a service that actually runs multiple horizontally-scaled instances.
+  This holds even when a CDN is ALSO present: a frontend's entry point is
+  the CDN alone (CDN -> frontend) — never both a CDN -> frontend edge and a
+  separate load_balancer -> frontend edge at once, that's two different
+  components claiming to be the same static asset's entry point, and one
+  of them is always dead weight. A load balancer only ever points at a
+  service that genuinely runs multiple backend instances (an API/backend
+  service), never at the frontend, whether or not a CDN also exists.
 - Output ONLY valid JSON matching the InterviewTurnOutput schema below.
   No prose outside the JSON.
 

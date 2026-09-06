@@ -493,6 +493,51 @@ the honest reason a turn can take over a minute even with every other fix
 in place — exactly what the loading-state work earlier in this log exists
 to make bearable.
 
+**Rule 5, added later**: the real "Stock Hinge" project still had a
+`Load Balancer -> Stock Hinge Frontend` edge alongside its
+`CDN -> Frontend` edge — from the very first version ever generated, long
+before the load-balancer-vs-static-frontend prompt rule above existed, and
+never touched since (none of the later fixes ever asked the model to
+reconsider the entry topology). Checking why it could still happen found a
+real gap: registry rule 3 only catches a *service* calling INTO a
+load_balancer/api_gateway — it never checked the reverse, the routing
+layer correctly pointing *out* to something that shouldn't receive it.
+Added rule 5: a load_balancer/api_gateway can never target a static
+frontend/edge_cdn service directly, full stop, regardless of what else
+already fronts it. Verified against all 5 rules together (10 cases: the
+original 7 plus 3 new) — no regressions, both new bad shapes rejected.
+Also cleaned up the real project's stray edge the same deterministic way
+as the earlier duplicate-node cleanup (a scripted RemoveEdgeCommand
+through the real apply/finalize path, not a manual DB edit) — its live
+topology is now just `CDN -> Frontend` and
+`Load Balancer -> API Gateway -> Backend`, no redundant second entry
+point.
+
+## Incremental layout: siblings added across separate edits now align
+
+A second real complaint, checked empirically rather than assumed: "3
+backend instances behind a load balancer look scattered, not aligned."
+Tested dagre's own layout directly (a Node script computing real
+coordinates for a synthetic load-balancer-fan-out-to-3-backends graph) —
+its default config already centers the load balancer exactly on its 3
+children when laid out fresh in one pass (verified: the load balancer
+landed precisely on their vertical midpoint). Trying `align: "UL"` to
+"fix" it actually made that worse, un-centering the source from its own
+children — so the bug was never dagre's config.
+
+The real cause: `computeIncrementalLayout` (used for every edit after the
+first) placed each new node from its own local neighbor centroid, one at a
+time, with no idea that other "sibling" nodes (added in earlier, separate
+edits) existed — reproduced directly: adding 3 backends across 3 separate
+incremental calls landed them at *different x-coordinates* (400, 360, 360)
+instead of one aligned column, matching the reported symptom exactly.
+Fixed by preferring an already-positioned sibling — another node sharing
+the same relationship to the same neighbor (both fed by the same load
+balancer, both feeding the same database, etc.) — over the generic
+centroid: new nodes now align to a sibling's x and stack directly below
+it. Verified with the same reproduction: 3 backends added across 3
+separate edits now land in one column, evenly spaced.
+
 ## What's next (not yet built)
 
 Phase 5 — existing-project ingestion (repo/ZIP → static analysis →
