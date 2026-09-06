@@ -163,6 +163,7 @@ async def _finalize(
     model_provided_decision: bool,
     label: str | None = None,
     usage: dict[str, int] | None = None,
+    user_message_id: UUID | None = None,
 ) -> ChatTurnResult:
     diff = diff_states(diff_base_state, new_state) if parent_version_id else None
     if diff is not None:
@@ -186,7 +187,13 @@ async def _finalize(
             ],
         )
 
-    await repo.add_message(project_id, "assistant", summary)
+    # Both halves of this turn now belong to the version it actually
+    # produced, not the one it started from — see get_branch_history(): a
+    # sibling tier branching off the same base must never see this
+    # conversation, and this is what keeps it out.
+    if user_message_id is not None:
+        await repo.set_message_version(user_message_id, version["id"])
+    await repo.add_message(project_id, "assistant", summary, version_id=version["id"])
     return ChatTurnResult(kind="architecture", summary=summary, version=version, diff=diff, usage=usage)
 
 
@@ -196,8 +203,6 @@ async def handle_chat_turn(project_id: UUID, user_message: str, base_version_id:
     lets sibling tiers (spec §6 Phase 3) share one base instead of chaining
     off each other, and incidentally makes editing from an older version in
     history a proper branch instead of being blocked."""
-    await repo.add_message(project_id, "user", user_message)
-
     if base_version_id is not None:
         base_version = await repo.get_version(base_version_id)
         if base_version is None or base_version["project_id"] != project_id:
@@ -208,6 +213,13 @@ async def handle_chat_turn(project_id: UUID, user_message: str, base_version_id:
     current_state = _state_from_row(base_version)
     parent_id = base_version["id"] if base_version else None
 
+    # Tagged with the version this turn is building on for now — retagged
+    # to whatever version it actually produces once that's known (inside
+    # _finalize), so a sibling branch built off the same base never sees
+    # this conversation (get_branch_history). A question that doesn't
+    # produce a new version at all correctly keeps this tag as-is.
+    user_message_id = await repo.add_message(project_id, "user", user_message, version_id=parent_id)
+
     # --- Tier 1 (spec §7): deterministic, no LLM call at all ---------------
     if base_version is not None:
         det = try_deterministic_command(user_message, current_state)
@@ -216,11 +228,18 @@ async def handle_chat_turn(project_id: UUID, user_message: str, base_version_id:
             result = apply_commands(current_state, [command])
             if result.ok:
                 assert result.state is not None
-                return await _finalize(project_id, current_state, result.state, parent_id, "edit", summary, model_provided_decision=False)
+                return await _finalize(
+                    project_id, current_state, result.state, parent_id, "edit", summary,
+                    model_provided_decision=False, user_message_id=user_message_id,
+                )
             # fall through to the LLM if the deterministic guess somehow fails validation
 
     # --- Tier 2 (spec §7): LLM-assisted, structured output only ------------
-    history = [{"role": m["role"], "content": m["content"]} for m in await repo.get_messages(project_id)]
+    # Scoped to this branch's own ancestry, not the whole project's flat
+    # log — a live-observed real bug (see README): asking to edit one tier
+    # used to confuse the model with an unrelated sibling tier's request in
+    # the same flat history.
+    history = [{"role": m["role"], "content": m["content"]} for m in await repo.get_branch_history(project_id, parent_id)]
 
     provider = get_llm_provider()
     system_prompt = build_system_prompt()
@@ -294,7 +313,7 @@ async def handle_chat_turn(project_id: UUID, user_message: str, base_version_id:
         _add_usage(getattr(provider, "last_usage", None))
 
         if turn.action == "ask_question":
-            await repo.add_message(project_id, "assistant", turn.question or "")
+            await repo.add_message(project_id, "assistant", turn.question or "", version_id=parent_id)
             return ChatTurnResult(kind="question", question=turn.question, quick_replies=turn.quick_replies, usage=total_usage)
 
         commands = turn.commands or []
@@ -350,6 +369,7 @@ async def handle_chat_turn(project_id: UUID, user_message: str, base_version_id:
             model_provided_decision=model_provided_decision,
             label=turn.tier_label if is_tier else None,
             usage=total_usage,
+            user_message_id=user_message_id,
         )
 
     return ChatTurnResult(kind="error", error="Unexpected: exhausted retries without returning.")

@@ -49,7 +49,22 @@ create table if not exists messages (
     project_id  uuid not null references projects(id) on delete cascade,
     role        text not null, -- user | assistant
     content     text not null,
+    -- Which version this turn was building on (a question) or produced (an
+    -- edit/tier) — lets get_branch_history() scope the conversation a turn
+    -- sees to its own branch's ancestry instead of the whole project's flat
+    -- log, so an unrelated sibling tier's messages don't confuse the model
+    -- (a real, live-observed bug — see README's testing-findings log).
+    -- Nullable: messages from before this column existed, or from a
+    -- version-less request, still count everywhere via the null check in
+    -- get_branch_history's query.
+    version_id  uuid references versions(id) on delete set null,
     created_at  timestamptz not null default now()
 );
 
 create index if not exists idx_messages_project on messages(project_id, created_at);
+create index if not exists idx_messages_version on messages(version_id);
+
+-- Safe to re-run against a database that already had `messages` from
+-- before `version_id` existed — `create table if not exists` above is a
+-- no-op there, so this picks up the column separately, idempotently.
+alter table messages add column if not exists version_id uuid references versions(id) on delete set null;

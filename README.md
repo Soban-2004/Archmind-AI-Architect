@@ -93,18 +93,25 @@ HTTP is unaffected; a browser renders it correctly.
 Building and testing Phase 7 (simulation) against the same live project
 surfaced two more real issues:
 
-3. **Conversation history isn't scoped to the branch being edited.**
+3. **Conversation history isn't scoped to the branch being edited — fixed.**
    Requesting "add a read replica" against the student-tier version (after
    an earlier production-tier request in the same project) produced a
    confused clarifying question — the model saw the flat per-project
    message log, including the unrelated production-tier request, and
    couldn't tell which architecture was actually being discussed. Worked
-   around live by making the request self-contained ("modify the CURRENT
-   architecture I'm viewing right now"); the real fix — scoping
-   conversation history to the active branch, or having the system prompt
-   explicitly disambiguate which version is in play — is a documented gap,
-   not yet implemented. Worth fixing before Phase 3 branching sees heavy
-   use.
+   around live at the time by making the request self-contained; the real
+   fix landed later in the same session: `messages` gained a nullable
+   `version_id` column (each message tagged with the version it was built
+   on — a question — or produced — an edit/tier, retagged once the outcome
+   is known), and `handle_chat_turn` now calls a new
+   `get_branch_history()` (a recursive `parent_version_id` walk) instead
+   of the old flat `get_messages()`. Verified two ways: a direct
+   repository-level test with two sibling tiers forked from the same base
+   confirmed each only sees its own branch's conversation, never the
+   other's; then a real live chat run confirmed the actual message tagging
+   end to end (a question turn stayed tagged with its base version; the
+   next turn's user+assistant pair was correctly retagged to the new
+   version it produced).
 4. **The read-replica sharing rule missed its own target on the first
    try.** The simulator's Rule 4 originally only redistributed load when
    one caller's outgoing edges fanned out to a primary *and* a replica

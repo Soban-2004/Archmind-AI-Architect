@@ -147,20 +147,69 @@ async def create_adrs(project_id: UUID, version_id: UUID, adrs: list[dict]) -> N
     )
 
 
-async def add_message(project_id: UUID, role: str, content: str) -> None:
+async def add_message(project_id: UUID, role: str, content: str, version_id: Optional[UUID] = None) -> UUID:
+    """`version_id` is the version this turn was building on (a question,
+    which creates nothing new) or the version it produced (an edit/tier) —
+    see get_branch_history(). Returns the new message's id so a caller can
+    retag it later via set_message_version once an outcome is known (the
+    user's own message is inserted before handle_chat_turn knows what it's
+    going to produce)."""
     pool = await get_pool()
-    await pool.execute(
-        "insert into messages (project_id, role, content) values ($1, $2, $3)",
+    row = await pool.fetchrow(
+        "insert into messages (project_id, role, content, version_id) values ($1, $2, $3, $4) returning id",
         project_id,
         role,
         content,
+        version_id,
     )
+    return row["id"]
+
+
+async def set_message_version(message_id: UUID, version_id: UUID) -> None:
+    pool = await get_pool()
+    await pool.execute("update messages set version_id = $2 where id = $1", message_id, version_id)
 
 
 async def get_messages(project_id: UUID) -> list[dict]:
+    """Every message in the project, flat — kept for anything that
+    genuinely wants the whole log (not currently used by the interview
+    loop itself; see get_branch_history for that)."""
     pool = await get_pool()
     rows = await pool.fetch(
         "select role, content, created_at from messages where project_id = $1 order by created_at asc",
         project_id,
+    )
+    return [dict(r) for r in rows]
+
+
+async def get_branch_history(project_id: UUID, version_id: Optional[UUID]) -> list[dict]:
+    """The conversation relevant to `version_id`'s own branch: messages
+    tagged with `version_id` itself or any of its ancestors (walking
+    parent_version_id up to the root), plus any untagged message (legacy
+    rows from before this column existed, or a version-less project) —
+    never a sibling tier's or a different branch's conversation. Falls
+    back to the full flat log when `version_id` is None (a brand new
+    project has no version to scope by yet, so nothing to exclude)."""
+    if version_id is None:
+        return await get_messages(project_id)
+
+    pool = await get_pool()
+    rows = await pool.fetch(
+        """
+        with recursive ancestry as (
+            select id, parent_version_id from versions where id = $2
+            union all
+            select v.id, v.parent_version_id
+            from versions v
+            join ancestry a on v.id = a.parent_version_id
+        )
+        select m.role, m.content, m.created_at
+        from messages m
+        where m.project_id = $1
+          and (m.version_id is null or m.version_id in (select id from ancestry))
+        order by m.created_at asc
+        """,
+        project_id,
+        version_id,
     )
     return [dict(r) for r in rows]
