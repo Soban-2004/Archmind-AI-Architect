@@ -121,6 +121,40 @@ surfaced two more real issues:
    replica, with the replica itself landing at 70% — the split's declared
    30/70 write/read math, working exactly as documented.
 
+Wiring the new "ask the architect to fix this simulated overload" flow
+(SimulationPanel → chat) into repeated live use surfaced two more real
+issues:
+
+5. **Repeated "fix the spike" requests silently duplicated the backend
+   service instead of scaling it.** Each time a component was reported
+   overloaded, the model added a whole new copy of the service node
+   ("Backend (replica)", "Backend (instance 2)", "Backend (instance 3)"),
+   each independently wired to every downstream dependency — rather than
+   recognizing the service was already `scaling_mode="stateless"` (which
+   already means "runs as many instances as load requires") and just
+   confirming/using that. After four rounds of this on one real project,
+   the result was a service with no consistent request path at all: the
+   frontend had a stray direct edge to one specific backend copy that
+   bypassed the API gateway entirely, and the load balancer never
+   actually fronted any of the 4 backend copies it had "created" —
+   meaning nothing in the diagram decided which copy handled a request.
+   Fixed with an explicit prompt rule against ever creating a second node
+   as a copy of an existing one, and against a caller ever bypassing a
+   load_balancer/api_gateway that already fronts its target
+   (`backend/app/llm/prompts.py`). Re-verified live on a fresh project
+   through two full "simulate at 10x → ask the architect to fix it"
+   rounds: the backend service stayed a single node throughout.
+6. **Known limitation, found in the same test:** even after fixing #5,
+   asking the architect to fix several simultaneously-reported bottlenecks
+   in one request only reliably addressed one of them, and once wired a
+   fix (a fallback provider) to a node that wasn't actually the overloaded
+   caller (attached the fallback edge to the CDN, which was fine, instead
+   of to the backend service and worker that were actually driving the
+   reported 1800% overload). Not yet fixed — needs either explicit
+   per-finding command requirements in the prompt or a structural
+   check that a proposed fix's edges actually touch the reported
+   bottleneck's real callers.
+
 ## Project layout
 
 ```

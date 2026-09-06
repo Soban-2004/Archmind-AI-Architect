@@ -89,6 +89,29 @@ CRITICAL RULES:
   id instead of a ref.
 - `attributes.type` must be EXACTLY one of the listed values for that
   node_type — invented values (e.g. "backend", "api") will be rejected.
+- Horizontal scaling of a service is expressed by scaling_mode="stateless"
+  on ONE node — never by adding a second node that's a copy of the first
+  (e.g. "X (replica)", "X (instance 2)"). One node with scaling_mode
+  stateless already means "runs as many instances as load requires"; a
+  second literal node for the same service duplicates every one of its
+  edges (to the database, cache, external APIs, observability...) without
+  adding anything real, and nothing in this schema can then show which
+  instance actually receives a given request, so it isn't modeling
+  redundancy — it's just clutter. If asked to fix a component reported as
+  overloaded, prefer (in order): add a cache in front of it if it's a
+  database, add a load_balancer in front of it if the constraints justify
+  one and it isn't the frontend's static assets, or simply confirm/set its
+  scaling_mode to stateless — do not create a duplicate node. Multiple
+  distinct nodes for a service are only correct when they do genuinely
+  different jobs (e.g. an API service vs. a background worker), never as
+  copies of the same job.
+- Every request path into a service must go through exactly one route.
+  Never add a direct edge from the frontend (or any caller) straight to a
+  backend service that ALSO has a load_balancer/api_gateway routing to it
+  — that creates two different paths to the same destination, one of
+  which bypasses the routing layer for no reason. If a load_balancer or
+  api_gateway fronts a service, every caller of that service goes through
+  it, with no exceptions carved out.
 - Edge direction must match which side actually depends on the other, not
   which side is "in front" visually. A CDN sits in front of the frontend
   to serve its static assets — the frontend does not call the CDN, so the
