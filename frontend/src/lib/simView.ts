@@ -92,20 +92,27 @@ export function applySimulation(nodes: Node[], edges: Edge[], sim: SimulationRes
 
 /**
  * How busy an edge *looks* — speed (seconds per lap) and particle count —
- * scaled continuously off its actual projected req/s, not just the
- * 3-value ok/warning/overloaded status. Two edges both sitting comfortably
- * under capacity used to render identically whether they carried 5 rps or
- * 95 rps; now volume of traffic reads directly off the animation itself,
+ * scaled off its actual projected req/s, not just the 3-value
+ * ok/warning/overloaded status. Two edges both sitting comfortably under
+ * capacity used to render identically whether they carried 5 rps or 95
+ * rps; now volume of traffic reads directly off the animation itself,
  * while color/stroke-width (see simEdgeStyle) stays the separate signal
- * for "how close to breaking" this edge's target is. Not literally one
- * particle per request per second (unreadable past a handful of req/s) —
- * just a monotonic mapping so more requests always looks like more
- * requests, continuously, all the way up.
+ * for "how close to breaking" this edge's target is.
+ *
+ * Scaled by log10, not linearly: real traffic differences that matter here
+ * are "10x more" (1 vs 10 vs 100 rps), and a linear map either crowds
+ * those together near zero or saturates by ~100 rps with nothing left to
+ * show at 500+. Log-scaling gives each order of magnitude its own clearly
+ * distinct step. Capped at 6 particles / 0.4s-per-lap rather than pushed
+ * further, so individual particles stay trackable as points moving rather
+ * than blurring into a solid line at high load — the ask was "make it
+ * clearly readable that this is fast", not literally one particle per
+ * request per second (which would be unreadable past a handful of rps).
  */
 function intensityFor(rps: number): { speed: number; count: number } {
-  const r = Math.max(0, rps);
-  const count = Math.min(8, 1 + Math.floor(r / 12));
-  const speed = Math.max(0.3, 1.6 - Math.min(1.3, r / 60));
+  const log = Math.log10(Math.max(0, rps) + 1); // 0 at 0 rps, 1 at 9, 2 at 99, 3 at 999
+  const count = Math.min(6, Math.max(1, Math.round(1 + log * 1.7)));
+  const speed = Math.max(0.4, 1.7 - log * 0.45);
   return { speed, count };
 }
 
