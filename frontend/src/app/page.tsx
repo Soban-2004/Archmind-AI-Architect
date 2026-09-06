@@ -350,21 +350,20 @@ export default function Home() {
     setSimPlaying(true);
   }
 
-  // Live by default: opening the Simulate tab runs a baseline scenario
-  // immediately instead of waiting for an explicit Play click on an empty
-  // dock. Only fires on actually switching INTO simulate mode (not on
-  // every render — handleRunSimulation and friends are intentionally left
-  // out of the dependency array for that reason), and only when there's
-  // nothing to show yet; Stop clearing the result while already on the
-  // tab does not auto-restart itself, which is the correct read of a
+  // Live by default: the simulation dock lives permanently on the canvas
+  // now (not gated behind switching to the Simulate tab — see the
+  // simDock prop below), so it runs a baseline scenario the moment a
+  // version is actually loaded, independent of whichever sidebar tab is
+  // open. Only fires once there's nothing to show yet; Stop clearing the
+  // result does not auto-restart itself, which is the correct read of a
   // deliberate Stop.
   useEffect(() => {
-    if (mode !== "simulate" || compareResult) return;
+    if (compareResult) return;
     if (simulationResult || simRunning) return;
     if (!projectId || !activeVersionId) return;
     void handleRunSimulation();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, projectId, activeVersionId]);
+  }, [projectId, activeVersionId]);
 
   async function handleCompare(versionAId: string, versionBId: string) {
     if (!projectId) return;
@@ -502,7 +501,11 @@ export default function Home() {
                   onNodeSave={compareResult ? undefined : handleNodeSave}
                   busy={!compareResult && busy}
                   simDock={
-                    !compareResult && mode === "simulate"
+                    // Permanently on the canvas, not gated behind opening
+                    // the Simulate tab — the sidebar tab is now only for
+                    // the detailed findings report, not for whether the
+                    // dock itself exists.
+                    !compareResult
                       ? {
                           multiplier: simMultiplier,
                           onMultiplierChange: handleMultiplierChange,
