@@ -1,10 +1,12 @@
 import json
 
+from app.models.advisory import AdvisoryAnswer, AnalysisAnswer
 from app.models.analysis import Scorecard, ScorecardAnswer
 from app.models.commands import InterviewTurnOutput
 from app.models.compare import CompareExplanation
 from app.models.diff import VersionDiff
 from app.models.judge import JudgeVerdict
+from app.models.simulation import SimulationResult
 from app.models.state import ArchitectureState, Constraint
 from app.llm.reference_patterns import REFERENCE_PATTERNS
 
@@ -236,6 +238,88 @@ def build_scorecard_qa_prompt(state: ArchitectureState, scorecard: Scorecard) ->
         scorecard=scorecard.model_dump_json(),
         state=state.model_dump_json(),
     )
+
+
+def _compact_topology(state: ArchitectureState) -> str:
+    """Topology-only context for the advisory lane — id/name/kind/type per
+    node, from/to per edge. Deliberately drops everything else a full
+    ArchitectureState carries (language, responsibilities, notes, ADRs,
+    layout) — that's most of the token weight of the full state and rarely
+    what a "why is X here" or "which database should we use" question
+    actually needs. This is ONLY ever used to build a prompt; it never
+    round-trips back into a real ArchitectureState, so the canonical state
+    stays the single source of truth regardless of what this omits."""
+    nodes = [{"id": n.id, "name": n.name, "kind": n.node_kind, "type": n.type} for n in state.nodes]
+    edges = [{"from": e.from_id, "to": e.to_id} for e in state.edges]
+    return json.dumps({"nodes": nodes, "edges": edges})
+
+
+ADVISORY_SYSTEM_PROMPT = """You are the AI Architect, answering a question about an existing
+architecture — you are NOT editing it. You have no ability to change the
+diagram from here; there is no `commands` field in your output at all. If
+the user actually wants a change made, a different part of the system
+handles that from their next message — just answer clearly and
+concretely here, grounded ONLY in the architecture topology and
+requirements given below. Do not invent nodes, edges, or constraints that
+aren't listed.
+
+For a "why do we have/need X" question: reason from the real edges and
+roles shown below, not generic advice.
+For a "which technology should we use" recommendation: reason from the
+stated requirements (scale, budget, consistency, availability) below, and
+be concrete (name real options and a clear recommendation), not
+generic ("it depends").
+
+Output ONLY valid JSON matching this schema:
+{schema}
+
+Architecture topology (nodes: id/name/kind/type; edges: from -> to):
+{topology}
+
+Requirements/constraints:
+{constraints}
+
+Question: {question}
+"""
+
+
+def build_advisory_prompt(state: ArchitectureState, question: str) -> str:
+    schema = AdvisoryAnswer.model_json_schema()
+    topology = _compact_topology(state)
+    constraints = json.dumps([c.model_dump(mode="json") for c in state.constraints])
+    return ADVISORY_SYSTEM_PROMPT.format(schema=schema, topology=topology, constraints=constraints, question=question)
+
+
+ANALYSIS_SYSTEM_PROMPT = """You are the AI Architect, explaining the results of a REAL traffic
+simulation that has already been run by a deterministic simulator — you
+did not compute these numbers and you must never contradict, adjust, or
+invent numbers beyond what's given below. Your job is only to narrate
+what the simulation actually found, in plain language: what would break
+first and why, and — only if it's a natural part of answering the
+question — what kind of change would help, described in prose. You have
+no ability to make that change from here; there is no `commands` field in
+your output at all.
+
+Output ONLY valid JSON matching this schema:
+{schema}
+
+Scenario simulated: {scenario}
+
+Per-component load:
+{loads}
+
+Findings (components at or over capacity, ordered by severity):
+{findings}
+
+User's question: {question}
+"""
+
+
+def build_analysis_prompt(result: SimulationResult, question: str) -> str:
+    schema = AnalysisAnswer.model_json_schema()
+    loads = json.dumps([l.model_dump(mode="json") for l in result.loads])
+    findings = json.dumps([f.model_dump(mode="json") for f in result.findings])
+    return ANALYSIS_SYSTEM_PROMPT.format(schema=schema, scenario=result.scenario, loads=loads, findings=findings, question=question)
 
 
 JUDGE_SYSTEM_PROMPT = """You are an independent reviewer of a system architecture diagram that

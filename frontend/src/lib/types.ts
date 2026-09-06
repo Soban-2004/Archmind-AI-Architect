@@ -102,6 +102,11 @@ export interface TokenUsage {
 export type ChatResponse =
   | { kind: "question"; question: string; quick_replies: string[]; usage: TokenUsage | null }
   | { kind: "architecture"; summary: string; version: VersionRow; diff: VersionDiff | null; usage: TokenUsage | null }
+  // A non-mutating chat reply — a question/recommendation answer, a
+  // what-if analysis narration, or the empty-commands safety net (see
+  // backend/app/services/intent_router.py). Nothing on the canvas
+  // changed: no version, no diff.
+  | { kind: "answer"; answer: string; usage: TokenUsage | null }
   | { kind: "error"; error: string };
 
 // Mirrors backend/app/models/compare.py

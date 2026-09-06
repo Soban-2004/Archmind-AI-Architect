@@ -679,6 +679,88 @@ themselves); `RULES_VERSION` bumped to v4 since `rule_over_budget`'s
 output changes for any project whose real load exceeds a node's declared
 capacity.
 
+## Chat wasn't synonymous with editing: intent routing before any expensive call
+
+User pushback, and it was the correct diagnosis: the pipeline treated
+every non-deterministic message as an architecture-mutation request —
+full serialized state, commands schema, Gemini judge pass, a new version
+row — even for "why do we need a load balancer?" That's not just wasteful
+tokens, it's the WRONG problem to spend the token budget on: the
+untrimmable fixed cost (full state JSON) was already established as the
+dominant term, and every message paid it regardless of whether anything
+was actually being edited.
+
+Investigating confirmed something worse than waste, too:
+`InterviewTurnOutput.action` only ever had three values (`ask_question`,
+`propose_architecture`, `generate_tier`) — there was no fourth "just
+answer" mode. A pure question got force-fit into `propose_architecture`
+with an empty-ish `commands` list and the real answer smuggled into
+`summary`. And `_finalize` called `repo.create_version` *unconditionally*
+— so every one of those pure questions was silently creating a new,
+identical version row in the DB and paying for a Gemini judge pass that
+reviewed an architecture that never changed.
+
+**New: a deterministic pre-LLM router** (`services/intent_router.py`),
+sitting alongside `deterministic.py`'s existing `try_deterministic_command`
+as another Tier-1-style, no-LLM-call check — not a second LLM
+classification call, which would've added a whole extra round-trip just
+to decide whether to make the first one. Conservative by design, matching
+that module's own philosophy: it only diverts on confident, unambiguous
+phrasing, and explicitly refuses to fire at all if the message contains
+any edit-shaped verb ("add", "remove", "change", "increase", ...) no
+matter how question-like the rest of it reads. Anything ambiguous returns
+`None` and falls straight through to the full, unchanged edit pipeline —
+a false positive here (silently dropping a real edit request) is a worse
+failure than the waste this exists to fix.
+
+Three lanes now, not one:
+- **Advisory** (question / recommendation — "why do we need X",
+  "which database should we use") — answered from a *compact,
+  topology-only* context (node id/name/kind/type + edges, plus
+  constraints) instead of the full architecture state. No commands
+  schema, no judge, no `create_version`.
+- **Analysis** (what-if — "what happens if traffic increases 10x") —
+  routed through the REAL deterministic simulator
+  (`services/simulator.py`'s `run_simulation`) first; the LLM only ever
+  narrates the actual simulated numbers, the same grounding pattern
+  `explain_scorecard`/`ScorecardAnswer` already uses for the Scorecard
+  tab. Never a guess at load from scratch. Same non-mutating contract as
+  advisory.
+- **Edit** (everything else, including anything ambiguous) — the
+  existing full pipeline, completely unchanged: full state → Groq →
+  schema validation → Gemini judge → finalize/version.
+
+The `_finalize`-always-versions bug is fixed independently of the router,
+as its own safety net: even when a message legitimately reaches the full
+edit pipeline and the model still responds with zero commands, that no
+longer falls through to `_finalize` — it's answered as a non-mutating
+turn instead. Belt and suspenders: the router catches the common phrasing
+of "this is actually just a question" before any LLM call, and this catches
+whatever slips past it after the model itself decides nothing should
+change.
+
+New response kind end to end: backend `ChatTurnResult(kind="answer", ...)`
+→ API route returns `{"kind": "answer", "answer": ..., "usage": ...}` →
+frontend's `ChatResponse` type gains a matching variant, handled in
+`page.tsx` by appending to the chat log only — no version, no diff, no
+layout recompute, nothing on the canvas moves.
+
+Verified with 30 offline tests (`backend/tests/`, `pytest`) covering the
+router's classification heuristics directly and the full routed pipeline
+through real `handle_chat_turn` calls (LLM provider and DB repository
+faked, nothing else) — a pure question, a recommendation, a what-if
+(asserting the real simulator ran at the parsed multiplier), an explicit
+edit (asserting a version *is* still created), an ambiguous message
+(asserting it falls back to the full pipeline), the existing Tier-1
+deterministic command (asserting zero LLM calls), and the empty-commands
+safety net in isolation. Then live against the real Stock Hinge project:
+"why do we need a load balancer?" and "which database should we use for
+read-heavy analytics?" both answered correctly through the real Groq API
+(1,235 prompt tokens for the first — versus the ~6,500+ the same
+project's full state alone would have cost) with the version count
+unchanged (17 before, 17 after both calls) confirmed via the real
+`/versions` endpoint, not just by reading the code.
+
 ## What's next (not yet built)
 
 Phase 5 — existing-project ingestion (repo/ZIP → static analysis →

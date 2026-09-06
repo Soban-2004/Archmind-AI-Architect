@@ -22,4 +22,10 @@ async def chat(project_id: UUID, body: dict):
         return {"kind": "error", "error": result.error}
     if result.kind == "question":
         return {"kind": "question", "question": result.question, "quick_replies": result.quick_replies or [], "usage": result.usage}
+    if result.kind == "answer":
+        # A non-mutating turn (services/intent_router.py's advisory/
+        # analysis lanes, or the empty-commands safety net in
+        # handle_chat_turn) — no version/diff, nothing on the canvas
+        # changed, this is purely a chat reply.
+        return {"kind": "answer", "answer": result.summary, "usage": result.usage}
     return {"kind": "architecture", "summary": result.summary, "version": result.version, "diff": result.diff, "usage": result.usage}

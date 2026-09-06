@@ -212,6 +212,11 @@ export default function Home() {
           ...prev,
           { role: "assistant", content: result.question, quickReplies: result.quick_replies, animate: true, createdAt: new Date().toISOString() },
         ]);
+      } else if (result.kind === "answer") {
+        // Non-mutating reply (a question/recommendation answer or a
+        // what-if narration) — append it to the chat log only. Nothing
+        // else changes: no new version, no diff, no layout recompute.
+        setMessages((prev) => [...prev, { role: "assistant", content: result.answer, animate: true, createdAt: new Date().toISOString() }]);
       } else if (result.kind === "architecture") {
         setMessages((prev) => [...prev, { role: "assistant", content: result.summary, animate: true, createdAt: new Date().toISOString() }]);
 

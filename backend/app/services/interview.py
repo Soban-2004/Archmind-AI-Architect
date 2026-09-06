@@ -6,8 +6,9 @@ from uuid import UUID
 
 from app.db import repository as repo
 from app.llm.factory import get_judge_provider, get_llm_provider
-from app.llm.prompts import build_judge_prompt, build_system_prompt
+from app.llm.prompts import build_advisory_prompt, build_analysis_prompt, build_judge_prompt, build_system_prompt
 from app.llm.tokens import estimate_messages_tokens, estimate_tokens
+from app.models.advisory import AdvisoryAnswer, AnalysisAnswer
 from app.models.commands import AnnotateDecisionCommand, UpdateNodeCommand
 from app.models.diff import VersionDiff
 from app.models.judge import JudgeVerdict
@@ -15,7 +16,9 @@ from app.models.state import ADR, ArchitectureState, TriggeredBy, empty_state, g
 from app.services.adr import build_templated_decision
 from app.services.deterministic import try_deterministic_command
 from app.services.diff import diff_states
+from app.services.intent_router import classify_intent, extract_multiplier
 from app.services.mutation_engine import apply_commands
+from app.services.simulator import run_simulation
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +135,46 @@ async def _run_judge(user_message: str, new_state: ArchitectureState) -> JudgeVe
         return None
 
 
+async def _handle_advisory(project_id: UUID, user_message: str, state: ArchitectureState, base_version_id: UUID) -> ChatTurnResult:
+    """Question/recommendation lane (services/intent_router.py's
+    "advisory" intent) — deliberately the cheapest possible LLM call: a
+    compact topology summary + constraints, no full architecture state, no
+    commands schema, no judge pass, and critically no create_version — a
+    non-edit turn must never look like an edit to the rest of the system.
+    Returns kind="answer" so the caller/frontend/API layer can render it
+    without touching version/diff state at all."""
+    provider = get_llm_provider()
+    prompt = build_advisory_prompt(state, user_message)
+    try:
+        raw = await provider.structured_json(prompt, user_message, AdvisoryAnswer)
+    except Exception as e:
+        return ChatTurnResult(kind="error", error=_friendly_provider_error(e))
+
+    await repo.add_message(project_id, "assistant", raw.answer, version_id=base_version_id)
+    return ChatTurnResult(kind="answer", summary=raw.answer, usage=getattr(provider, "last_usage", None))
+
+
+async def _handle_analysis(project_id: UUID, user_message: str, state: ArchitectureState, base_version_id: UUID) -> ChatTurnResult:
+    """What-if lane (services/intent_router.py's "analysis" intent) — runs
+    the REAL deterministic simulator first (the exact engine behind the
+    Simulate tab, see services/simulator.py) and has the LLM only narrate
+    its actual output, never guess at load numbers itself. Same
+    non-mutating contract as _handle_advisory: no commands, no judge, no
+    create_version."""
+    multiplier = extract_multiplier(user_message)
+    sim_result = run_simulation(state, multiplier=multiplier, kill_node_ids=[])
+
+    provider = get_llm_provider()
+    prompt = build_analysis_prompt(sim_result, user_message)
+    try:
+        raw = await provider.structured_json(prompt, user_message, AnalysisAnswer)
+    except Exception as e:
+        return ChatTurnResult(kind="error", error=_friendly_provider_error(e))
+
+    await repo.add_message(project_id, "assistant", raw.answer, version_id=base_version_id)
+    return ChatTurnResult(kind="answer", summary=raw.answer, usage=getattr(provider, "last_usage", None))
+
+
 def _state_from_row(version_row: dict | None) -> ArchitectureState:
     if version_row is None:
         return empty_state()
@@ -233,6 +276,22 @@ async def handle_chat_turn(project_id: UUID, user_message: str, base_version_id:
                     model_provided_decision=False, user_message_id=user_message_id,
                 )
             # fall through to the LLM if the deterministic guess somehow fails validation
+
+    # --- Tier 1.5: deterministic intent routing (services/intent_router.py)
+    # ------------------------------------------------------------------
+    # Not every message is an edit request. This is still a no-LLM-call
+    # check like Tier 1 above, and only ever diverts on a CONFIDENT,
+    # unambiguous non-edit phrasing — anything ambiguous or edit-shaped
+    # returns None and falls straight through to the full Tier 2 pipeline
+    # below, unchanged. Only meaningful once there's an actual architecture
+    # to ask about; a brand new empty project always goes through the
+    # normal requirements interview instead.
+    if base_version is not None:
+        intent = classify_intent(user_message)
+        if intent == "advisory":
+            return await _handle_advisory(project_id, user_message, current_state, parent_id)
+        if intent == "analysis":
+            return await _handle_analysis(project_id, user_message, current_state, parent_id)
 
     # --- Tier 2 (spec §7): LLM-assisted, structured output only ------------
     # Scoped to this branch's own ancestry, not the whole project's flat
@@ -347,6 +406,21 @@ async def handle_chat_turn(project_id: UUID, user_message: str, base_version_id:
 
         new_state = result.state
         assert new_state is not None
+
+        # A model that picks propose_architecture but emits zero commands
+        # produced no actual change — this used to still fall through to
+        # _finalize() unconditionally, silently creating a no-op version
+        # and paying for a judge pass reviewing an unchanged architecture.
+        # services/intent_router.py now catches the common phrasings of
+        # "this is actually just a question" before any LLM call at all,
+        # so this should be rare — this guard is the safety net for
+        # whatever a message the router correctly left on the edit path
+        # (it looked edit-shaped) but that the model still decided didn't
+        # warrant an actual change. Never versioned, never judged.
+        if not commands and not is_tier:
+            answer = turn.summary or "No change needed."
+            await repo.add_message(project_id, "assistant", answer, version_id=parent_id)
+            return ChatTurnResult(kind="answer", summary=answer, usage=total_usage)
 
         verdict = await _run_judge(user_message, new_state)
         if verdict is not None:
