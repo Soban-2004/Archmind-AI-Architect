@@ -296,12 +296,18 @@ export default function Home() {
     setMessages((prev) => prev.map((m, i) => (i === index ? { ...m, animate: false } : m)));
   }
 
-  async function handleRunSimulation(overrideKillIds?: string[]) {
+  // Accepts explicit overrides rather than only reading simMultiplier/
+  // simKillIds from closure — a caller that just called setSimMultiplier
+  // or setSimKillIds this same tick can't rely on that state having
+  // updated yet (React state updates aren't synchronous), so passing the
+  // new value straight through is what actually avoids running against
+  // the stale, pre-update value.
+  async function handleRunSimulation(overrideMultiplier?: number, overrideKillIds?: string[]) {
     if (!projectId || !activeVersionId) return;
     setSimRunning(true);
     setSimError(null);
     try {
-      const r = await api.simulate(projectId, activeVersionId, simMultiplier, overrideKillIds ?? simKillIds);
+      const r = await api.simulate(projectId, activeVersionId, overrideMultiplier ?? simMultiplier, overrideKillIds ?? simKillIds);
       setSimulationResult(r);
       setSimPlaying(true);
     } catch (e) {
@@ -313,13 +319,20 @@ export default function Home() {
 
   /** Toggling a kill from the canvas (click a node -> Kill/Revive, see
    * NodeDetailCard) re-runs immediately with the new set so the diagram
-   * feels live — unlike the multiplier, which you'd normally adjust a few
-   * times before caring about the result, killing a specific node is
-   * itself the thing you want to see the effect of right away. */
+   * feels live. */
   function handleToggleKill(nodeId: string) {
     const next = simKillIds.includes(nodeId) ? simKillIds.filter((x) => x !== nodeId) : [...simKillIds, nodeId];
     setSimKillIds(next);
-    if (simulationResult) void handleRunSimulation(next);
+    if (simulationResult) void handleRunSimulation(undefined, next);
+  }
+
+  /** Adjusting the multiplier while a result is already showing re-runs
+   * immediately too — it used to just update the dial with no visible
+   * effect at all until Stop + Play again, since Play only toggles pause
+   * once a result exists. */
+  function handleMultiplierChange(m: number) {
+    setSimMultiplier(m);
+    if (simulationResult) void handleRunSimulation(m);
   }
 
   function handlePlayPause() {
@@ -336,6 +349,22 @@ export default function Home() {
     setSimError(null);
     setSimPlaying(true);
   }
+
+  // Live by default: opening the Simulate tab runs a baseline scenario
+  // immediately instead of waiting for an explicit Play click on an empty
+  // dock. Only fires on actually switching INTO simulate mode (not on
+  // every render — handleRunSimulation and friends are intentionally left
+  // out of the dependency array for that reason), and only when there's
+  // nothing to show yet; Stop clearing the result while already on the
+  // tab does not auto-restart itself, which is the correct read of a
+  // deliberate Stop.
+  useEffect(() => {
+    if (mode !== "simulate" || compareResult) return;
+    if (simulationResult || simRunning) return;
+    if (!projectId || !activeVersionId) return;
+    void handleRunSimulation();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, projectId, activeVersionId]);
 
   async function handleCompare(versionAId: string, versionBId: string) {
     if (!projectId) return;
@@ -476,7 +505,7 @@ export default function Home() {
                     !compareResult && mode === "simulate"
                       ? {
                           multiplier: simMultiplier,
-                          onMultiplierChange: setSimMultiplier,
+                          onMultiplierChange: handleMultiplierChange,
                           playing: simPlaying,
                           onPlayPause: handlePlayPause,
                           onStop: handleStopSimulation,
