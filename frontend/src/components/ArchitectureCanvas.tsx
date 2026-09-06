@@ -20,6 +20,7 @@ import type { LayoutMap } from "@/lib/layout";
 import { applySimulation } from "@/lib/simView";
 import type { ArchitectureState, ArchNode, SimulationResult, VersionDiff } from "@/lib/types";
 import { ArchNodeCard } from "./ArchNodeCard";
+import { CanvasLoadingOverlay } from "./CanvasLoadingOverlay";
 import { FlowEdge } from "./FlowEdge";
 import { NodeDetailCard } from "./NodeDetailCard";
 import { TrafficSourceNode } from "./TrafficSourceNode";
@@ -47,9 +48,14 @@ interface Props {
    * arrangement forward instead of resetting it. Omit for a read-only
    * canvas (e.g. the compare view). */
   onNodePositionsChange?: (updates: LayoutMap) => void;
+  /** True while a chat turn is in flight — surfaces a loading overlay so a
+   * long-running request (production-tier redesigns with redundancy,
+   * replicas, and observability can genuinely take a minute or two) never
+   * reads as the canvas being frozen or broken. */
+  busy?: boolean;
 }
 
-export function ArchitectureCanvas({ state, layout, diff, simulation, onNodePositionsChange }: Props) {
+export function ArchitectureCanvas({ state, layout, diff, simulation, onNodePositionsChange, busy = false }: Props) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   // A drag needs to move a node the instant the pointer moves, well before
   // any position update could round-trip up to the parent's `layout` state
@@ -94,6 +100,13 @@ export function ArchitectureCanvas({ state, layout, diff, simulation, onNodePosi
   const selectedFinding = selectedNodeId ? simulation?.findings.find((f) => f.node_id === selectedNodeId) : undefined;
 
   if (!state || state.nodes.length === 0) {
+    if (busy) {
+      return (
+        <div className="relative h-full w-full">
+          <CanvasLoadingOverlay active fullscreen />
+        </div>
+      );
+    }
     return (
       <EmptyState
         icon={<Network size={22} />}
@@ -135,6 +148,7 @@ export function ArchitectureCanvas({ state, layout, diff, simulation, onNodePosi
       {selectedNode && (
         <NodeDetailCard node={selectedNode} load={selectedLoad} finding={selectedFinding} onClose={() => setSelectedNodeId(null)} />
       )}
+      <CanvasLoadingOverlay active={busy} />
     </div>
   );
 }

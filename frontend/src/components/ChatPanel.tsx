@@ -2,8 +2,44 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { MessageSquare, SendHorizontal, Sparkles } from "lucide-react";
+import { useThinkingStatus } from "@/lib/useThinkingStatus";
 import type { ChatMessage } from "@/lib/types";
 import { EmptyState, Spinner, TypewriterText } from "./ui";
+
+function formatElapsed(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return minutes > 0 ? `${minutes}:${String(seconds).padStart(2, "0")}` : `${seconds}s`;
+}
+
+/** Rotating "what's happening" status while a chat turn is in flight — see
+ * lib/useThinkingStatus for why this is client-side perceived progress
+ * rather than real backend steps (a single blocking LLM call has no
+ * progress channel to report). A long request (production-tier redesigns
+ * especially) gets an honest elapsed timer and reassurance note instead of
+ * just sitting on a static "thinking…" with nothing else for minutes. */
+function ThinkingBubble({ active }: { active: boolean }) {
+  const { phrase, elapsedMs } = useThinkingStatus(active);
+  if (!active) return null;
+  return (
+    <div className="flex items-start gap-2 pl-9">
+      <div className="flex flex-col gap-1 rounded-2xl rounded-bl-sm border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-500 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
+        <div className="flex items-center gap-2">
+          <Spinner className="h-3.5 w-3.5 shrink-0" />
+          <span key={phrase} className="animate-fade-in">
+            {phrase}
+          </span>
+        </div>
+        {elapsedMs > 20000 && (
+          <p className="max-w-[220px] text-[10.5px] text-slate-400 dark:text-slate-500">
+            {formatElapsed(elapsedMs)} elapsed — detailed requests can take a minute or two, still working.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
 
 interface Props {
   messages: ChatMessage[];
@@ -86,12 +122,7 @@ export function ChatPanel({ messages, onSend, busy, onConsumeAnimation }: Props)
                 </div>
               </div>
             ))}
-            {busy && (
-              <div className="flex items-center gap-2 pl-9 text-xs text-slate-400 dark:text-slate-500">
-                <Spinner className="h-3.5 w-3.5" />
-                thinking…
-              </div>
-            )}
+            <ThinkingBubble active={busy} />
             <div ref={bottomRef} />
           </div>
         )}

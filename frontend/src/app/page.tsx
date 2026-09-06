@@ -316,6 +316,7 @@ export default function Home() {
                   diff={displayDiff}
                   simulation={displaySimulation}
                   onNodePositionsChange={compareResult ? undefined : handleNodePositionsChange}
+                  busy={!compareResult && busy}
                 />
               </div>
             </div>
