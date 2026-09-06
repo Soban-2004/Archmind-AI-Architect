@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { GitBranch, GitCompare, History, Pencil, Sparkles } from "lucide-react";
 import { api } from "@/lib/api";
+import { relativeTime } from "@/lib/format";
 import type { VersionSummary } from "@/lib/types";
 import { Button } from "./ui";
 
@@ -84,7 +85,7 @@ export function VersionHistory({ projectId, activeVersionId, refreshKey, onSelec
               <button
                 key={v.id}
                 onClick={() => (compareMode ? toggleSelected(v.id) : onSelect(v.id))}
-                className={`relative mb-0.5 flex w-full items-start gap-2.5 rounded-lg px-1.5 py-2 text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/60 ${
+                className={`relative mb-0.5 flex w-full items-start gap-2.5 rounded-lg px-1.5 py-2 text-left transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 active:scale-[0.98] dark:hover:bg-slate-800/60 ${
                   isSelected ? "bg-brand-50 dark:bg-indigo-500/10" : ""
                 }`}
               >
@@ -100,7 +101,9 @@ export function VersionHistory({ projectId, activeVersionId, refreshKey, onSelec
                     v{i + 1} · {meta.label}
                     {v.label ? ` · ${v.label}` : ""}
                   </div>
-                  <div className="text-[11px] text-slate-400 dark:text-slate-500">{new Date(v.created_at).toLocaleTimeString()}</div>
+                  <div className="text-[11px] text-slate-400 dark:text-slate-500" title={new Date(v.created_at).toLocaleString()}>
+                    {relativeTime(v.created_at)}
+                  </div>
                 </div>
               </button>
             );

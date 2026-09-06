@@ -212,4 +212,8 @@ export interface ChatMessage {
   /** Only true for the message just added this session — drives the
    * typewriter reveal; history loaded from the server renders instantly. */
   animate?: boolean;
+  /** ISO timestamp, set client-side when the message is appended — shown
+   * on hover, not the backend's own created_at (this app doesn't reload
+   * conversation history into the UI yet, see README). */
+  createdAt?: string;
 }

@@ -11,7 +11,8 @@ export function Button({
   className = "",
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "ghost" | "danger"; size?: "sm" | "md" }) {
-  const base = "inline-flex items-center justify-center gap-1.5 rounded-lg font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none";
+  const base =
+    "inline-flex items-center justify-center gap-1.5 rounded-lg font-medium transition duration-150 active:scale-[0.97] disabled:opacity-40 disabled:pointer-events-none disabled:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900";
   const sizes = { sm: "px-2.5 py-1 text-xs", md: "px-3.5 py-2 text-sm" };
   const variants = {
     primary: "bg-brand-600 text-white hover:bg-brand-700 shadow-sm shadow-brand-600/20",
@@ -26,7 +27,7 @@ export function Button({
 export function IconButton({ className = "", ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
-      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 disabled:opacity-40 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300 ${className}`}
+      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition duration-150 hover:bg-slate-100 hover:text-slate-600 active:scale-90 disabled:opacity-40 disabled:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300 dark:focus-visible:ring-offset-slate-900 ${className}`}
       {...props}
     />
   );
@@ -55,7 +56,7 @@ export function Tabs<T extends string>({ tabs, active, onChange }: { tabs: { id:
         <button
           key={t.id}
           onClick={() => onChange(t.id)}
-          className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
+          className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${
             active === t.id
               ? "bg-white text-slate-800 shadow-sm dark:bg-slate-700 dark:text-slate-100"
               : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
@@ -92,6 +93,21 @@ export function ScoreRing({ score, size = 56 }: { score: number; size?: number }
         />
       </svg>
       <div className="absolute inset-0 flex items-center justify-center text-sm font-bold text-slate-800 dark:text-slate-100">{score}</div>
+    </div>
+  );
+}
+
+/** Shared animated progress bar — callers own the color (a score bar
+ * wants high=green, a load/cost bar wants high=red, so the semantics
+ * can't be baked in here), this just owns the fill animation and track
+ * styling so every bar in the app moves and looks the same. */
+export function ProgressBar({ pct, colorClassName = "bg-brand-500" }: { pct: number; colorClassName?: string }) {
+  return (
+    <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+      <div
+        className={`h-full rounded-full transition-[width] duration-500 ease-out ${colorClassName}`}
+        style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
+      />
     </div>
   );
 }

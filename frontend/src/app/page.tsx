@@ -189,7 +189,7 @@ export default function Home() {
 
   async function handleSend(message: string) {
     if (!projectId) return;
-    setMessages((prev) => [...prev, { role: "user", content: message }]);
+    setMessages((prev) => [...prev, { role: "user", content: message, createdAt: new Date().toISOString() }]);
     setBusy(true);
     try {
       // Edits and tier requests both branch off whatever's currently active
@@ -199,9 +199,12 @@ export default function Home() {
         setSessionTokens((t) => t + result.usage!.total_tokens);
       }
       if (result.kind === "question") {
-        setMessages((prev) => [...prev, { role: "assistant", content: result.question, quickReplies: result.quick_replies, animate: true }]);
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: result.question, quickReplies: result.quick_replies, animate: true, createdAt: new Date().toISOString() },
+        ]);
       } else if (result.kind === "architecture") {
-        setMessages((prev) => [...prev, { role: "assistant", content: result.summary, animate: true }]);
+        setMessages((prev) => [...prev, { role: "assistant", content: result.summary, animate: true, createdAt: new Date().toISOString() }]);
 
         const isTier = result.version.kind === "tier";
         // A tier is a fresh generation (unrelated node ids), not an
@@ -222,10 +225,13 @@ export default function Home() {
         setLatestVersionId(result.version.id);
         setVersionsRefreshKey((k) => k + 1);
       } else {
-        setMessages((prev) => [...prev, { role: "assistant", content: `⚠️ ${result.error}`, animate: true }]);
+        setMessages((prev) => [...prev, { role: "assistant", content: `⚠️ ${result.error}`, animate: true, createdAt: new Date().toISOString() }]);
       }
     } catch (e) {
-      setMessages((prev) => [...prev, { role: "assistant", content: `⚠️ ${e instanceof Error ? e.message : String(e)}`, animate: true }]);
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: `⚠️ ${e instanceof Error ? e.message : String(e)}`, animate: true, createdAt: new Date().toISOString() },
+      ]);
     } finally {
       setBusy(false);
     }
@@ -291,7 +297,10 @@ export default function Home() {
       }
       setCompareResult({ result, state: versionB.state, layout });
     } catch (e) {
-      setMessages((prev) => [...prev, { role: "assistant", content: `⚠️ Could not compare versions: ${e instanceof Error ? e.message : String(e)}` }]);
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: `⚠️ Could not compare versions: ${e instanceof Error ? e.message : String(e)}`, createdAt: new Date().toISOString() },
+      ]);
     }
   }
 

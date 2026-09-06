@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { MessageSquare, SendHorizontal, Sparkles } from "lucide-react";
+import { ArrowDown, Check, Copy, MessageSquare, SendHorizontal, Sparkles, User } from "lucide-react";
+import { relativeTime } from "@/lib/format";
 import { useThinkingStatus } from "@/lib/useThinkingStatus";
 import type { ChatMessage } from "@/lib/types";
-import { EmptyState, Spinner, TypewriterText } from "./ui";
+import { EmptyState, IconButton, Spinner, TypewriterText } from "./ui";
 
 function formatElapsed(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
@@ -41,6 +42,26 @@ function ThinkingBubble({ active }: { active: boolean }) {
   );
 }
 
+/** Copy-to-clipboard on hover, with a brief "copied" confirmation instead
+ * of a silent no-feedback action. */
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // clipboard permission denied or unavailable — fail silently, not worth an error message for a copy button
+    }
+  }
+  return (
+    <IconButton onClick={handleCopy} className="h-5 w-5 opacity-0 group-hover:opacity-100" title="Copy">
+      {copied ? <Check size={11} className="text-green-500" /> : <Copy size={11} />}
+    </IconButton>
+  );
+}
+
 interface Props {
   messages: ChatMessage[];
   onSend: (message: string) => Promise<void>;
@@ -50,7 +71,9 @@ interface Props {
 
 export function ChatPanel({ messages, onSend, busy, onConsumeAnimation }: Props) {
   const [draft, setDraft] = useState("");
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   // Force-scroll to the newest message every time one arrives, regardless
   // of where the user had scrolled to — matches how the composer being
@@ -58,6 +81,21 @@ export function ChatPanel({ messages, onSend, busy, onConsumeAnimation }: Props)
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages.length, busy]);
+
+  // Surface a "jump to latest" affordance while the user has deliberately
+  // scrolled up to read earlier messages — the force-scroll above only
+  // fires on a NEW message, so mid-conversation manual scrolling is
+  // otherwise a dead end with no way back down except scrolling by hand.
+  function handleScroll() {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setShowJumpToLatest(distanceFromBottom > 200);
+  }
+
+  function jumpToLatest() {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -75,8 +113,8 @@ export function ChatPanel({ messages, onSend, busy, onConsumeAnimation }: Props)
   const lastAssistantIndex = [...messages].map((m) => m.role).lastIndexOf("assistant");
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex-1 overflow-y-auto px-4 py-4">
+    <div className="relative flex h-full flex-col">
+      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-4 py-4">
         {messages.length === 0 ? (
           <EmptyState
             icon={<Sparkles size={22} />}
@@ -86,13 +124,13 @@ export function ChatPanel({ messages, onSend, busy, onConsumeAnimation }: Props)
         ) : (
           <div className="space-y-3">
             {messages.map((m, i) => (
-              <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div key={i} className={`group flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
                 {m.role === "assistant" && (
                   <div className="mr-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-600 dark:text-indigo-300">
                     <MessageSquare size={13} />
                   </div>
                 )}
-                <div className="flex max-w-[82%] flex-col gap-2">
+                <div className={`flex max-w-[82%] flex-col gap-1 ${m.role === "user" ? "items-end" : "items-start"}`}>
                   <div
                     className={`whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-[13px] leading-relaxed shadow-sm ${
                       m.role === "user"
@@ -106,13 +144,21 @@ export function ChatPanel({ messages, onSend, busy, onConsumeAnimation }: Props)
                       m.content
                     )}
                   </div>
+                  <div className="flex items-center gap-1.5 px-1 text-[10px] text-slate-400 dark:text-slate-500">
+                    {m.createdAt && (
+                      <span className="opacity-0 transition-opacity group-hover:opacity-100" title={new Date(m.createdAt).toLocaleString()}>
+                        {relativeTime(m.createdAt)}
+                      </span>
+                    )}
+                    {m.role === "assistant" && <CopyButton text={m.content} />}
+                  </div>
                   {m.role === "assistant" && i === lastAssistantIndex && !busy && m.quickReplies && m.quickReplies.length > 0 && (
                     <div className="flex flex-wrap gap-1.5">
                       {m.quickReplies.map((reply) => (
                         <button
                           key={reply}
                           onClick={() => handleQuickReply(reply)}
-                          className="rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-medium text-brand-700 transition-colors hover:bg-brand-100 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300 dark:hover:bg-indigo-500/20"
+                          className="rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-medium text-brand-700 transition hover:bg-brand-100 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300 dark:hover:bg-indigo-500/20"
                         >
                           {reply}
                         </button>
@@ -120,6 +166,11 @@ export function ChatPanel({ messages, onSend, busy, onConsumeAnimation }: Props)
                     </div>
                   )}
                 </div>
+                {m.role === "user" && (
+                  <div className="ml-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-300">
+                    <User size={13} />
+                  </div>
+                )}
               </div>
             ))}
             <ThinkingBubble active={busy} />
@@ -127,6 +178,16 @@ export function ChatPanel({ messages, onSend, busy, onConsumeAnimation }: Props)
           </div>
         )}
       </div>
+
+      {showJumpToLatest && (
+        <button
+          onClick={jumpToLatest}
+          className="animate-fade-in absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-md transition hover:bg-slate-50 active:scale-95 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+        >
+          <ArrowDown size={12} /> Jump to latest
+        </button>
+      )}
+
       <form onSubmit={handleSubmit} className="flex gap-2 border-t border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
         <input
           className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm placeholder:text-slate-400 focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:bg-slate-800 dark:focus:ring-brand-500/20"
@@ -138,7 +199,7 @@ export function ChatPanel({ messages, onSend, busy, onConsumeAnimation }: Props)
         <button
           type="submit"
           disabled={busy || !draft.trim()}
-          className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-lg bg-brand-600 text-white shadow-sm shadow-brand-600/20 transition-colors hover:bg-brand-700 disabled:opacity-40"
+          className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-lg bg-brand-600 text-white shadow-sm shadow-brand-600/20 transition duration-150 hover:bg-brand-700 active:scale-95 disabled:opacity-40 disabled:active:scale-100"
         >
           <SendHorizontal size={17} />
         </button>

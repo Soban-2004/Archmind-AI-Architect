@@ -2,7 +2,7 @@ import { useState } from "react";
 import { AlertTriangle, Check, Cloud, Database, Globe, Layers, Pencil, Server, X } from "lucide-react";
 import { getComponentInfo } from "@/lib/componentInfo";
 import type { ArchNode, NodeKind, NodeLoad, SimulationFinding } from "@/lib/types";
-import { IconButton, Spinner } from "./ui";
+import { IconButton, ProgressBar, Spinner } from "./ui";
 
 const KIND_META: Record<NodeKind, { label: string; Icon: typeof Server; accent: string }> = {
   service: { label: "Service", Icon: Server, accent: "text-blue-500" },
@@ -217,10 +217,10 @@ export function NodeDetailCard({ node, load, finding, onClose, onSave }: Props) 
           </div>
           {load.status !== "killed" && (
             <>
-              <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-                <div
-                  className={`h-full rounded-full ${load.status === "overloaded" ? "bg-red-600" : load.status === "warning" ? "bg-amber-500" : "bg-green-500"}`}
-                  style={{ width: `${Math.min(100, load.utilization_pct)}%` }}
+              <div className="mt-1.5">
+                <ProgressBar
+                  pct={load.utilization_pct}
+                  colorClassName={load.status === "overloaded" ? "bg-red-600" : load.status === "warning" ? "bg-amber-500" : "bg-green-500"}
                 />
               </div>
               <p className="mt-1 text-[10px] text-slate-400 dark:text-slate-500">

@@ -14,7 +14,7 @@ import {
   type NodeTypes,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Network } from "lucide-react";
+import { Map, Network } from "lucide-react";
 import { toFlowElements } from "@/lib/diffView";
 import type { LayoutMap } from "@/lib/layout";
 import { applySimulation } from "@/lib/simView";
@@ -24,7 +24,7 @@ import { CanvasLoadingOverlay } from "./CanvasLoadingOverlay";
 import { FlowEdge } from "./FlowEdge";
 import { NodeDetailCard } from "./NodeDetailCard";
 import { TrafficSourceNode } from "./TrafficSourceNode";
-import { EmptyState } from "./ui";
+import { EmptyState, IconButton } from "./ui";
 
 const nodeTypes: NodeTypes = { archNode: ArchNodeCard, trafficSource: TrafficSourceNode };
 const edgeTypes: EdgeTypes = { flow: FlowEdge };
@@ -61,6 +61,7 @@ interface Props {
 
 export function ArchitectureCanvas({ state, layout, diff, simulation, onNodePositionsChange, busy = false, onNodeSave }: Props) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [minimapVisible, setMinimapVisible] = useState(true);
   // A drag needs to move a node the instant the pointer moves, well before
   // any position update could round-trip up to the parent's `layout` state
   // and back down as a prop. So dragged positions live here as a small
@@ -135,7 +136,7 @@ export function ArchitectureCanvas({ state, layout, diff, simulation, onNodePosi
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1.5} color="var(--rf-dot-color)" />
         <Controls showInteractive={false} />
-        {nodes.length > 5 && (
+        {nodes.length > 5 && minimapVisible && (
           <MiniMap
             pannable
             zoomable
@@ -149,6 +150,17 @@ export function ArchitectureCanvas({ state, layout, diff, simulation, onNodePosi
           />
         )}
       </ReactFlow>
+      {nodes.length > 5 && (
+        // Top-right: Controls defaults to bottom-left and MiniMap to
+        // bottom-right, so this is the one corner nothing else claims.
+        <IconButton
+          onClick={() => setMinimapVisible((v) => !v)}
+          className="absolute right-3.5 top-3.5 z-10 border border-slate-200 bg-white/90 shadow-sm backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/90"
+          title={minimapVisible ? "Hide minimap" : "Show minimap"}
+        >
+          <Map size={14} className={minimapVisible ? "text-brand-600 dark:text-indigo-400" : ""} />
+        </IconButton>
+      )}
       {selectedNode && (
         <NodeDetailCard
           node={selectedNode}

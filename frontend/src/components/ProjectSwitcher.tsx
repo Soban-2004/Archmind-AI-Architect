@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Boxes, Check, ChevronDown, Pencil, Plus, Trash2, X } from "lucide-react";
 import type { ProjectSummary } from "@/lib/api";
 import { api } from "@/lib/api";
+import { relativeTime } from "@/lib/format";
 import { IconButton, Spinner } from "./ui";
 
 interface Props {
@@ -11,17 +12,6 @@ interface Props {
   projectName: string;
   onSwitch: (projectId: string) => void;
   onCreate: () => void;
-}
-
-function relativeTime(iso: string | null): string {
-  if (!iso) return "no activity yet";
-  const ms = Date.now() - new Date(iso).getTime();
-  const min = Math.floor(ms / 60000);
-  if (min < 1) return "just now";
-  if (min < 60) return `${min}m ago`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  return `${Math.floor(hr / 24)}d ago`;
 }
 
 /**
@@ -99,12 +89,12 @@ export function ProjectSwitcher({ projectId, projectName, onSwitch, onCreate }: 
     <div ref={rootRef} className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-slate-100 dark:hover:bg-slate-800"
+        className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-left transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 active:scale-[0.98] dark:hover:bg-slate-800"
       >
         <div className="leading-tight">
           <p className="max-w-[160px] truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{projectName}</p>
         </div>
-        <ChevronDown size={13} className="shrink-0 text-slate-400" />
+        <ChevronDown size={13} className={`shrink-0 text-slate-400 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
       </button>
 
       {open && (
@@ -116,7 +106,7 @@ export function ProjectSwitcher({ projectId, projectName, onSwitch, onCreate }: 
                 setOpen(false);
                 onCreate();
               }}
-              className="flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium text-brand-600 hover:bg-brand-50 dark:text-indigo-300 dark:hover:bg-indigo-500/10"
+              className="flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium text-brand-600 transition hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 active:scale-95 dark:text-indigo-300 dark:hover:bg-indigo-500/10"
             >
               <Plus size={12} /> New
             </button>
@@ -152,11 +142,14 @@ export function ProjectSwitcher({ projectId, projectName, onSwitch, onCreate }: 
                       className="min-w-0 flex-1 rounded border border-brand-300 bg-white px-1.5 py-0.5 text-sm dark:border-indigo-500/50 dark:bg-slate-800"
                     />
                   ) : (
-                    <button onClick={() => onSwitch(p.id)} className="min-w-0 flex-1 text-left">
+                    <button
+                      onClick={() => onSwitch(p.id)}
+                      className="min-w-0 flex-1 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+                    >
                       <p className="truncate font-medium text-slate-700 dark:text-slate-200">{p.name}</p>
                       <p className="truncate text-[10.5px] text-slate-400 dark:text-slate-500">
                         {p.node_count !== null ? `${p.node_count} components · ` : ""}
-                        {relativeTime(p.last_activity_at)}
+                        {p.last_activity_at ? relativeTime(p.last_activity_at) : "no activity yet"}
                       </p>
                     </button>
                   )}

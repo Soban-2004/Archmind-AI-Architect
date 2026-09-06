@@ -79,7 +79,12 @@ export function ArchNodeCard({ data, selected }: NodeProps) {
   return (
     <div
       className={`relative w-[200px] cursor-grab rounded-xl border ${style.border} ${style.bg} px-3.5 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.06)] backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md active:cursor-grabbing dark:shadow-[0_1px_2px_rgba(0,0,0,0.3)] ${ring} ${
-        selected ? "shadow-md" : ""
+        // A separate CSS `outline` (not `ring`, which is a box-shadow) so
+        // selection stays visible even when a diff/sim ring is already
+        // using the box-shadow slot — the two compose instead of one
+        // silently overwriting the other. Previously selection was just
+        // "shadow-md", indistinguishable from the existing hover shadow.
+        selected ? "shadow-md outline outline-2 outline-offset-2 outline-brand-500 dark:outline-indigo-400" : ""
       }`}
     >
       {badge && (

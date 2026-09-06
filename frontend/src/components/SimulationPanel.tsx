@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Activity, Skull, Wrench, X, Zap } from "lucide-react";
 import { api } from "@/lib/api";
 import type { ArchitectureState, LoadStatus, SimulationResult } from "@/lib/types";
-import { Button, IconButton, Spinner } from "./ui";
+import { Button, IconButton, ProgressBar, Spinner } from "./ui";
 
 interface Props {
   projectId: string;
@@ -83,7 +83,7 @@ export function SimulationPanel({ projectId, versionId, state, result, onResult,
               <button
                 key={m}
                 onClick={() => setMultiplier(m)}
-                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors ${
+                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${
                   multiplier === m
                     ? "bg-brand-600 text-white shadow-sm"
                     : "bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700"
@@ -101,12 +101,15 @@ export function SimulationPanel({ projectId, versionId, state, result, onResult,
           </p>
           <div className="max-h-28 space-y-1 overflow-y-auto rounded-lg border border-slate-100 bg-slate-50 p-2 dark:border-slate-800 dark:bg-slate-800/50">
             {state.nodes.map((n) => (
-              <label key={n.id} className="flex cursor-pointer items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
+              <label
+                key={n.id}
+                className="flex cursor-pointer items-center gap-1.5 rounded px-1 py-0.5 text-xs text-slate-600 transition-colors hover:bg-white dark:text-slate-300 dark:hover:bg-slate-700/60"
+              >
                 <input
                   type="checkbox"
                   checked={killIds.includes(n.id)}
                   onChange={() => toggleKill(n.id)}
-                  className="h-3.5 w-3.5 rounded border-slate-300 text-brand-600 focus:ring-brand-400 dark:border-slate-600 dark:bg-slate-700"
+                  className="h-3.5 w-3.5 rounded border-slate-300 text-brand-600 focus-visible:ring-2 focus-visible:ring-brand-400 dark:border-slate-600 dark:bg-slate-700"
                 />
                 {n.name}
               </label>
@@ -162,11 +165,7 @@ export function SimulationPanel({ projectId, versionId, state, result, onResult,
                     <span className="text-slate-600 dark:text-slate-300">{l.node_name}</span>
                     <span className={statusColor(l.status)}>{l.status === "killed" ? "killed" : `${l.utilization_pct.toFixed(0)}%`}</span>
                   </div>
-                  {l.status !== "killed" && (
-                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-                      <div className={`h-full rounded-full transition-all ${barColor(l.status)}`} style={{ width: `${Math.min(100, l.utilization_pct)}%` }} />
-                    </div>
-                  )}
+                  {l.status !== "killed" && <ProgressBar pct={l.utilization_pct} colorClassName={barColor(l.status)} />}
                 </div>
               ))}
             </div>

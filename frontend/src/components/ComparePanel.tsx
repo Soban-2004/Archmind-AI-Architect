@@ -1,8 +1,8 @@
 "use client";
 
-import { GitCompare, X } from "lucide-react";
+import { GitCompare, Minus, Pencil, Plus, X } from "lucide-react";
 import type { CompareResult, DiffStatus } from "@/lib/types";
-import { IconButton } from "./ui";
+import { EmptyState, IconButton } from "./ui";
 
 interface Props {
   result: CompareResult;
@@ -13,6 +13,20 @@ const STATUS_STYLE: Record<DiffStatus, string> = {
   added: "bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-400",
   removed: "bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400",
   changed: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400",
+};
+
+// A colored left border + icon per row, like a git diff, so the eye can
+// scan added/removed/changed at a glance instead of reading every badge.
+const STATUS_BORDER: Record<DiffStatus, string> = {
+  added: "border-l-green-500",
+  removed: "border-l-red-400",
+  changed: "border-l-amber-500",
+};
+
+const STATUS_ICON: Record<DiffStatus, typeof Plus> = {
+  added: Plus,
+  removed: Minus,
+  changed: Pencil,
 };
 
 export function ComparePanel({ result, onExit }: Props) {
@@ -55,18 +69,27 @@ export function ComparePanel({ result, onExit }: Props) {
       )}
 
       <div className="flex-1 space-y-2 overflow-y-auto px-4 py-3">
-        {rows.length === 0 && <p className="text-xs text-slate-400 dark:text-slate-500">No structural differences.</p>}
-        {rows.map((row) => (
-          <div key={row.ref} className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 shadow-sm dark:border-slate-800 dark:bg-slate-800/50">
-            <div className="flex items-center gap-2">
-              <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${STATUS_STYLE[row.status]}`}>{row.status}</span>
-              <span className="text-[13px] font-medium text-slate-700 dark:text-slate-200">{row.label}</span>
+        {rows.length === 0 && <EmptyState icon={<GitCompare size={22} />} title="No structural differences" description="These two versions produce the same architecture." />}
+        {rows.map((row) => {
+          const StatusIcon = STATUS_ICON[row.status];
+          return (
+            <div
+              key={row.ref}
+              className={`rounded-xl border border-l-4 border-slate-200 bg-white px-3.5 py-2.5 shadow-sm transition-shadow hover:shadow-md dark:border-slate-800 dark:bg-slate-800/50 ${STATUS_BORDER[row.status]}`}
+            >
+              <div className="flex items-center gap-2">
+                <span className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${STATUS_STYLE[row.status]}`}>
+                  <StatusIcon size={9} strokeWidth={3} />
+                  {row.status}
+                </span>
+                <span className="text-[13px] font-medium text-slate-700 dark:text-slate-200">{row.label}</span>
+              </div>
+              {explanationByRef.has(row.ref) && (
+                <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">{explanationByRef.get(row.ref)}</p>
+              )}
             </div>
-            {explanationByRef.has(row.ref) && (
-              <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">{explanationByRef.get(row.ref)}</p>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

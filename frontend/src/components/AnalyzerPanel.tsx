@@ -4,7 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { AlertTriangle, DollarSign, SendHorizontal, X } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Category, Scorecard, Severity } from "@/lib/types";
-import { IconButton, ScoreRing, Spinner } from "./ui";
+import { IconButton, ProgressBar, ScoreRing, Spinner } from "./ui";
 
 interface Props {
   projectId: string;
@@ -38,6 +38,12 @@ function scoreTextColor(score: number): string {
   if (score >= 85) return "text-green-600 dark:text-green-400";
   if (score >= 60) return "text-amber-600 dark:text-amber-400";
   return "text-red-600 dark:text-red-400";
+}
+
+function scoreBarColor(score: number): string {
+  if (score >= 85) return "bg-green-500";
+  if (score >= 60) return "bg-amber-500";
+  return "bg-red-500";
 }
 
 export function AnalyzerPanel({ projectId, versionId, onExit }: Props) {
@@ -121,12 +127,10 @@ export function AnalyzerPanel({ projectId, versionId, onExit }: Props) {
             </div>
             {scorecard.budget_monthly_usd !== null && (
               <>
-                <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-                  <div
-                    className={`h-full rounded-full ${
-                      scorecard.estimated_monthly_cost_usd > scorecard.budget_monthly_usd ? "bg-red-500" : "bg-green-500"
-                    }`}
-                    style={{ width: `${Math.min(100, (scorecard.estimated_monthly_cost_usd / scorecard.budget_monthly_usd) * 100)}%` }}
+                <div className="mt-1.5">
+                  <ProgressBar
+                    pct={(scorecard.estimated_monthly_cost_usd / scorecard.budget_monthly_usd) * 100}
+                    colorClassName={scorecard.estimated_monthly_cost_usd > scorecard.budget_monthly_usd ? "bg-red-500" : "bg-green-500"}
                   />
                 </div>
                 <p className="mt-1 text-[10.5px] text-slate-400 dark:text-slate-500">budget: ${scorecard.budget_monthly_usd.toFixed(0)}/mo</p>
@@ -155,10 +159,16 @@ export function AnalyzerPanel({ projectId, versionId, onExit }: Props) {
 
         <div className="space-y-2">
           {scorecard?.categories.map((cat) => (
-            <div key={cat.category} className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 shadow-sm dark:border-slate-800 dark:bg-slate-800/50">
+            <div
+              key={cat.category}
+              className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 shadow-sm transition-shadow hover:shadow-md dark:border-slate-800 dark:bg-slate-800/50"
+            >
               <div className="flex items-center justify-between">
                 <span className="text-[13px] font-medium text-slate-700 dark:text-slate-200">{CATEGORY_LABEL[cat.category]}</span>
                 <span className={`text-sm font-bold ${scoreTextColor(cat.score)}`}>{cat.score}</span>
+              </div>
+              <div className="mt-1.5">
+                <ProgressBar pct={cat.score} colorClassName={scoreBarColor(cat.score)} />
               </div>
               {cat.findings.length > 0 && (
                 <ul className="mt-1.5 space-y-1.5">
@@ -204,7 +214,7 @@ export function AnalyzerPanel({ projectId, versionId, onExit }: Props) {
         <button
           type="submit"
           disabled={asking || !question.trim() || !scorecard}
-          className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-lg bg-brand-600 text-white transition-colors hover:bg-brand-700 disabled:opacity-40"
+          className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-lg bg-brand-600 text-white transition duration-150 hover:bg-brand-700 active:scale-95 disabled:opacity-40 disabled:active:scale-100"
         >
           <SendHorizontal size={14} />
         </button>
