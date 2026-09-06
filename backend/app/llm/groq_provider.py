@@ -16,6 +16,14 @@ T = TypeVar("T", bound=BaseModel)
 class GroqProvider(LLMProvider):
     def __init__(self) -> None:
         self._client = AsyncGroq(api_key=settings.groq_api_key)
+        # Real usage (from the API response itself, not an estimate) for
+        # whatever call most recently completed — read by interview.py
+        # right after calling interview_turn() to surface it to the user.
+        # An instance attribute rather than a return-value change so the
+        # shared LLMProvider interface (structured_json, used as-is by
+        # compare.py/analyzer.py) doesn't have to change shape for callers
+        # that don't care about usage.
+        self.last_usage: dict[str, int] | None = None
 
     async def _json_completion(self, messages: list[dict], schema_model: type[T], seed_error: str | None = None) -> T:
         last_error = seed_error
@@ -31,6 +39,12 @@ class GroqProvider(LLMProvider):
                 response_format={"type": "json_object"},
                 temperature=0.3,
             )
+            if resp.usage:
+                self.last_usage = {
+                    "prompt_tokens": resp.usage.prompt_tokens,
+                    "completion_tokens": resp.usage.completion_tokens,
+                    "total_tokens": resp.usage.total_tokens,
+                }
             raw = resp.choices[0].message.content
 
             try:

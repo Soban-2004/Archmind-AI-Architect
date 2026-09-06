@@ -21,5 +21,5 @@ async def chat(project_id: UUID, body: dict):
     if result.kind == "error":
         return {"kind": "error", "error": result.error}
     if result.kind == "question":
-        return {"kind": "question", "question": result.question, "quick_replies": result.quick_replies or []}
-    return {"kind": "architecture", "summary": result.summary, "version": result.version, "diff": result.diff}
+        return {"kind": "question", "question": result.question, "quick_replies": result.quick_replies or [], "usage": result.usage}
+    return {"kind": "architecture", "summary": result.summary, "version": result.version, "diff": result.diff, "usage": result.usage}

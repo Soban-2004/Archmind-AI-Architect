@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Activity, Skull, X, Zap } from "lucide-react";
+import { Activity, Skull, Wrench, X, Zap } from "lucide-react";
 import { api } from "@/lib/api";
 import type { ArchitectureState, LoadStatus, SimulationResult } from "@/lib/types";
 import { Button, IconButton, Spinner } from "./ui";
@@ -13,11 +13,27 @@ interface Props {
   result: SimulationResult | null;
   onResult: (result: SimulationResult | null) => void;
   onExit: () => void;
+  /** Hands a short, structured summary of the current overload findings to
+   * the chat's architect agent and switches to it — the agent (not this
+   * panel, and not advice typed outside the app) is what should actually
+   * propose and apply a fix. Kept deliberately compact (node/rps/capacity
+   * only, not the full finding prose) so this alone can't be what pushes a
+   * long-running project over the LLM provider's per-request token limit. */
+  onFixInChat: (message: string) => void;
+}
+
+/** Builds the message sent to chat from real numbers already in `result` —
+ * never hand-authored per click — so the architect agent reasons from the
+ * same facts shown on screen. */
+function buildFixRequest(result: SimulationResult): string {
+  const overloaded = result.loads.filter((l) => l.status === "overloaded" || l.status === "warning");
+  const lines = overloaded.map((l) => `- ${l.node_name}: ${l.incoming_rps}/${l.capacity_rps} rps (${l.utilization_pct.toFixed(0)}%, ${l.status})`);
+  return `Simulation at ${result.scenario} shows these components under strain:\n${lines.join("\n")}\n\nPropose an edit to address this within the project's existing constraints.`;
 }
 
 const MULTIPLIER_PRESETS = [1, 10, 50, 100];
 
-export function SimulationPanel({ projectId, versionId, state, result, onResult, onExit }: Props) {
+export function SimulationPanel({ projectId, versionId, state, result, onResult, onExit, onFixInChat }: Props) {
   const [multiplier, setMultiplier] = useState(1);
   const [killIds, setKillIds] = useState<string[]>([]);
   const [running, setRunning] = useState(false);
@@ -123,16 +139,21 @@ export function SimulationPanel({ projectId, versionId, state, result, onResult,
             {result.findings.length === 0 ? (
               <p className="mt-2 text-xs font-medium text-green-600 dark:text-green-400">No bottlenecks under this scenario.</p>
             ) : (
-              <div className="mt-2 space-y-1.5">
-                {result.findings.map((f) => (
-                  <div key={`${f.order}-${f.node_id}`} className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 dark:border-red-500/20 dark:bg-red-500/10">
-                    <p className="text-xs font-semibold text-red-700 dark:text-red-400">
-                      #{f.order} {f.node_name}
-                    </p>
-                    <p className="text-[11px] leading-snug text-red-600 dark:text-red-400/80">{f.message}</p>
-                  </div>
-                ))}
-              </div>
+              <>
+                <div className="mt-2 space-y-1.5">
+                  {result.findings.map((f) => (
+                    <div key={`${f.order}-${f.node_id}`} className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 dark:border-red-500/20 dark:bg-red-500/10">
+                      <p className="text-xs font-semibold text-red-700 dark:text-red-400">
+                        #{f.order} {f.node_name}
+                      </p>
+                      <p className="text-[11px] leading-snug text-red-600 dark:text-red-400/80">{f.message}</p>
+                    </div>
+                  ))}
+                </div>
+                <Button variant="secondary" size="sm" className="mt-2 w-full" onClick={() => onFixInChat(buildFixRequest(result))}>
+                  <Wrench size={13} /> Ask the architect to fix this
+                </Button>
+              </>
             )}
             <div className="mt-3 space-y-2 border-t border-slate-100 pt-3 dark:border-slate-800">
               {result.loads.map((l) => (

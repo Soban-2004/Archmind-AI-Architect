@@ -90,9 +90,18 @@ export interface VersionDiff {
   summary: Record<string, number>;
 }
 
+// Real usage from the LLM call that produced a turn (see
+// GroqProvider.last_usage) — absent for a turn the deterministic Tier-1
+// fast path handled with no LLM call at all.
+export interface TokenUsage {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+}
+
 export type ChatResponse =
-  | { kind: "question"; question: string; quick_replies: string[] }
-  | { kind: "architecture"; summary: string; version: VersionRow; diff: VersionDiff | null }
+  | { kind: "question"; question: string; quick_replies: string[]; usage: TokenUsage | null }
+  | { kind: "architecture"; summary: string; version: VersionRow; diff: VersionDiff | null; usage: TokenUsage | null }
   | { kind: "error"; error: string };
 
 // Mirrors backend/app/models/compare.py

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Activity, ArrowLeft, Boxes, ChevronLeft, ChevronRight, Gauge, MessageSquare } from "lucide-react";
+import { Activity, ArrowLeft, Boxes, ChevronLeft, ChevronRight, Gauge, MessageSquare, Zap } from "lucide-react";
 import { AnalyzerPanel } from "@/components/AnalyzerPanel";
 import { ArchitectureCanvas } from "@/components/ArchitectureCanvas";
 import { ChatPanel } from "@/components/ChatPanel";
@@ -55,6 +55,11 @@ export default function Home() {
 
   const [busy, setBusy] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
+  // Sum of real (not estimated) token usage across every LLM call this
+  // browser session has made — resets on reload, like Claude Code's own
+  // session status line. A turn the deterministic Tier-1 fast path
+  // handled has no LLM usage to add, which is correct: it used none.
+  const [sessionTokens, setSessionTokens] = useState(0);
 
   const [panelWidth, setPanelWidth] = useState(380);
   const [historyCollapsed, setHistoryCollapsed] = useState(false);
@@ -144,6 +149,9 @@ export default function Home() {
       // Edits and tier requests both branch off whatever's currently active
       // (spec §6 Phase 3: tiers are siblings off a shared base, not a chain).
       const result = await api.sendChatMessage(projectId, message, activeVersionId);
+      if (result.kind !== "error" && result.usage) {
+        setSessionTokens((t) => t + result.usage!.total_tokens);
+      }
       if (result.kind === "question") {
         setMessages((prev) => [...prev, { role: "assistant", content: result.question, quickReplies: result.quick_replies, animate: true }]);
       } else if (result.kind === "architecture") {
@@ -186,6 +194,17 @@ export default function Home() {
       api.updateLayout(projectId, activeVersionId, next).catch(() => {});
       return next;
     });
+  }
+
+  // Simulation runs client-side only against the currently loaded graph —
+  // the chat agent never sees a run's results unless handed them
+  // explicitly. This is that hand-off: switch to chat and send the
+  // findings as an edit request, so the same agent that designed the
+  // architecture is what proposes the fix, not advice typed outside the
+  // product.
+  function handleFixInChat(message: string) {
+    setMode("chat");
+    void handleSend(message);
   }
 
   function handleConsumeAnimation(index: number) {
@@ -281,6 +300,7 @@ export default function Home() {
                         result={simulationResult}
                         onResult={setSimulationResult}
                         onExit={() => setMode("chat")}
+                        onFixInChat={handleFixInChat}
                       />
                     ) : (
                       <ChatPanel messages={messages} onSend={handleSend} busy={busy || !projectId} onConsumeAnimation={handleConsumeAnimation} />
@@ -344,6 +364,13 @@ export default function Home() {
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {sessionTokens > 0 && (
+          <div className="flex h-6 shrink-0 items-center justify-end gap-1.5 border-t border-slate-200 bg-slate-50 px-3 text-[10px] text-slate-400 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-500">
+            <Zap size={10} />
+            {sessionTokens.toLocaleString()} tokens used this session
           </div>
         )}
       </div>

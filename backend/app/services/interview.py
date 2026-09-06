@@ -6,6 +6,7 @@ from uuid import UUID
 from app.db import repository as repo
 from app.llm.factory import get_llm_provider
 from app.llm.prompts import build_system_prompt
+from app.llm.tokens import estimate_messages_tokens, estimate_tokens
 from app.models.commands import AnnotateDecisionCommand
 from app.models.diff import VersionDiff
 from app.models.state import ADR, ArchitectureState, TriggeredBy, empty_state, gen_id
@@ -15,6 +16,23 @@ from app.services.diff import diff_states
 from app.services.mutation_engine import apply_commands
 
 MAX_ENGINE_RETRIES = 2  # additional retries when mutation validation itself fails
+
+# Groq's free/on-demand tier caps a single request at 8,000 tokens/minute
+# — and that cap counts PROMPT + COMPLETION together. Calibrated against
+# two real requests against a large, heavily-edited test project (18
+# nodes/33 edges/8 ADRs): our ~4-chars-per-token *estimate* (llm/tokens.py
+# — not an exact tokenizer count) came in at 6,260 for the fixed prompt
+# cost alone (system prompt + schema + serialized current state, none of
+# which trimming can touch), against a REAL prompt token count of 6,585 —
+# a ~5% underestimate — and the completion for a real multi-command edit
+# ran 1,207-1,254 tokens. Two real calls against that same project landed
+# at 7,839/8,000 and 7,892/8,000: correct, but by a margin of ~1-2% that
+# was luck, not a guarantee for the next slightly-bigger response.
+GROQ_TPM_LIMIT = 8000
+ESTIMATE_INFLATION = 1.15  # safety multiplier over our raw estimate before comparing to the provider's hard limit
+EXPECTED_MAX_COMPLETION_TOKENS = 2000  # observed ~1250 on a real multi-command edit; budget well above that
+TOTAL_TOKEN_BUDGET = 3500  # soft trim target for prompt+history — deliberately tighter than the hard gate below, so trimming kicks in first
+MIN_HISTORY_TOKEN_BUDGET = 200  # always try to keep at least a little recent context
 
 
 @dataclass
@@ -26,6 +44,28 @@ class ChatTurnResult:
     version: dict | None = None
     diff: VersionDiff | None = None
     error: str | None = None
+    usage: dict[str, int] | None = None  # real token usage from the LLM call that produced this turn, if any
+
+
+def _trim_history(history: list[dict], budget_tokens: int) -> tuple[list[dict], int]:
+    """Keep as many of the most recent messages as fit in `budget_tokens`,
+    dropping older ones from the front rather than truncating individual
+    messages. This is safe to do aggressively (not just as a last resort)
+    because the durable facts from older turns — constraints, prior
+    decisions — already live in the architecture state and its ADRs, which
+    get appended to the system prompt separately on every turn regardless
+    of what conversation history is included. Returns (kept, dropped_count).
+    """
+    kept: list[dict] = []
+    used = 0
+    for m in reversed(history):
+        t = estimate_tokens(m.get("content", "")) + 4
+        if kept and used + t > budget_tokens:
+            break
+        kept.append(m)
+        used += t
+    kept.reverse()
+    return kept, len(history) - len(kept)
 
 
 def _friendly_provider_error(e: Exception) -> str:
@@ -34,13 +74,32 @@ def _friendly_provider_error(e: Exception) -> str:
     which risks the browser seeing a bare connection failure ("Failed to
     fetch") instead of any readable message, if it escapes far enough to
     dodge FastAPI's own CORS-wrapped error response. Give the user
-    something they can actually act on instead."""
+    something they can actually act on instead.
+
+    Checks the structured fields the groq client actually exposes
+    (status_code, and error.code in the parsed body) first — those are
+    exact, unlike string-sniffing the message — and only falls back to
+    matching on the message text for providers/errors that don't expose
+    them (e.g. a raw network failure has neither)."""
+    status_code = getattr(e, "status_code", None)
+    body = getattr(e, "body", None)
+    error_code = None
+    if isinstance(body, dict):
+        error_code = (body.get("error") or {}).get("code")
+
     msg = str(e)
     lowered = msg.lower()
-    if "rate_limit" in lowered or "429" in msg or "413" in msg or "tokens per minute" in lowered:
+    is_rate_limit = (
+        status_code in (429, 413)
+        or error_code == "rate_limit_exceeded"
+        or "rate_limit" in lowered
+        or "tokens per minute" in lowered
+    )
+    if is_rate_limit:
         return (
             "The AI provider's rate limit was hit for this request — this project's "
-            "conversation has grown long, and the full history is sent with every turn. "
+            "conversation has grown long, and (even after trimming) this turn's "
+            "history and current architecture state were too large for one request. "
             "Wait a few seconds and try again, or start a new project to reset the context."
         )
     return f"The AI provider request failed: {msg}"
@@ -76,6 +135,7 @@ async def _finalize(
     summary: str,
     model_provided_decision: bool,
     label: str | None = None,
+    usage: dict[str, int] | None = None,
 ) -> ChatTurnResult:
     diff = diff_states(diff_base_state, new_state) if parent_version_id else None
     if diff is not None:
@@ -100,7 +160,7 @@ async def _finalize(
         )
 
     await repo.add_message(project_id, "assistant", summary)
-    return ChatTurnResult(kind="architecture", summary=summary, version=version, diff=diff)
+    return ChatTurnResult(kind="architecture", summary=summary, version=version, diff=diff, usage=usage)
 
 
 async def handle_chat_turn(project_id: UUID, user_message: str, base_version_id: UUID | None = None) -> ChatTurnResult:
@@ -133,12 +193,50 @@ async def handle_chat_turn(project_id: UUID, user_message: str, base_version_id:
             # fall through to the LLM if the deterministic guess somehow fails validation
 
     # --- Tier 2 (spec §7): LLM-assisted, structured output only ------------
-    history = await repo.get_messages(project_id)
-    conversation = [{"role": m["role"], "content": m["content"]} for m in history]
+    history = [{"role": m["role"], "content": m["content"]} for m in await repo.get_messages(project_id)]
 
     provider = get_llm_provider()
     system_prompt = build_system_prompt()
     system_prompt += f"\n\nCurrent architecture state (may be empty for a brand new project):\n{current_state.model_dump_json()}"
+
+    # Stop sending the full history on every request (the actual incident
+    # this guards against: a long project's whole message log pushed one
+    # request over Groq's per-minute token cap). The durable facts from
+    # trimmed-away turns already live in the architecture state/ADRs just
+    # appended above, so this is safe to trim rather than needing a
+    # separately-maintained summary. Budget adapts to how much room the
+    # (fixed-cost) system prompt + current state already used, since on a
+    # large architecture that alone can be most of the budget.
+    base_tokens = estimate_tokens(system_prompt)
+    history_budget = max(MIN_HISTORY_TOKEN_BUDGET, TOTAL_TOKEN_BUDGET - base_tokens)
+    conversation, dropped = _trim_history(history, history_budget)
+    if dropped > 0:
+        system_prompt += (
+            f"\n\n({dropped} earlier message(s) in this conversation were omitted here to stay within "
+            "the LLM's context budget. The architecture state and its constraints/ADRs above already "
+            "capture the durable facts from them.)"
+        )
+
+    # A hard pre-flight check, not just a trim: if even the fixed cost
+    # (prompt/schema text + current architecture state, which can't be
+    # trimmed without corrupting what the model needs to edit correctly)
+    # already leaves no real room for a completion, no amount of
+    # history-trimming will save this request — fail clearly now instead
+    # of spending an API call gambling on the exact real tokenizer count
+    # sneaking under the limit (as it barely did, twice, before this
+    # check existed — see the calibration notes above).
+    total_estimate = base_tokens + estimate_messages_tokens(conversation)
+    projected_total = int(total_estimate * ESTIMATE_INFLATION) + EXPECTED_MAX_COMPLETION_TOKENS
+    if projected_total > GROQ_TPM_LIMIT:
+        return ChatTurnResult(
+            kind="error",
+            error=(
+                "This architecture has grown too large for the AI's context budget in one request "
+                f"(roughly {total_estimate} tokens for the prompt alone, before leaving room for the "
+                "response). Try a smaller, more targeted edit, or start a new tier instead of "
+                "extending this one further."
+            ),
+        )
 
     retry_note: str | None = None
     for attempt in range(MAX_ENGINE_RETRIES + 1):
@@ -153,9 +251,11 @@ async def handle_chat_turn(project_id: UUID, user_message: str, base_version_id:
             # compare.py/analyzer.py for the non-core-path LLM calls.
             return ChatTurnResult(kind="error", error=_friendly_provider_error(e))
 
+        usage = getattr(provider, "last_usage", None)
+
         if turn.action == "ask_question":
             await repo.add_message(project_id, "assistant", turn.question or "")
-            return ChatTurnResult(kind="question", question=turn.question, quick_replies=turn.quick_replies)
+            return ChatTurnResult(kind="question", question=turn.question, quick_replies=turn.quick_replies, usage=usage)
 
         commands = turn.commands or []
         is_tier = turn.action == "generate_tier"
@@ -182,6 +282,7 @@ async def handle_chat_turn(project_id: UUID, user_message: str, base_version_id:
             summary=summary,
             model_provided_decision=model_provided_decision,
             label=turn.tier_label if is_tier else None,
+            usage=usage,
         )
 
     return ChatTurnResult(kind="error", error="Unexpected: exhausted retries without returning.")
