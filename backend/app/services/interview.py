@@ -37,7 +37,23 @@ MAX_ENGINE_RETRIES = 2  # additional retries when mutation validation itself fai
 # was luck, not a guarantee for the next slightly-bigger response.
 GROQ_TPM_LIMIT = 8000
 ESTIMATE_INFLATION = 1.15  # safety multiplier over our raw estimate before comparing to the provider's hard limit
-EXPECTED_MAX_COMPLETION_TOKENS = 2000  # observed ~1250 on a real multi-command edit; budget well above that
+# Re-calibrated after ADR-exclusion + schema/free-text compaction shrank
+# the fixed prompt cost enough that this reserve became the actual binding
+# constraint: on the real, current Stock Hinge project (13 nodes/14
+# edges), the gate had only 19 estimated tokens of headroom left on a
+# clean request with zero conversation history — a single additional node
+# would have tripped it again, independent of anything about the request
+# itself. The original 2,000 was set well above the one real multi-command
+# completion measured at the time (~1,250); every completion this session
+# has since measured live from Groq for a normal edit tops out well under
+# 1,000. Landed on 1,500 rather than matching that narrower same-day
+# sample: a generate_tier turn builds a whole architecture from scratch in
+# one completion (many add_node/add_edge/set_constraint commands at once)
+# and could plausibly run longer than any single-edit completion measured
+# so far, so this keeps real margin above the largest completion actually
+# documented (1,254) rather than chasing the smallest safe number that
+# happens to fit today's narrower sample of ordinary edits.
+EXPECTED_MAX_COMPLETION_TOKENS = 1500
 TOTAL_TOKEN_BUDGET = 3500  # soft trim target for prompt+history — deliberately tighter than the hard gate below, so trimming kicks in first
 MIN_HISTORY_TOKEN_BUDGET = 200  # always try to keep at least a little recent context
 
