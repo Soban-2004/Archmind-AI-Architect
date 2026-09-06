@@ -1043,3 +1043,102 @@ one thing not yet captured is the real model's actual blueprint text
 against real data, which needs the quota to clear (or the paid tier this
 README has already made the case for) to finish honestly rather than
 faked.
+
+## Product-completeness pass: landing, import UI, export/share, real streaming progress
+
+Direct feedback, quoted faithfully rather than summarized away: "Your
+plan is strong on the engine, thin on what makes something feel like a
+product rather than a working demo," followed by six concrete gaps. Two
+turned out to already be built (`ProjectSwitcher.tsx`, a real project
+list/rename/delete dropdown; `VersionHistory.tsx`, a real visual timeline
+with click-to-view and a compare mode) — checking the actual code before
+agreeing or rebuilding is the same discipline this whole README has tried
+to model throughout. Checking also surfaced a real, if small, bug: ingested
+versions were tagged `kind="initial"` instead of `kind="reconstruction"`,
+even though `schema.sql` already documented that kind and `VersionHistory`
+already had a dedicated visual treatment for it (orange dot, History icon)
+that had never once fired. One-line fix in `services/ingestion.py`.
+
+The four genuine gaps, all built this pass:
+
+**Landing + two real entry paths** (`Landing.tsx`, new). A first-time
+visitor (no project remembered in localStorage) now sees an actual
+explainer and two deliberate choices — "Start a new project" or "Import
+an existing repo" — instead of the old behavior of silently auto-creating
+a blank "New Project" nobody asked for. `page.tsx` gained a `view: "landing"
+| "import" | "app"` state machine; a returning visitor skips straight to
+`"app"` as before. `ProjectSwitcher`'s "+ New" (and the post-delete-active-
+project fallback) now route back through this same landing choice instead
+of instant-creating, so there's one entry flow, not two that could drift.
+
+**Import UI with three deliberately distinct result states**
+(`ImportRepoScreen.tsx`, new — the frontend Phase 5's backend had been
+missing entirely). Drag-and-drop or browse for a `.zip`, name the project,
+submit — then one of three real, different treatments, not one generic
+error box, because the three shapes `services/ingestion.py` can actually
+produce call for different next actions: clean-or-caveated **success**
+(node/edge counts, the real evidence count, and — only when
+`dropped_uncited_refs` or `unsupported_notes` are non-empty — an explicit
+"a few things worth knowing" panel naming exactly what was excluded and
+why); **out of scope** (no evidence at all — explained as a scope gap,
+with a "try a different repo" action, not a "try again" that would just
+fail identically); **technical failure** (a real LLM/network error shown
+verbatim, with "try again" since this class of failure is transient).
+
+**Export and share** (`ExportMenu.tsx`, `exportDiagram.ts`, both new).
+PNG and PDF export via `html-to-image` + `jspdf`, capturing the diagram at
+a fixed generous resolution regardless of current on-screen zoom/pan —
+using `useReactFlow().getNodes()` for real, post-render *measured* node
+dimensions rather than the layout-only position data `ArchitectureCanvas`
+already had in scope, which is why `ArchitectureCanvas`'s return is now
+wrapped in `ReactFlowProvider` (a sibling overlay outside `<ReactFlow>`'s
+own JSX can't otherwise reach that hook). "Copy read-only link" builds a
+URL to a genuinely new route, `/shared/[projectId]/[versionId]`
+(`page.tsx`, new) — no access-control layer to build here, since this app
+has none at all today and every id is already reachable through the plain
+API; sharing a link is just handing out a real URL to a real route that
+renders without any editing controls (no chat, no history, no node
+editing, no simulation dock), not a new security boundary.
+
+**Real per-stage pipeline progress**, replacing a guess with the real
+thing. `useThinkingStatus.ts`'s rotating status was already honestly
+documented as cosmetic — "rather than fabricating specific steps we can't
+actually confirm are happening" — precisely because a single blocking
+HTTP call has no real progress to report. So the fix wasn't a frontend
+trick, it was giving the backend an actual progress channel:
+`services/interview.py`'s `handle_chat_turn` (and every function it calls
+into — `_handle_advisory`, `_handle_analysis`, `_run_judge`, `_finalize`)
+now takes an optional `on_stage: Callable[[str], Awaitable[None]] | None`,
+defaulting to `None` everywhere so every existing caller (the plain JSON
+route, `direct_update_node`, all 44 tests) is completely unaffected. A new
+`POST /projects/{id}/chat/stream` endpoint (`api/routes/chat.py`) runs the
+exact same `handle_chat_turn` with a real callback wired to an
+`asyncio.Queue`, streamed out as Server-Sent Events — a `{"type": "stage"}`
+frame fires exactly when each real step starts (the Tier 1 check, routing,
+the actual Groq call, validation, the judge pass, finalizing — including
+an honest "the first attempt needs a fix — retrying" on a real retry, not
+a silent one), ending in one `{"type": "result"}` frame carrying the exact
+payload the plain endpoint already returns. `ChatPanel.tsx`'s
+`ThinkingBubble` now shows this real text when available, falling back to
+the old cosmetic rotation only when it isn't — never claiming something's
+real when it isn't, in either direction.
+
+Live-verified against the real Stock Hinge project, both paths: a real
+advisory question streamed exactly `"Checking for a direct match…"` →
+`"Answering from the current architecture…"` → a real grounded answer:
+`redis_dependency`/etc. evidence reasoning about the actual cache, in
+1,346 real prompt tokens. A real edit attempt streamed
+`"Checking for a direct match…"` → `"Consulting the architect…"` → hit
+the same Groq daily-quota wall this README has already documented
+extensively — and, importantly, the failure surfaced as a normal, readable
+`{"type": "result", "payload": {"kind": "error", ...}}` frame through the
+stream, not a dropped connection, proving the existing friendly-error
+handling survives the new streaming path unchanged.
+
+All four verified together: `tsc --noEmit`, `eslint --max-warnings=0`, and
+a full `next build` all clean; the backend's full 44-test suite still
+passes untouched. No visual/interactive browser confirmation was possible
+in this environment (no browser automation tool available) — verification
+here is real compiled/typechecked code plus live SSE/API responses
+inspected directly, not a screenshot; worth a manual look before treating
+the visual layer as fully confirmed.

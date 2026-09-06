@@ -1,4 +1,4 @@
-import type { ChatResponse, CompareResult, Scorecard, ScorecardAnswer, SimulationResult, VersionDiff, VersionRow, VersionSummary } from "./types";
+import type { ChatResponse, ChatStreamEvent, CompareResult, IngestResponse, Scorecard, ScorecardAnswer, SimulationResult, VersionDiff, VersionRow, VersionSummary } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -80,6 +80,41 @@ export const api = {
       body: JSON.stringify({ message, base_version_id: baseVersionId ?? null }),
     }),
 
+  /** The streaming twin of sendChatMessage — same backend pipeline, real
+   * "stage" events as each one actually starts, then one "result" event
+   * with the exact same payload sendChatMessage returns directly. An
+   * async generator, not EventSource: EventSource only does GET, and this
+   * needs a POST body (the message). Parses raw SSE `data: ...\n\n`
+   * frames off the fetch response's own ReadableStream by hand — no
+   * library needed for a format this simple. */
+  async *sendChatMessageStream(projectId: string, message: string, baseVersionId?: string | null): AsyncGenerator<ChatStreamEvent> {
+    const res = await fetch(`${API_URL}/projects/${projectId}/chat/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message, base_version_id: baseVersionId ?? null }),
+    });
+    if (!res.ok || !res.body) {
+      const body = res.body ? await res.text() : "";
+      throw new Error(`${res.status} ${res.statusText}: ${body}`);
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let boundary: number;
+      while ((boundary = buffer.indexOf("\n\n")) !== -1) {
+        const rawEvent = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+        const dataLine = rawEvent.split("\n").find((l) => l.startsWith("data: "));
+        if (!dataLine) continue;
+        yield JSON.parse(dataLine.slice("data: ".length)) as ChatStreamEvent;
+      }
+    }
+  },
+
   compare: (projectId: string, versionAId: string, versionBId: string) =>
     request<CompareResult>(`/projects/${projectId}/compare?version_a=${versionAId}&version_b=${versionBId}`),
 
@@ -97,4 +132,20 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ multiplier, kill_node_ids: killNodeIds }),
     }),
+
+  /** Multipart upload — deliberately NOT built on the shared `request`
+   * helper above, since that always sets Content-Type: application/json.
+   * A browser-built multipart boundary has to come from the browser
+   * itself (FormData), not be hand-set. */
+  ingestRepo: async (file: File, name: string): Promise<IngestResponse> => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("name", name);
+    const res = await fetch(`${API_URL}/ingest`, { method: "POST", body: form });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`${res.status} ${res.statusText}: ${body}`);
+    }
+    return res.json();
+  },
 };

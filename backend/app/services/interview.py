@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import Awaitable, Callable
 from uuid import UUID
 
 from app.db import repository as repo
@@ -56,6 +57,23 @@ ESTIMATE_INFLATION = 1.15  # safety multiplier over our raw estimate before comp
 EXPECTED_MAX_COMPLETION_TOKENS = 1500
 TOTAL_TOKEN_BUDGET = 3500  # soft trim target for prompt+history — deliberately tighter than the hard gate below, so trimming kicks in first
 MIN_HISTORY_TOKEN_BUDGET = 200  # always try to keep at least a little recent context
+
+
+# Real, optional stage-progress reporting — genuinely real, not the
+# rotating-cosmetic-text pattern useThinkingStatus.ts (frontend) uses
+# elsewhere and documents honestly as fake: this fires exactly when each
+# real step below actually starts, from the one place that has any idea
+# what's really happening (this function itself), not a client-side timer
+# guessing. Defaults to None everywhere so every existing caller (the
+# plain JSON /chat route, direct_update_node, every test in this repo)
+# behaves exactly as before — only the new streaming route (api/routes/
+# chat.py's /chat/stream) actually passes one.
+OnStage = Callable[[str], Awaitable[None]]
+
+
+async def _emit(on_stage: OnStage | None, stage: str) -> None:
+    if on_stage is not None:
+        await on_stage(stage)
 
 
 @dataclass
@@ -128,7 +146,7 @@ def _friendly_provider_error(e: Exception) -> str:
     return f"The AI provider request failed: {msg}"
 
 
-async def _run_judge(user_message: str, new_state: ArchitectureState, commands: list) -> JudgeVerdict | None:
+async def _run_judge(user_message: str, new_state: ArchitectureState, commands: list, on_stage: OnStage | None = None) -> JudgeVerdict | None:
     """A second, independent model (Gemini — see llm/gemini_provider.py)
     reviewing the architect's (Groq's) proposed architecture for
     structural correctness against a fixed checklist (llm/prompts.py's
@@ -150,6 +168,7 @@ async def _run_judge(user_message: str, new_state: ArchitectureState, commands: 
     if judge is None:
         return None
     try:
+        await _emit(on_stage, "Running a structural review…")
         prompt = build_judge_prompt(user_message, new_state.constraints, new_state, commands)
         verdict = await judge.structured_json(prompt, "Review this architecture.", JudgeVerdict)
         logger.info("judge verdict: approved=%s issues=%s", verdict.approved, [(i.severity, i.description) for i in verdict.issues])
@@ -159,7 +178,7 @@ async def _run_judge(user_message: str, new_state: ArchitectureState, commands: 
         return None
 
 
-async def _handle_advisory(project_id: UUID, user_message: str, state: ArchitectureState, base_version_id: UUID) -> ChatTurnResult:
+async def _handle_advisory(project_id: UUID, user_message: str, state: ArchitectureState, base_version_id: UUID, on_stage: OnStage | None = None) -> ChatTurnResult:
     """Question/recommendation lane (services/intent_router.py's
     "advisory" intent) — deliberately the cheapest possible LLM call: a
     compact topology summary + constraints, no full architecture state, no
@@ -169,6 +188,7 @@ async def _handle_advisory(project_id: UUID, user_message: str, state: Architect
     without touching version/diff state at all."""
     provider = get_llm_provider()
     prompt = build_advisory_prompt(state, user_message)
+    await _emit(on_stage, "Answering from the current architecture…")
     try:
         raw = await provider.structured_json(prompt, user_message, AdvisoryAnswer)
     except Exception as e:
@@ -178,18 +198,20 @@ async def _handle_advisory(project_id: UUID, user_message: str, state: Architect
     return ChatTurnResult(kind="answer", summary=raw.answer, usage=getattr(provider, "last_usage", None))
 
 
-async def _handle_analysis(project_id: UUID, user_message: str, state: ArchitectureState, base_version_id: UUID) -> ChatTurnResult:
+async def _handle_analysis(project_id: UUID, user_message: str, state: ArchitectureState, base_version_id: UUID, on_stage: OnStage | None = None) -> ChatTurnResult:
     """What-if lane (services/intent_router.py's "analysis" intent) — runs
     the REAL deterministic simulator first (the exact engine behind the
     Simulate tab, see services/simulator.py) and has the LLM only narrate
     its actual output, never guess at load numbers itself. Same
     non-mutating contract as _handle_advisory: no commands, no judge, no
     create_version."""
+    await _emit(on_stage, "Running the simulation…")
     multiplier = extract_multiplier(user_message)
     sim_result = run_simulation(state, multiplier=multiplier, kill_node_ids=[])
 
     provider = get_llm_provider()
     prompt = build_analysis_prompt(sim_result, user_message)
+    await _emit(on_stage, "Explaining the result…")
     try:
         raw = await provider.structured_json(prompt, user_message, AnalysisAnswer)
     except Exception as e:
@@ -231,7 +253,9 @@ async def _finalize(
     label: str | None = None,
     usage: dict[str, int] | None = None,
     user_message_id: UUID | None = None,
+    on_stage: OnStage | None = None,
 ) -> ChatTurnResult:
+    await _emit(on_stage, "Finalizing…")
     diff = diff_states(diff_base_state, new_state) if parent_version_id else None
     if diff is not None:
         _ensure_adr(new_state, diff, model_provided_decision)
@@ -264,12 +288,15 @@ async def _finalize(
     return ChatTurnResult(kind="architecture", summary=summary, version=version, diff=diff, usage=usage)
 
 
-async def handle_chat_turn(project_id: UUID, user_message: str, base_version_id: UUID | None = None) -> ChatTurnResult:
+async def handle_chat_turn(project_id: UUID, user_message: str, base_version_id: UUID | None = None, on_stage: OnStage | None = None) -> ChatTurnResult:
     """`base_version_id` is whatever version the frontend currently has
     active — an edit or a tier request both branch off it. This is what
     lets sibling tiers (spec §6 Phase 3) share one base instead of chaining
     off each other, and incidentally makes editing from an older version in
-    history a proper branch instead of being blocked."""
+    history a proper branch instead of being blocked. `on_stage`, if given,
+    is called with a short real-progress string at each stage this turn
+    actually reaches — see OnStage's docstring above; every existing
+    caller omits it and behaves exactly as before."""
     if base_version_id is not None:
         base_version = await repo.get_version(base_version_id)
         if base_version is None or base_version["project_id"] != project_id:
@@ -288,6 +315,7 @@ async def handle_chat_turn(project_id: UUID, user_message: str, base_version_id:
     user_message_id = await repo.add_message(project_id, "user", user_message, version_id=parent_id)
 
     # --- Tier 1 (spec §7): deterministic, no LLM call at all ---------------
+    await _emit(on_stage, "Checking for a direct match…")
     if base_version is not None:
         det = try_deterministic_command(user_message, current_state)
         if det is not None:
@@ -297,7 +325,7 @@ async def handle_chat_turn(project_id: UUID, user_message: str, base_version_id:
                 assert result.state is not None
                 return await _finalize(
                     project_id, current_state, result.state, parent_id, "edit", summary,
-                    model_provided_decision=False, user_message_id=user_message_id,
+                    model_provided_decision=False, user_message_id=user_message_id, on_stage=on_stage,
                 )
             # fall through to the LLM if the deterministic guess somehow fails validation
 
@@ -313,9 +341,9 @@ async def handle_chat_turn(project_id: UUID, user_message: str, base_version_id:
     if base_version is not None:
         intent = classify_intent(user_message)
         if intent == "advisory":
-            return await _handle_advisory(project_id, user_message, current_state, parent_id)
+            return await _handle_advisory(project_id, user_message, current_state, parent_id, on_stage=on_stage)
         if intent == "analysis":
-            return await _handle_analysis(project_id, user_message, current_state, parent_id)
+            return await _handle_analysis(project_id, user_message, current_state, parent_id, on_stage=on_stage)
 
     # --- Tier 2 (spec §7): LLM-assisted, structured output only ------------
     # Scoped to this branch's own ancestry, not the whole project's flat
@@ -395,6 +423,7 @@ async def handle_chat_turn(project_id: UUID, user_message: str, base_version_id:
 
     retry_note: str | None = None
     for attempt in range(MAX_ENGINE_RETRIES + 1):
+        await _emit(on_stage, "Consulting the architect…" if attempt == 0 else f"The first attempt needs a fix — retrying (attempt {attempt + 1})…")
         try:
             turn = await provider.interview_turn(system_prompt, conversation, retry_note=retry_note)
         except Exception as e:
@@ -415,6 +444,7 @@ async def handle_chat_turn(project_id: UUID, user_message: str, base_version_id:
         commands = turn.commands or []
         is_tier = turn.action == "generate_tier"
         base_for_commands = empty_state() if is_tier else current_state
+        await _emit(on_stage, "Validating the proposed changes…")
         result = apply_commands(base_for_commands, commands)
 
         if not result.ok:
@@ -459,7 +489,7 @@ async def handle_chat_turn(project_id: UUID, user_message: str, base_version_id:
             await repo.add_message(project_id, "assistant", answer, version_id=parent_id)
             return ChatTurnResult(kind="answer", summary=answer, usage=total_usage)
 
-        verdict = await _run_judge(user_message, new_state, commands)
+        verdict = await _run_judge(user_message, new_state, commands, on_stage=on_stage)
         if verdict is not None:
             _add_usage(getattr(get_judge_provider(), "last_usage", None))
             blocking = [i for i in verdict.issues if i.severity == "blocking"]
@@ -481,6 +511,7 @@ async def handle_chat_turn(project_id: UUID, user_message: str, base_version_id:
             label=turn.tier_label if is_tier else None,
             usage=total_usage,
             user_message_id=user_message_id,
+            on_stage=on_stage,
         )
 
     return ChatTurnResult(kind="error", error="Unexpected: exhausted retries without returning.")

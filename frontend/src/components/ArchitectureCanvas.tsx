@@ -7,6 +7,7 @@ import {
   Controls,
   MiniMap,
   ReactFlow,
+  ReactFlowProvider,
   type Edge,
   type EdgeTypes,
   type Node,
@@ -21,6 +22,7 @@ import { applySimulation } from "@/lib/simView";
 import type { ArchitectureState, ArchNode, SimulationResult, VersionDiff } from "@/lib/types";
 import { ArchNodeCard } from "./ArchNodeCard";
 import { CanvasLoadingOverlay } from "./CanvasLoadingOverlay";
+import { ExportMenu } from "./ExportMenu";
 import { FlowEdge } from "./FlowEdge";
 import { NodeDetailCard } from "./NodeDetailCard";
 import { SimulationDock, type SimDockProps } from "./SimulationDock";
@@ -63,9 +65,16 @@ interface Props {
    * Kill/Revive from NodeDetailCard. Omit to render a plain canvas with
    * no simulation controls at all. */
   simDock?: SimDockProps;
+  /** Name used for the exported file (e.g. "checkout-service-architecture.png").
+   * Falls back to a generic name if omitted. */
+  projectName?: string;
+  /** Present exactly when there's a real project+version to link to (i.e.
+   * not already on the read-only shared view itself) — enables "Copy
+   * read-only link" in the export menu. */
+  onShare?: () => void;
 }
 
-export function ArchitectureCanvas({ state, layout, diff, simulation, onNodePositionsChange, busy = false, onNodeSave, simDock }: Props) {
+export function ArchitectureCanvas({ state, layout, diff, simulation, onNodePositionsChange, busy = false, onNodeSave, simDock, projectName, onShare }: Props) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [minimapVisible, setMinimapVisible] = useState(true);
   const flowWrapperRef = useRef<HTMLDivElement>(null);
@@ -149,64 +158,74 @@ export function ArchitectureCanvas({ state, layout, diff, simulation, onNodePosi
   }
 
   return (
-    <div ref={flowWrapperRef} className="relative h-full w-full">
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        onNodesChange={onNodesChange}
-        fitView
-        // Compact-to-fit, not flow-bigger: the whole diagram always scales
-        // to the available space rather than requiring a scrollbar, so
-        // extra chrome (the sim dock) just needs its own reserved margin
-        // rather than a layout rethink — leave real room at the bottom
-        // when the dock is showing so it never sits over a node.
-        fitViewOptions={simDock ? { padding: { top: "40px", left: "40px", right: "40px", bottom: "110px" } } : undefined}
-        proOptions={{ hideAttribution: true }}
-        onNodeClick={(_, node) => setSelectedNodeId(node.id)}
-        onPaneClick={() => setSelectedNodeId(null)}
-      >
-        <Background variant={BackgroundVariant.Dots} gap={20} size={1.5} color="var(--rf-dot-color)" />
-        <Controls showInteractive={false} />
-        {nodes.length > 5 && minimapVisible && (
-          <MiniMap
-            pannable
-            zoomable
-            nodeStrokeWidth={0}
-            bgColor="transparent"
-            maskColor="rgba(100,116,139,0.08)"
-            nodeColor={(n: Node) => {
-              const archNode = (n.data as { archNode?: ArchNode })?.archNode;
-              return (archNode && MINIMAP_KIND_COLOR[archNode.node_kind]) || "#94a3b8";
-            }}
+    // ReactFlowProvider wraps the whole thing (not just <ReactFlow>) so
+    // ExportMenu -- a sibling overlay, not a child of <ReactFlow> itself --
+    // can call useReactFlow().getNodes() for the real, measured node
+    // dimensions an accurate export needs (the `nodes` array below only
+    // has layout positions, not post-render measured sizes).
+    <ReactFlowProvider>
+      <div ref={flowWrapperRef} className="relative h-full w-full">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          onNodesChange={onNodesChange}
+          fitView
+          // Compact-to-fit, not flow-bigger: the whole diagram always scales
+          // to the available space rather than requiring a scrollbar, so
+          // extra chrome (the sim dock) just needs its own reserved margin
+          // rather than a layout rethink — leave real room at the bottom
+          // when the dock is showing so it never sits over a node.
+          fitViewOptions={simDock ? { padding: { top: "40px", left: "40px", right: "40px", bottom: "110px" } } : undefined}
+          proOptions={{ hideAttribution: true }}
+          onNodeClick={(_, node) => setSelectedNodeId(node.id)}
+          onPaneClick={() => setSelectedNodeId(null)}
+        >
+          <Background variant={BackgroundVariant.Dots} gap={20} size={1.5} color="var(--rf-dot-color)" />
+          <Controls showInteractive={false} />
+          {nodes.length > 5 && minimapVisible && (
+            <MiniMap
+              pannable
+              zoomable
+              nodeStrokeWidth={0}
+              bgColor="transparent"
+              maskColor="rgba(100,116,139,0.08)"
+              nodeColor={(n: Node) => {
+                const archNode = (n.data as { archNode?: ArchNode })?.archNode;
+                return (archNode && MINIMAP_KIND_COLOR[archNode.node_kind]) || "#94a3b8";
+              }}
+            />
+          )}
+        </ReactFlow>
+        {nodes.length > 5 && (
+          // Top-right: Controls defaults to bottom-left and MiniMap to
+          // bottom-right, so this is the one corner nothing else claims.
+          <IconButton
+            onClick={() => setMinimapVisible((v) => !v)}
+            className="absolute right-3.5 top-3.5 z-10 border border-slate-200 bg-white/90 shadow-sm backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/90"
+            title={minimapVisible ? "Hide minimap" : "Show minimap"}
+          >
+            <Map size={14} className={minimapVisible ? "text-brand-600 dark:text-indigo-400" : ""} />
+          </IconButton>
+        )}
+        {selectedNode && (
+          <NodeDetailCard
+            node={selectedNode}
+            load={selectedLoad}
+            finding={selectedFinding}
+            onClose={() => setSelectedNodeId(null)}
+            onSave={onNodeSave}
+            killed={simDock?.killIds.includes(selectedNode.id)}
+            onToggleKill={simDock ? () => simDock.onToggleKill(selectedNode.id) : undefined}
           />
         )}
-      </ReactFlow>
-      {nodes.length > 5 && (
-        // Top-right: Controls defaults to bottom-left and MiniMap to
-        // bottom-right, so this is the one corner nothing else claims.
-        <IconButton
-          onClick={() => setMinimapVisible((v) => !v)}
-          className="absolute right-3.5 top-3.5 z-10 border border-slate-200 bg-white/90 shadow-sm backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/90"
-          title={minimapVisible ? "Hide minimap" : "Show minimap"}
-        >
-          <Map size={14} className={minimapVisible ? "text-brand-600 dark:text-indigo-400" : ""} />
-        </IconButton>
-      )}
-      {selectedNode && (
-        <NodeDetailCard
-          node={selectedNode}
-          load={selectedLoad}
-          finding={selectedFinding}
-          onClose={() => setSelectedNodeId(null)}
-          onSave={onNodeSave}
-          killed={simDock?.killIds.includes(selectedNode.id)}
-          onToggleKill={simDock ? () => simDock.onToggleKill(selectedNode.id) : undefined}
-        />
-      )}
-      {simDock && <SimulationDock {...simDock} result={simulation ?? null} />}
-      <CanvasLoadingOverlay active={busy} />
-    </div>
+        {simDock && <SimulationDock {...simDock} result={simulation ?? null} />}
+        <CanvasLoadingOverlay active={busy} />
+        <div className={`absolute right-3.5 z-10 ${nodes.length > 5 ? "top-14" : "top-3.5"}`}>
+          <ExportMenu flowElementRef={flowWrapperRef} projectName={projectName ?? "architecture"} onShare={onShare} />
+        </div>
+      </div>
+    </ReactFlowProvider>
   );
 }

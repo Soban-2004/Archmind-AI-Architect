@@ -6,6 +6,8 @@ import { AnalyzerPanel } from "@/components/AnalyzerPanel";
 import { ArchitectureCanvas } from "@/components/ArchitectureCanvas";
 import { ChatPanel } from "@/components/ChatPanel";
 import { ComparePanel } from "@/components/ComparePanel";
+import { ImportRepoScreen } from "@/components/ImportRepoScreen";
+import { Landing } from "@/components/Landing";
 import { ProjectSwitcher } from "@/components/ProjectSwitcher";
 import { SimulationPanel } from "@/components/SimulationPanel";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -16,7 +18,7 @@ import { api } from "@/lib/api";
 import { buildDiffDisplayState } from "@/lib/diffView";
 import { computeIncrementalLayout } from "@/lib/incrementalLayout";
 import { computeDagreLayout, type LayoutMap } from "@/lib/layout";
-import type { ArchitectureState, ChatMessage, CompareResult, SimulationResult, VersionDiff, VersionRow } from "@/lib/types";
+import type { ArchitectureState, ChatMessage, ChatResponse, CompareResult, IngestResponse, SimulationResult, VersionDiff, VersionRow } from "@/lib/types";
 
 const STORAGE_KEY = "ai-architect-project-id";
 const MIN_PANEL_WIDTH = 300;
@@ -24,6 +26,13 @@ const MAX_PANEL_WIDTH = 640;
 const HISTORY_WIDTH = 240;
 const HISTORY_RAIL_WIDTH = 44;
 type Mode = "chat" | "analyze" | "simulate";
+// "landing"/"import" are the pre-project entry flow (Landing.tsx,
+// ImportRepoScreen.tsx) — "app" is the existing full editor. Defaults to
+// "landing" so a genuinely first-time visitor is asked to choose rather
+// than silently handed a blank project someone else already created; a
+// returning visitor (a project id remembered in localStorage) skips
+// straight to "app" in the mount effect below.
+type View = "landing" | "import" | "app";
 
 /** Fill in positions dagre-fresh for any node the known layout doesn't
  * cover (e.g. ghost nodes when browsing history/compare with no in-memory
@@ -40,6 +49,7 @@ export default function Home() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [mode, setMode] = useState<Mode>("chat");
   const [initializing, setInitializing] = useState(true);
+  const [view, setView] = useState<View>("landing");
 
   const [rawState, setRawState] = useState<ArchitectureState | null>(null);
   const [rawLayout, setRawLayout] = useState<LayoutMap>({});
@@ -65,6 +75,10 @@ export default function Home() {
   const [simError, setSimError] = useState<string | null>(null);
 
   const [busy, setBusy] = useState(false);
+  // Real live pipeline-stage text for the current chat turn (see
+  // ChatPanel's ThinkingBubble) — set from each "stage" SSE event as it
+  // actually arrives, cleared between turns so a stale stage never lingers.
+  const [busyStage, setBusyStage] = useState<string | null>(null);
   const [initError, setInitError] = useState<string | null>(null);
   // Sum of real (not estimated) token usage across every LLM call this
   // browser session has made — resets on reload, like Claude Code's own
@@ -104,14 +118,17 @@ export default function Home() {
     (async () => {
       try {
         const existing = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
-        let project: Project;
+        // No project remembered -> this is a genuinely first-time visit
+        // (or the user explicitly asked for a fresh start, see
+        // handleShowLanding). Stay on the "landing" view's default and let
+        // the user actually choose between the two real entry paths,
+        // rather than the old behavior of silently auto-creating a blank
+        // "New Project" no one asked for.
         if (existing) {
-          project = await api.getProject(existing);
-        } else {
-          const created = await api.createProject("New Project");
-          project = { ...created, latest_version: null };
+          const project = await api.getProject(existing);
+          await openProject(project);
+          setView("app");
         }
-        await openProject(project);
       } catch (e) {
         setInitError(e instanceof Error ? e.message : String(e));
       } finally {
@@ -157,6 +174,7 @@ export default function Home() {
     try {
       const project = await api.getProject(id);
       await openProject(project);
+      setView("app");
     } catch (e) {
       setInitError(e instanceof Error ? e.message : String(e));
     }
@@ -166,9 +184,31 @@ export default function Home() {
     try {
       const created = await api.createProject("New Project");
       await openProject({ ...created, latest_version: null });
+      setView("app");
     } catch (e) {
       setInitError(e instanceof Error ? e.message : String(e));
     }
+  }
+
+  /** ProjectSwitcher's "+ New" and the post-delete-active-project fallback
+   * both land here now, instead of instant-creating a blank project —
+   * the landing screen's own "start a new project" is one click further,
+   * so this doesn't cost a returning user anything, and it means "+ New"
+   * and a genuine first visit are the same one entry flow instead of two
+   * that could drift apart. */
+  function handleShowLanding() {
+    setView("landing");
+  }
+
+  /** ImportRepoScreen's success handler — the backend already created and
+   * persisted the real project + reconstructed version by this point
+   * (services/ingestion.py's persist_ingestion), so this is just wiring
+   * the already-real result into the same openProject path every other
+   * entry point uses, then switching to the editor. */
+  async function handleImportSuccess(result: IngestResponse) {
+    if (!result.project || !result.version) return;
+    await openProject({ id: result.project.id, name: result.project.name, created_at: result.project.created_at, latest_version: result.version });
+    setView("app");
   }
 
   async function loadVersion(pid: string, versionId: string, preloaded?: VersionRow) {
@@ -200,10 +240,23 @@ export default function Home() {
     if (!projectId) return;
     setMessages((prev) => [...prev, { role: "user", content: message, createdAt: new Date().toISOString() }]);
     setBusy(true);
+    setBusyStage(null);
     try {
       // Edits and tier requests both branch off whatever's currently active
       // (spec §6 Phase 3: tiers are siblings off a shared base, not a chain).
-      const result = await api.sendChatMessage(projectId, message, activeVersionId);
+      // Streamed rather than a single await — each "stage" event updates
+      // busyStage with the REAL pipeline step as it actually starts
+      // (services/interview.py's OnStage), not a client-side guess; the
+      // final "result" event carries the exact same payload shape the
+      // plain (non-streaming) endpoint returns, so everything below this
+      // point is unchanged from before streaming existed.
+      let result: ChatResponse | null = null;
+      for await (const event of api.sendChatMessageStream(projectId, message, activeVersionId)) {
+        if (event.type === "stage") setBusyStage(event.stage);
+        else result = event.payload;
+      }
+      if (!result) throw new Error("The response stream ended without a result.");
+
       if (result.kind !== "error" && result.usage) {
         setSessionTokens((t) => t + result.usage!.total_tokens);
       }
@@ -248,6 +301,7 @@ export default function Home() {
       ]);
     } finally {
       setBusy(false);
+      setBusyStage(null);
     }
   }
 
@@ -387,6 +441,22 @@ export default function Home() {
     }
   }
 
+  /** Builds a link to the read-only shared view (src/app/shared/[projectId]/
+   * [versionId]/page.tsx) for the currently active version and copies it —
+   * there's no access-control layer to set up here (this app has none at
+   * all today, every id is already reachable via the plain API), so
+   * "sharing" is just handing out a URL to a real, already-public route
+   * that happens to render read-only instead of the full editor. */
+  function handleCopyShareLink() {
+    if (!projectId || !activeVersionId) return;
+    const url = `${window.location.origin}/shared/${projectId}/${activeVersionId}`;
+    navigator.clipboard.writeText(url).catch(() => {
+      // clipboard permission denied or unavailable — the URL is still
+      // valid, the user just has to copy it from the address bar/prompt
+      // some browsers fall back to; nothing more to do from here.
+    });
+  }
+
   const displayState = useMemo(() => {
     if (compareResult) return buildDiffDisplayState(compareResult.state, compareResult.result.diff);
     return rawState ? buildDiffDisplayState(rawState, diff) : null;
@@ -416,11 +486,13 @@ export default function Home() {
                 projectId={projectId}
                 projectName={projectName || "AI Architect"}
                 onSwitch={handleSwitchProject}
-                onCreate={handleCreateProject}
+                onCreate={handleShowLanding}
               />
-              <p className="px-2 text-[11px] text-slate-400 dark:text-slate-500">
-                {viewingHistorical ? "editing will branch from here" : latestVersionId ? "editing latest version" : "new project"}
-              </p>
+              {view === "app" && (
+                <p className="px-2 text-[11px] text-slate-400 dark:text-slate-500">
+                  {viewingHistorical ? "editing will branch from here" : latestVersionId ? "editing latest version" : "new project"}
+                </p>
+              )}
             </div>
           </div>
           <ThemeToggle />
@@ -433,6 +505,14 @@ export default function Home() {
         ) : initializing ? (
           <div className="flex flex-1 items-center justify-center gap-2 text-sm text-slate-400 dark:text-slate-500">
             <Spinner className="h-4 w-4" /> Loading…
+          </div>
+        ) : view === "landing" ? (
+          <div className="flex min-h-0 flex-1">
+            <Landing onNewProject={handleCreateProject} onImportRepo={() => setView("import")} />
+          </div>
+        ) : view === "import" ? (
+          <div className="flex min-h-0 flex-1">
+            <ImportRepoScreen onSuccess={handleImportSuccess} onCancel={() => setView("landing")} />
           </div>
         ) : (
           <div className="flex min-h-0 flex-1">
@@ -470,7 +550,7 @@ export default function Home() {
                         onFixInChat={handleFixInChat}
                       />
                     ) : (
-                      <ChatPanel messages={messages} onSend={handleSend} busy={busy || !projectId} onConsumeAnimation={handleConsumeAnimation} />
+                      <ChatPanel messages={messages} onSend={handleSend} busy={busy || !projectId} busyStage={busyStage} onConsumeAnimation={handleConsumeAnimation} />
                     )}
                   </div>
                 </>
@@ -505,6 +585,8 @@ export default function Home() {
                   onNodePositionsChange={compareResult ? undefined : handleNodePositionsChange}
                   onNodeSave={compareResult ? undefined : handleNodeSave}
                   busy={!compareResult && busy}
+                  projectName={projectName}
+                  onShare={!compareResult && activeVersionId ? handleCopyShareLink : undefined}
                   simDock={
                     // Permanently on the canvas, not gated behind opening
                     // the Simulate tab — the sidebar tab is now only for

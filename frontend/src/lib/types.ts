@@ -57,6 +57,28 @@ export type VersionSummary = Pick<
   "id" | "project_id" | "parent_version_id" | "label" | "kind" | "created_at"
 >;
 
+// Mirrors backend/app/models/evidence.py's Evidence — one discrete,
+// source-attributed fact extracted from an ingested repo.
+export interface Evidence {
+  id: string;
+  fact: string;
+  detail: string;
+  source: string;
+}
+
+// Mirrors POST /ingest's real response shape (backend/app/api/routes/ingestion.py).
+export interface IngestResponse {
+  ok: boolean;
+  error?: string;
+  unsupported_notes: string[];
+  project?: { id: string; name: string; created_at: string };
+  version?: VersionRow;
+  summary?: string;
+  citations?: Record<string, string[]>;
+  evidence?: Evidence[];
+  dropped_uncited_refs?: string[];
+}
+
 // Mirrors backend/app/models/diff.py
 export type DiffStatus = "added" | "removed" | "changed";
 
@@ -98,6 +120,12 @@ export interface TokenUsage {
   completion_tokens: number;
   total_tokens: number;
 }
+
+// One real SSE frame from POST /projects/{id}/chat/stream — "stage" fires
+// exactly when the backend pipeline actually starts that real step
+// (services/interview.py's OnStage), never a client-side guess; "result"
+// carries the same payload shape the plain POST /chat returns.
+export type ChatStreamEvent = { type: "stage"; stage: string } | { type: "result"; payload: ChatResponse };
 
 export type ChatResponse =
   | { kind: "question"; question: string; quick_replies: string[]; usage: TokenUsage | null }

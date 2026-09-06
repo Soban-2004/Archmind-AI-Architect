@@ -143,5 +143,10 @@ async def persist_ingestion(project_name: str, result: IngestionResult) -> dict:
     came back."""
     assert result.ok and result.state is not None
     project = await repo.create_project(project_name)
-    version = await repo.create_version(project["id"], result.state, kind="initial")
+    # "reconstruction", not "initial" -- schema.sql documents this kind
+    # explicitly, and the frontend's VersionHistory timeline already has a
+    # dedicated visual treatment for it (orange dot, History icon) that
+    # never actually triggered until this was fixed, since every ingested
+    # version was silently tagged as a normal fresh interview instead.
+    version = await repo.create_version(project["id"], result.state, kind="reconstruction")
     return {"project": project, "version": version}

@@ -14,22 +14,26 @@ function formatElapsed(ms: number): string {
   return minutes > 0 ? `${minutes}:${String(seconds).padStart(2, "0")}` : `${seconds}s`;
 }
 
-/** Rotating "what's happening" status while a chat turn is in flight — see
- * lib/useThinkingStatus for why this is client-side perceived progress
- * rather than real backend steps (a single blocking LLM call has no
- * progress channel to report). A long request (production-tier redesigns
- * especially) gets an honest elapsed timer and reassurance note instead of
- * just sitting on a static "thinking…" with nothing else for minutes. */
-function ThinkingBubble({ active }: { active: boolean }) {
+/** "What's happening" status while a chat turn is in flight. When
+ * `realStage` is provided (the streaming path — POST /chat/stream, see
+ * lib/api.ts's sendChatMessageStream), this shows the REAL backend stage
+ * as it actually starts (services/interview.py's OnStage) — not a guess.
+ * Falls back to lib/useThinkingStatus's honestly-cosmetic rotating phrase
+ * only when no real stage is available (the plain, non-streaming send
+ * path), so this component never claims something's real that isn't. A
+ * long request (production-tier redesigns especially) still gets an
+ * honest elapsed timer and reassurance note either way. */
+function ThinkingBubble({ active, realStage }: { active: boolean; realStage?: string | null }) {
   const { phrase, elapsedMs } = useThinkingStatus(active);
   if (!active) return null;
+  const displayText = realStage || phrase;
   return (
     <div className="flex items-start gap-2 pl-9">
       <div className="flex flex-col gap-1 rounded-2xl rounded-bl-sm border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-500 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
         <div className="flex items-center gap-2">
           <Spinner className="h-3.5 w-3.5 shrink-0" />
-          <span key={phrase} className="animate-fade-in">
-            {phrase}
+          <span key={displayText} className="animate-fade-in">
+            {displayText}
           </span>
         </div>
         {elapsedMs > 20000 && (
@@ -66,10 +70,13 @@ interface Props {
   messages: ChatMessage[];
   onSend: (message: string) => Promise<void>;
   busy: boolean;
+  /** Real live pipeline stage text (see ThinkingBubble above) — omit or
+   * pass null/undefined to fall back to the cosmetic rotating status. */
+  busyStage?: string | null;
   onConsumeAnimation: (index: number) => void;
 }
 
-export function ChatPanel({ messages, onSend, busy, onConsumeAnimation }: Props) {
+export function ChatPanel({ messages, onSend, busy, busyStage, onConsumeAnimation }: Props) {
   const [draft, setDraft] = useState("");
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -173,7 +180,7 @@ export function ChatPanel({ messages, onSend, busy, onConsumeAnimation }: Props)
                 )}
               </div>
             ))}
-            <ThinkingBubble active={busy} />
+            <ThinkingBubble active={busy} realStage={busyStage} />
             <div ref={bottomRef} />
           </div>
         )}
