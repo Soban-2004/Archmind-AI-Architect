@@ -28,6 +28,24 @@ class ChatTurnResult:
     error: str | None = None
 
 
+def _friendly_provider_error(e: Exception) -> str:
+    """A raw LLM-provider exception (rate limit, network hiccup, auth,
+    ...) used to propagate straight out of handle_chat_turn uncaught —
+    which risks the browser seeing a bare connection failure ("Failed to
+    fetch") instead of any readable message, if it escapes far enough to
+    dodge FastAPI's own CORS-wrapped error response. Give the user
+    something they can actually act on instead."""
+    msg = str(e)
+    lowered = msg.lower()
+    if "rate_limit" in lowered or "429" in msg or "413" in msg or "tokens per minute" in lowered:
+        return (
+            "The AI provider's rate limit was hit for this request — this project's "
+            "conversation has grown long, and the full history is sent with every turn. "
+            "Wait a few seconds and try again, or start a new project to reset the context."
+        )
+    return f"The AI provider request failed: {msg}"
+
+
 def _state_from_row(version_row: dict | None) -> ArchitectureState:
     if version_row is None:
         return empty_state()
@@ -124,7 +142,16 @@ async def handle_chat_turn(project_id: UUID, user_message: str, base_version_id:
 
     retry_note: str | None = None
     for attempt in range(MAX_ENGINE_RETRIES + 1):
-        turn = await provider.interview_turn(system_prompt, conversation, retry_note=retry_note)
+        try:
+            turn = await provider.interview_turn(system_prompt, conversation, retry_note=retry_note)
+        except Exception as e:
+            # A provider-level failure (rate limit, network, auth) isn't
+            # something a same-request retry can fix, and letting it
+            # propagate unhandled is exactly what produced a bare "Failed
+            # to fetch" in the browser instead of a readable error —
+            # mirrors the fallback-on-LLM-failure pattern already used in
+            # compare.py/analyzer.py for the non-core-path LLM calls.
+            return ChatTurnResult(kind="error", error=_friendly_provider_error(e))
 
         if turn.action == "ask_question":
             await repo.add_message(project_id, "assistant", turn.question or "")
