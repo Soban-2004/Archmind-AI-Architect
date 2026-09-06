@@ -15,6 +15,14 @@ from app.services.intent_router import DEFAULT_ANALYSIS_MULTIPLIER, classify_int
     "Do we need a cache?",
     "Explain the role of the CDN.",
     "What's the purpose of the queue?",
+    # Regression: found live — a leading conversational filler ("so",
+    # "well", "yeah but") used to push the trigger phrase past a strict
+    # start-of-message anchor and fall through to the full edit pipeline,
+    # which then tripped the token budget gate on a large project purely
+    # because the question wasn't phrased as the very first word.
+    "so is one backend enough for this use case??",
+    "well, do we need a queue?",
+    "yeah but is a single instance really sufficient here",
 ])
 def test_classify_advisory(message):
     assert classify_intent(message) == "advisory"
@@ -38,6 +46,8 @@ def test_classify_analysis(message):
     "Why not add a cache?",  # question-shaped, but an edit verb is present -> never diverted
     "Increase the budget to $500.",
     "Which database should we add for analytics?",  # advisory-shaped opener, but "add" wins
+    "so can you add a cache please",  # filler + edit verb -> still edit, not falsely caught by the wider advisory match now
+    "yeah, is the load balancer needed, also add a second backend",  # advisory phrase present, but edit verb still wins
 ])
 def test_classify_edit_shaped_never_diverted(message):
     assert classify_intent(message) is None

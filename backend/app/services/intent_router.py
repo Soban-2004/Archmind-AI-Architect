@@ -42,8 +42,21 @@ _EDIT_VERB_RE = re.compile(
 # happen", never "make it happen". Routed to the simulator-backed
 # analysis lane (see services/interview.py's _handle_analysis), not an
 # LLM guessing at load numbers from scratch.
+#
+# NOT anchored to the start of the message (an earlier version required
+# `^\s*` before the trigger phrase) — a real message caught this live:
+# "so is one backend enough for this use case??" starts with a completely
+# normal conversational filler ("so"), which pushed the actual question
+# phrase past the anchor and left it unmatched, silently falling through
+# to the full edit pipeline and tripping the token pre-flight gate on a
+# large project purely because the question didn't open with the trigger
+# word. The edit-verb check above still runs first and unconditionally
+# wins regardless of where in the message it appears, so dropping the
+# anchor doesn't reopen the false-positive risk this module exists to
+# avoid — it just stops requiring the trigger phrase to be the literal
+# first word.
 _ANALYSIS_RE = re.compile(
-    r"^\s*("
+    r"("
     r"what (would |will )?happens?\s+(if|when|to)\b|"
     r"what if\b|"
     r"how (would|does|will) (this|it|the (system|architecture))\s+(handle|hold up|cope|scale|perform)\b|"
@@ -53,19 +66,20 @@ _ANALYSIS_RE = re.compile(
 )
 
 # Unambiguous question / recommendation framing — routed to the advisory
-# lane (see services/interview.py's _handle_advisory).
+# lane (see services/interview.py's _handle_advisory). Also not anchored
+# to the start of the message, for the same reason as _ANALYSIS_RE above.
 _ADVISORY_RE = re.compile(
-    r"^\s*("
-    r"why (do|does|is|are|should)\b|"
-    r"what('s| is) the (purpose|point|role) of\b|"
-    r"which\b.*\bshould\b|"
-    r"should (i|we) use\b|"
-    r"(is|are)\b.*\bneeded\b|"
-    r"do (i|we) (need|require)\b|"
-    r"(recommend|suggest)\b.*\?\s*$|"
-    r"(compare|pros and cons of)\b|"
-    r"what database should\b|"
-    r"explain\b"
+    r"("
+    r"\bwhy (do|does|is|are|should)\b|"
+    r"\bwhat('s| is) the (purpose|point|role) of\b|"
+    r"\bwhich\b.*\bshould\b|"
+    r"\bshould (i|we) use\b|"
+    r"\b(is|are)\b.*\b(needed|enough|necessary|overkill|sufficient|justified|warranted)\b|"
+    r"\bdo (i|we) (need|require)\b|"
+    r"\b(recommend|suggest)\b.*\?\s*$|"
+    r"\b(compare|pros and cons of)\b|"
+    r"\bwhat database should\b|"
+    r"\bexplain\b"
     r")",
     re.IGNORECASE,
 )
