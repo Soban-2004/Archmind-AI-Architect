@@ -10,6 +10,32 @@ from app.models.simulation import SimulationResult
 from app.models.state import ArchitectureState, Constraint
 from app.llm.reference_patterns import REFERENCE_PATTERNS
 
+# Shared by every prompt whose free-text output lands in a chat bubble or
+# Q&A panel (all now rendered as real markdown, not plain text — see
+# frontend/src/components/ui.tsx's ChatMarkdown). Without this, the model
+# defaults to one dense paragraph — technically correct, but not how a
+# production chat assistant (Claude, ChatGPT) actually presents a
+# multi-part answer, and a live user caught exactly that: a real answer
+# came back as a single unbroken block of prose. This is the fix, applied
+# everywhere a model narrates something to the user rather than emitting
+# commands (advisory, analysis, Scorecard Q&A) — INTERVIEW_SYSTEM_PROMPT's
+# `question`/`summary` stay deliberately short by their own spec and don't
+# need it.
+RESPONSE_FORMATTING_GUIDANCE = """
+Format your answer like a real chat assistant would (Markdown IS rendered,
+not shown as raw text):
+- Lead with the direct answer in one short sentence or two — don't restate
+  the question first.
+- Use short bullet points for multi-part reasoning instead of one dense
+  paragraph. Reserve numbered lists for genuinely sequential steps.
+- **Bold** the specific number, term, or recommendation that matters most
+  — not whole sentences.
+- Skip headings for a short answer; only use them (##) if the answer
+  naturally has multiple distinct sections.
+- Be concrete and concise — no filler, no repeating facts already given
+  above back at the user.
+"""
+
 INTERVIEW_SYSTEM_PROMPT = """You are the AI Architect requirements interviewer.
 
 You always operate in exactly one of three modes per turn:
@@ -217,7 +243,7 @@ quote the specific finding that says so).
 
 Put every rule_id you actually relied on in `cited_rule_ids`. Do not
 invent rule_ids that aren't in the scorecard below.
-
+{formatting}
 Output ONLY valid JSON matching this schema:
 {schema}
 
@@ -237,6 +263,7 @@ def build_scorecard_qa_prompt(state: ArchitectureState, scorecard: Scorecard) ->
         overall_score=scorecard.overall_score,
         scorecard=scorecard.model_dump_json(),
         state=state.model_dump_json(),
+        formatting=RESPONSE_FORMATTING_GUIDANCE,
     )
 
 
@@ -269,7 +296,7 @@ For a "which technology should we use" recommendation: reason from the
 stated requirements (scale, budget, consistency, availability) below, and
 be concrete (name real options and a clear recommendation), not
 generic ("it depends").
-
+{formatting}
 Output ONLY valid JSON matching this schema:
 {schema}
 
@@ -287,7 +314,9 @@ def build_advisory_prompt(state: ArchitectureState, question: str) -> str:
     schema = AdvisoryAnswer.model_json_schema()
     topology = _compact_topology(state)
     constraints = json.dumps([c.model_dump(mode="json") for c in state.constraints])
-    return ADVISORY_SYSTEM_PROMPT.format(schema=schema, topology=topology, constraints=constraints, question=question)
+    return ADVISORY_SYSTEM_PROMPT.format(
+        schema=schema, topology=topology, constraints=constraints, question=question, formatting=RESPONSE_FORMATTING_GUIDANCE
+    )
 
 
 ANALYSIS_SYSTEM_PROMPT = """You are the AI Architect, explaining the results of a REAL traffic
@@ -299,7 +328,7 @@ first and why, and — only if it's a natural part of answering the
 question — what kind of change would help, described in prose. You have
 no ability to make that change from here; there is no `commands` field in
 your output at all.
-
+{formatting}
 Output ONLY valid JSON matching this schema:
 {schema}
 
@@ -319,7 +348,9 @@ def build_analysis_prompt(result: SimulationResult, question: str) -> str:
     schema = AnalysisAnswer.model_json_schema()
     loads = json.dumps([l.model_dump(mode="json") for l in result.loads])
     findings = json.dumps([f.model_dump(mode="json") for f in result.findings])
-    return ANALYSIS_SYSTEM_PROMPT.format(schema=schema, scenario=result.scenario, loads=loads, findings=findings, question=question)
+    return ANALYSIS_SYSTEM_PROMPT.format(
+        schema=schema, scenario=result.scenario, loads=loads, findings=findings, question=question, formatting=RESPONSE_FORMATTING_GUIDANCE
+    )
 
 
 JUDGE_SYSTEM_PROMPT = """You are an independent reviewer of a system architecture diagram that

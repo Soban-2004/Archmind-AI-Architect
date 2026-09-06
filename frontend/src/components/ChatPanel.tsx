@@ -132,9 +132,9 @@ export function ChatPanel({ messages, onSend, busy, onConsumeAnimation }: Props)
                 )}
                 <div className={`flex max-w-[82%] flex-col gap-1 ${m.role === "user" ? "items-end" : "items-start"}`}>
                   <div
-                    className={`whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-[13px] leading-relaxed shadow-sm ${
+                    className={`rounded-2xl px-3.5 py-2 text-[13px] leading-relaxed shadow-sm ${
                       m.role === "user"
-                        ? "rounded-br-sm bg-brand-600 text-white"
+                        ? "whitespace-pre-wrap rounded-br-sm bg-brand-600 text-white"
                         : "rounded-bl-sm border border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
                     }`}
                   >

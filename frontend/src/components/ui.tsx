@@ -1,4 +1,6 @@
 import { useEffect, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
+import ReactMarkdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 // Small shared design-system primitives so every panel (chat, analyzer,
 // compare, simulate) reads as one product instead of four separately
@@ -131,6 +133,44 @@ export function EmptyState({ icon, title, description }: { icon: ReactNode; titl
  * the smooth, alive feel users expect from a chat UI without pretending
  * the generation itself was streamed.
  */
+// Chat responses are asked (llm/prompts.py) to format like a real
+// assistant reply — short verdict up front, bullets for multi-part
+// reasoning, bold for the key term/number — not one dense paragraph. That
+// only reads as intended if it's actually rendered as markdown instead of
+// literal asterisks/dashes, which is what this renders it as. Styling is
+// intentionally compact (small margins, no oversized headings) to match
+// the chat bubble's own 13px/leading-relaxed text rather than a
+// full-size document — a heading in a chat reply should read as "this is
+// the important line", not jump to document-title scale.
+const MARKDOWN_COMPONENTS: Components = {
+  p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+  strong: ({ children }) => <strong className="font-semibold text-slate-900 dark:text-slate-100">{children}</strong>,
+  ul: ({ children }) => <ul className="mb-2 ml-4 list-disc space-y-1 last:mb-0 marker:text-slate-400 dark:marker:text-slate-500">{children}</ul>,
+  ol: ({ children }) => <ol className="mb-2 ml-4 list-decimal space-y-1 last:mb-0 marker:text-slate-400 dark:marker:text-slate-500">{children}</ol>,
+  li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+  h1: ({ children }) => <p className="mb-1 mt-1.5 text-[13px] font-semibold first:mt-0">{children}</p>,
+  h2: ({ children }) => <p className="mb-1 mt-1.5 text-[13px] font-semibold first:mt-0">{children}</p>,
+  h3: ({ children }) => <p className="mb-1 mt-1.5 text-[13px] font-semibold first:mt-0">{children}</p>,
+  code: ({ children }) => <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[12px] dark:bg-slate-700">{children}</code>,
+  a: ({ children, href }) => (
+    <a href={href} target="_blank" rel="noreferrer" className="text-brand-600 underline underline-offset-2 dark:text-indigo-300">
+      {children}
+    </a>
+  ),
+  blockquote: ({ children }) => (
+    <blockquote className="border-l-2 border-slate-300 pl-2 italic text-slate-500 dark:border-slate-600 dark:text-slate-400">{children}</blockquote>
+  ),
+  hr: () => <hr className="my-2 border-slate-200 dark:border-slate-700" />,
+};
+
+export function ChatMarkdown({ text }: { text: string }) {
+  return (
+    <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
+      {text}
+    </ReactMarkdown>
+  );
+}
+
 export function TypewriterText({ text, active, onDone }: { text: string; active: boolean; onDone?: () => void }) {
   // Lazy initial state — a message's `text`/`active` never change after
   // this component mounts (only whether it's still animating does, via
@@ -155,7 +195,12 @@ export function TypewriterText({ text, active, onDone }: { text: string; active:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return <span className="whitespace-pre-wrap">{text.slice(0, shown)}</span>;
+  // Re-parses the growing prefix as markdown every tick — an unterminated
+  // marker (an opening "**" not yet closed) just renders as a literal
+  // character until the reveal catches up to its match, the same
+  // graceful-degradation streaming markdown UIs rely on elsewhere; it
+  // never throws on a truncated string.
+  return <ChatMarkdown text={text.slice(0, shown)} />;
 }
 
 export function Spinner({ className = "" }: { className?: string }) {

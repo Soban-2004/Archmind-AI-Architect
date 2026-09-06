@@ -4,7 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { AlertTriangle, DollarSign, SendHorizontal, X } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Category, Scorecard, Severity } from "@/lib/types";
-import { IconButton, ProgressBar, ScoreRing, Spinner } from "./ui";
+import { ChatMarkdown, IconButton, ProgressBar, ScoreRing, Spinner } from "./ui";
 
 interface Props {
   projectId: string;
@@ -191,7 +191,9 @@ export function AnalyzerPanel({ projectId, versionId, onExit }: Props) {
             {qa.map((entry, i) => (
               <div key={i} className="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-800/50">
                 <p className="text-xs font-medium text-slate-700 dark:text-slate-200">{entry.question}</p>
-                <p className="mt-1 text-xs leading-relaxed text-slate-600 dark:text-slate-400">{entry.answer}</p>
+                <div className="mt-1 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+                  <ChatMarkdown text={entry.answer} />
+                </div>
                 {entry.citedRuleIds.length > 0 && (
                   <p className="mt-1.5 flex items-center gap-1 text-[10px] text-slate-400 dark:text-slate-500">
                     <AlertTriangle size={10} /> {entry.citedRuleIds.join(", ")}
