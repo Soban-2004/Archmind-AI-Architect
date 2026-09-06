@@ -16,6 +16,23 @@
   --brand-700: #4338ca;
 
   --rf-dot-color: #cbd5e1;
+
+  /* "Blueprint" identity — Landing.tsx only, the rest of the app keeps
+     the brand- and slate-based tokens above and Geist type untouched.
+     A schematic engineering-drawing palette (not the flat SaaS-gradient
+     look) with its own IBM Plex type pairing, kept as real tokens (not
+     one-off hex literals in the component) so light/dark stay consistent
+     the same way every other color in this file already does. */
+  --bp-paper: #f5f7fb;
+  --bp-ink: #0b1220;
+  --bp-surface: #ffffff;
+  --bp-line: #d6deeb;
+  --bp-line-strong: #b9c6dd;
+  --bp-muted: #5b6b87;
+  --bp-accent: #4f46e5;
+  --bp-accent-soft: #eef0fe;
+  --bp-accent-2: #0ea5e9;
+  --bp-good: #059669;
 }
 
 .dark {
@@ -29,6 +46,17 @@
   --brand-500: #818cf8;
   --brand-600: #6366f1;
   --brand-700: #4f46e5;
+
+  --bp-paper: #070a12;
+  --bp-ink: #e7ecf7;
+  --bp-surface: #0e1526;
+  --bp-line: #1e293f;
+  --bp-line-strong: #2a3a57;
+  --bp-muted: #8592ad;
+  --bp-accent: #6366f1;
+  --bp-accent-soft: #191a3a;
+  --bp-accent-2: #38bdf8;
+  --bp-good: #34d399;
 }
 
 @theme inline {
@@ -42,6 +70,19 @@
   --color-brand-700: var(--brand-700);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  --color-bp-paper: var(--bp-paper);
+  --color-bp-ink: var(--bp-ink);
+  --color-bp-surface: var(--bp-surface);
+  --color-bp-line: var(--bp-line);
+  --color-bp-line-strong: var(--bp-line-strong);
+  --color-bp-muted: var(--bp-muted);
+  --color-bp-accent: var(--bp-accent);
+  --color-bp-accent-soft: var(--bp-accent-soft);
+  --color-bp-accent-2: var(--bp-accent-2);
+  --color-bp-good: var(--bp-good);
+  --font-plex-sans: var(--font-plex-sans);
+  --font-plex-mono: var(--font-plex-mono);
 }
 
 body {
