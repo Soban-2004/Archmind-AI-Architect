@@ -401,6 +401,47 @@ pass over chat and the canvas:
   triple particles, ok = slow single), so the canvas shows where traffic
   is pooling up, not just which nodes are colored red.
 
+## Judge pass (a second model as defense in depth)
+
+Every prompt fix in the "Live testing findings" log above shares a
+weakness: it's a rule the architect model has to remember, and a
+differently-phrased request can still slip past it. Rather than keep
+patching the architect's own prompt indefinitely, added a genuinely
+independent second opinion: after the architect (Groq) proposes commands
+and they're applied, a different provider (Gemini,
+`backend/app/llm/gemini_provider.py`) reviews the resulting architecture
+against a fixed checklist (`JUDGE_SYSTEM_PROMPT` in `llm/prompts.py`) —
+backwards edge direction, a caller bypassing a load_balancer/api_gateway
+that fronts it, duplicate nodes standing in for `scaling_mode`, orphaned
+nodes, unjustified production infra, and whether a "fix this bottleneck"
+request actually addressed every bottleneck it named. A `"blocking"`
+finding triggers a retry (reusing the existing validation-failure retry
+loop, same `MAX_ENGINE_RETRIES` budget); a `"minor"` finding is logged but
+doesn't hold up the user's turn. Optional and additive: with no
+`GEMINI_API_KEY` configured, `get_judge_provider()` returns `None` and the
+architect's output is used as-is — same fallback-on-LLM-failure pattern
+already used everywhere else an LLM call isn't the core path.
+
+Verified live, not just unit-tested: ran the judge directly against the
+actual polluted "Stock Hinge" project state from the duplicate-backend-
+node bug found earlier — it correctly flagged both real issues as
+`"blocking"` (the frontend edge bypassing the API gateway, and the three
+duplicate backend nodes) by exact node id, plus a `"minor"` finding
+(three database replicas, unjustified at the project's real 40-80 RPS)
+that hadn't been explicitly called out before. Separately confirmed the
+judge correctly downgrades a genuine but softer over-provisioning call (a
+cache+replica added for a 30 RPS/$150-budget project) to `"minor"` rather
+than forcing a retry over a judgment call.
+
+Known rough edge, not yet fixed: `GroqProvider`/`GeminiProvider` are
+process-wide singletons (`@lru_cache`) that stash `last_usage` as an
+instance attribute rather than returning it — under real concurrent
+requests two calls could race and the session token counter could
+attribute one request's usage to another's response. Harmless for the
+counter's actual purpose (an approximate running total) but worth fixing
+properly (return usage instead of stashing it) before this matters under
+real concurrent load.
+
 ## What's next (not yet built)
 
 Phase 5 — existing-project ingestion (repo/ZIP → static analysis →

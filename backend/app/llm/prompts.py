@@ -4,7 +4,8 @@ from app.models.analysis import Scorecard, ScorecardAnswer
 from app.models.commands import InterviewTurnOutput
 from app.models.compare import CompareExplanation
 from app.models.diff import VersionDiff
-from app.models.state import ArchitectureState
+from app.models.judge import JudgeVerdict
+from app.models.state import ArchitectureState, Constraint
 from app.llm.reference_patterns import REFERENCE_PATTERNS
 
 INTERVIEW_SYSTEM_PROMPT = """You are the AI Architect requirements interviewer.
@@ -216,6 +217,69 @@ def build_scorecard_qa_prompt(state: ArchitectureState, scorecard: Scorecard) ->
         overall_score=scorecard.overall_score,
         scorecard=scorecard.model_dump_json(),
         state=state.model_dump_json(),
+    )
+
+
+JUDGE_SYSTEM_PROMPT = """You are an independent reviewer of a system architecture diagram that
+another AI just proposed. You did NOT design it and you never redesign it
+— you only check the proposal below against the checklist and report
+what's wrong, if anything. You cannot see or emit mutation commands;
+your only output is a verdict.
+
+Check ALL of the following, and list every one that's actually violated
+as an issue (severity "blocking" for something structurally wrong,
+"minor" for something questionable but not incorrect):
+
+1. Edge direction: a CDN sits in front of what it serves, so the edge is
+   CDN -> the thing it serves, never the reverse. A load_balancer or
+   api_gateway routes callers TO a service, so the edge is
+   load_balancer/api_gateway -> service, never service -> load_balancer/
+   api_gateway.
+2. No caller may bypass a load_balancer/api_gateway that already fronts
+   its target — if one exists routing to a service, every caller of that
+   service must go through it, no direct edges around it.
+3. No node may be a near-duplicate of another node representing the same
+   job just to show more capacity (e.g. "X" and "X (replica)"/"X
+   (instance 2)"). Horizontal scaling is scaling_mode="stateless" on ONE
+   node. A second node for the same service is only correct if it does a
+   genuinely different job (e.g. an API service vs. a background worker).
+4. No node should be added and left with zero edges (added but never
+   wired to anything).
+5. Production infrastructure (CDN, load balancer, API gateway, cache,
+   queue, replica) must be justified by the actual stated constraints
+   below — flag anything that looks added "just in case" given the scale/
+   budget/availability actually stated.
+6. If the user's request (below) named specific overloaded/at-risk
+   components, the proposal must address ALL of them, not just one or
+   two — and any fix must actually be wired to the real component(s) that
+   were overloaded, not to some other node that happens to be nearby in
+   the diagram.
+
+Do not flag anything not on this list — you are not redesigning the
+architecture or offering opinions on style, just checking these specific,
+concrete failure modes. If none apply, approve it.
+
+Output ONLY valid JSON matching this schema:
+{schema}
+
+User's request this turn: {user_message}
+
+Constraints: {constraints}
+
+Proposed architecture — nodes: {nodes}
+
+Proposed architecture — edges: {edges}
+"""
+
+
+def build_judge_prompt(user_message: str, constraints: list[Constraint], state: ArchitectureState) -> str:
+    schema = JudgeVerdict.model_json_schema()
+    return JUDGE_SYSTEM_PROMPT.format(
+        schema=schema,
+        user_message=user_message,
+        constraints=json.dumps([c.model_dump() for c in constraints]),
+        nodes=json.dumps([n.model_dump() for n in state.nodes]),
+        edges=json.dumps([e.model_dump() for e in state.edges]),
     )
 
 

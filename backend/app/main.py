@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -6,6 +7,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import analyzer, chat, compare, projects, simulation
 from app.config import settings
 from app.db.client import close_pool, get_pool
+
+# INFO so the judge pass's verdicts (services/interview.py) are actually
+# visible — Python's root logger defaults to WARNING, which would
+# otherwise silently swallow them.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 
 @asynccontextmanager

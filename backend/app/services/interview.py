@@ -1,21 +1,25 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from uuid import UUID
 
 from app.db import repository as repo
-from app.llm.factory import get_llm_provider
-from app.llm.prompts import build_system_prompt
+from app.llm.factory import get_judge_provider, get_llm_provider
+from app.llm.prompts import build_judge_prompt, build_system_prompt
 from app.llm.tokens import estimate_messages_tokens, estimate_tokens
 from app.models.commands import AnnotateDecisionCommand
 from app.models.diff import VersionDiff
+from app.models.judge import JudgeVerdict
 from app.models.state import ADR, ArchitectureState, TriggeredBy, empty_state, gen_id
 from app.services.adr import build_templated_decision
 from app.services.deterministic import try_deterministic_command
 from app.services.diff import diff_states
 from app.services.mutation_engine import apply_commands
 
-MAX_ENGINE_RETRIES = 2  # additional retries when mutation validation itself fails
+logger = logging.getLogger(__name__)
+
+MAX_ENGINE_RETRIES = 2  # additional retries when mutation validation itself fails, or the judge rejects
 
 # Groq's free/on-demand tier caps a single request at 8,000 tokens/minute
 # — and that cap counts PROMPT + COMPLETION together. Calibrated against
@@ -103,6 +107,29 @@ def _friendly_provider_error(e: Exception) -> str:
             "Wait a few seconds and try again, or start a new project to reset the context."
         )
     return f"The AI provider request failed: {msg}"
+
+
+async def _run_judge(user_message: str, new_state: ArchitectureState) -> JudgeVerdict | None:
+    """A second, independent model (Gemini — see llm/gemini_provider.py)
+    reviewing the architect's (Groq's) proposed architecture for
+    structural correctness against a fixed checklist (llm/prompts.py's
+    JUDGE_SYSTEM_PROMPT) before it's accepted. Returns None — judge
+    skipped, proposal used as-is — when no judge is configured
+    (GEMINI_API_KEY unset) or the judge call itself fails; a second
+    opinion is a quality improvement, not something the whole turn should
+    fail over if it's unavailable, mirroring the fallback-on-LLM-failure
+    pattern already used for compare.py/analyzer.py's non-core LLM calls."""
+    judge = get_judge_provider()
+    if judge is None:
+        return None
+    try:
+        prompt = build_judge_prompt(user_message, new_state.constraints, new_state)
+        verdict = await judge.structured_json(prompt, "Review this architecture.", JudgeVerdict)
+        logger.info("judge verdict: approved=%s issues=%s", verdict.approved, [(i.severity, i.description) for i in verdict.issues])
+        return verdict
+    except Exception:
+        logger.exception("judge pass failed; proceeding without a second opinion")
+        return None
 
 
 def _state_from_row(version_row: dict | None) -> ArchitectureState:
@@ -238,6 +265,19 @@ async def handle_chat_turn(project_id: UUID, user_message: str, base_version_id:
             ),
         )
 
+    # Accumulated across every attempt in this loop, not just the last one
+    # — a retry (validation failure or judge rejection) still spends real
+    # tokens on the attempt that got discarded, and the session token
+    # counter should reflect what was actually spent, not just what the
+    # final accepted attempt cost.
+    total_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+    def _add_usage(u: dict[str, int] | None) -> None:
+        if not u:
+            return
+        for k in total_usage:
+            total_usage[k] += u.get(k, 0)
+
     retry_note: str | None = None
     for attempt in range(MAX_ENGINE_RETRIES + 1):
         try:
@@ -251,11 +291,11 @@ async def handle_chat_turn(project_id: UUID, user_message: str, base_version_id:
             # compare.py/analyzer.py for the non-core-path LLM calls.
             return ChatTurnResult(kind="error", error=_friendly_provider_error(e))
 
-        usage = getattr(provider, "last_usage", None)
+        _add_usage(getattr(provider, "last_usage", None))
 
         if turn.action == "ask_question":
             await repo.add_message(project_id, "assistant", turn.question or "")
-            return ChatTurnResult(kind="question", question=turn.question, quick_replies=turn.quick_replies, usage=usage)
+            return ChatTurnResult(kind="question", question=turn.question, quick_replies=turn.quick_replies, usage=total_usage)
 
         commands = turn.commands or []
         is_tier = turn.action == "generate_tier"
@@ -270,6 +310,15 @@ async def handle_chat_turn(project_id: UUID, user_message: str, base_version_id:
 
         new_state = result.state
         assert new_state is not None
+
+        verdict = await _run_judge(user_message, new_state)
+        if verdict is not None:
+            _add_usage(getattr(get_judge_provider(), "last_usage", None))
+            blocking = [i for i in verdict.issues if i.severity == "blocking"]
+            if blocking and attempt < MAX_ENGINE_RETRIES:
+                retry_note = "A structural review flagged: " + "; ".join(i.description for i in blocking)
+                continue
+
         summary = turn.summary or ("New tier generated." if is_tier else "Architecture updated.")
         model_provided_decision = any(isinstance(c, AnnotateDecisionCommand) for c in commands)
 
@@ -282,7 +331,7 @@ async def handle_chat_turn(project_id: UUID, user_message: str, base_version_id:
             summary=summary,
             model_provided_decision=model_provided_decision,
             label=turn.tier_label if is_tier else None,
-            usage=usage,
+            usage=total_usage,
         )
 
     return ChatTurnResult(kind="error", error="Unexpected: exhausted retries without returning.")
