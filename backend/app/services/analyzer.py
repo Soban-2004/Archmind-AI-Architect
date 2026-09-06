@@ -15,6 +15,7 @@ from app.llm.factory import get_llm_provider
 from app.llm.prompts import build_scorecard_qa_prompt
 from app.models.analysis import Category, CategoryScore, Scorecard, ScorecardAnswer
 from app.models.state import ArchitectureState, ConstraintType
+from app.services.simulator import run_simulation
 
 
 def score_architecture(state: ArchitectureState) -> Scorecard:
@@ -32,7 +33,17 @@ def score_architecture(state: ArchitectureState) -> Scorecard:
 
     overall = round(sum(c.score for c in categories) / len(categories))
 
-    estimated_cost, breakdown = (None, []) if not state.nodes else estimate_monthly_cost(state)
+    # Cost is sized against real simulated load (a baseline 1x run, nothing
+    # killed) rather than a flat 1-instance-per-node guess — see cost.py's
+    # module docstring. This is the same baseline the Simulate tab itself
+    # runs, so the Scorecard's cost number and the canvas's load bars are
+    # always describing the same traffic.
+    if not state.nodes:
+        estimated_cost, breakdown = None, []
+    else:
+        baseline = run_simulation(state, multiplier=1.0, kill_node_ids=[])
+        incoming_rps = {l.node_id: l.incoming_rps for l in baseline.loads}
+        estimated_cost, breakdown = estimate_monthly_cost(state, incoming_rps)
     budget_str = next((c.value for c in state.constraints if c.type == ConstraintType.budget_monthly_usd), None)
     budget_ceiling = parse_budget_ceiling(budget_str) if budget_str else None
 

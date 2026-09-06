@@ -19,7 +19,7 @@ from app.analyzer.cost import estimate_monthly_cost, parse_budget_ceiling
 from app.models.analysis import SEVERITY_POINTS, Category, Finding, Severity
 from app.models.state import ArchitectureState, ConstraintType, DatabaseRole, InfraType, ServiceType, SyncAsync
 
-RULES_VERSION = "v3"  # v3: added rule_over_budget, the first rule to actually compute cost rather than just check whether a budget was stated
+RULES_VERSION = "v4"  # v4: rule_over_budget now costs against real simulated per-node load (cost.py v2), not a flat 1-instance guess
 
 RuleFn = Callable[[ArchitectureState], list[Finding]]
 
@@ -243,7 +243,12 @@ def rule_over_budget(state: ArchitectureState) -> list[Finding]:
     """The only rule in Category.cost that actually checks a number against
     a number, rather than just whether a budget was stated at all — see
     analyzer/cost.py for the declared per-component cost assumptions this
-    is built on."""
+    is built on. Runs its own baseline (1x, nothing killed) simulation so
+    the cost check is sized against the project's actual stated traffic —
+    same numbers services/analyzer.py computes for the Scorecard's
+    cost_breakdown, so the two never disagree; the import is local to avoid
+    a module-load-order cycle between the analyzer and services packages
+    (services/analyzer.py already imports this module)."""
     if not state.nodes:
         return []
     budget_str = next((c.value for c in state.constraints if c.type == ConstraintType.budget_monthly_usd), None)
@@ -253,7 +258,11 @@ def rule_over_budget(state: ArchitectureState) -> list[Finding]:
     if ceiling is None or ceiling <= 0:
         return []
 
-    total, _breakdown = estimate_monthly_cost(state)
+    from app.services.simulator import run_simulation
+    sim = run_simulation(state, multiplier=1.0, kill_node_ids=[])
+    incoming_rps = {l.node_id: l.incoming_rps for l in sim.loads}
+
+    total, _breakdown = estimate_monthly_cost(state, incoming_rps)
     if total <= ceiling:
         return []
 

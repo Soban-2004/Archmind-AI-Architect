@@ -102,7 +102,11 @@ export function NodeDetailCard({ node, load, finding, onClose, onSave, killed, o
   }
 
   return (
-    <div className="animate-fade-in absolute bottom-4 left-4 z-10 w-72 rounded-xl border border-slate-200 bg-white/95 p-4 shadow-lg backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
+    // Top-left, not bottom-left: React Flow's own zoom Controls default to
+    // bottom-left, and this card was sitting directly on top of them
+    // (and, once added, the simulation dock's bottom-center bar too) —
+    // top-left is the one corner nothing else on the canvas claims.
+    <div className="animate-fade-in absolute left-4 top-4 z-10 w-72 rounded-xl border border-slate-200 bg-white/95 p-4 shadow-lg backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
       <div className="flex items-start justify-between">
         <div className="flex min-w-0 items-center gap-2.5">
           <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800 ${meta.accent}`}>

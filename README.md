@@ -603,6 +603,82 @@ point once it has a real incoming edge from the frontend, so the whole
 system now simulates as one single connected chain from the user in
 instead of two disconnected entry points that happened to be summed.
 
+## Simulation dock silently ate the canvas's own zoom controls
+
+User report: "the zoom + - buttons not working." The dock (`SimulationDock`)
+sits on `inset-x-0 bottom-4` so its pill can be centered across the full
+canvas width via flexbox — but nothing marked the wrapper `pointer-events:
+none`, so its invisible left/right edges (everything outside the visible
+pill) sat on top of, and silently absorbed clicks meant for, React Flow's
+own zoom Controls (default bottom-left) and MiniMap (bottom-right)
+underneath. Nothing was visibly wrong — the buttons were exactly where
+they'd always been, just no longer clickable.
+
+Fixed with the standard trick for a full-width absolutely-positioned
+overlay with centered content: `pointer-events-none` on the (invisible)
+full-width wrapper, `pointer-events-auto` on just the actual visible bar.
+Same pattern already used elsewhere in this codebase for exactly this
+class of bug.
+
+While in there, also fixed a real but previously only-flagged corner
+collision: `NodeDetailCard` rendered at `bottom-4 left-4` — the same
+corner React Flow's Controls claims, and now also directly behind the
+dock's bottom-center bar. Moved to `left-4 top-4`, the one canvas corner
+nothing else claims.
+
+Verified with `tsc --noEmit`, `eslint --max-warnings=0`, and a full
+`next build` — all clean.
+
+## Cost estimate was a flat per-node-type guess, blind to actual scale
+
+User: "how calculate the cost and i want precise actuall cost
+calculation." Fair — the original `cost.py` gave every node of a given
+type the same flat monthly figure (one `service` always $25/mo) no matter
+what the project's own `expected_rps`/`expected_users` constraints said. A
+lonely single backend and a load-balanced fleet of three, at the same
+declared cost, was never going to read as "precise."
+
+`cost.py` v2: each node's instance count is now derived the same way the
+Simulate tab already reasons about load — `ceil(incoming req/s ÷
+capacity.py's declared per-instance capacity for that node)` — and the
+monthly figure is `per-instance $ × instances`. The load numbers come
+from a real baseline simulation (1×, nothing killed), not a second guess:
+`services/analyzer.py`'s `score_architecture` and `rules.py`'s
+`rule_over_budget` each run `run_simulation(state, 1.0, [])` and feed its
+per-node `incoming_rps` into `estimate_monthly_cost`, so the Scorecard's
+displayed cost, the over-budget rule's verdict, and the Simulate tab's own
+load bars are all reading off the same numbers — no risk of the UI
+showing two different "actual" costs in two different places.
+
+This also means the model now reflects things a flat guess structurally
+couldn't: a cache absorbing most of its traffic keeps its own cost flat
+*and* reduces what's costed downstream of it (less load reaches origin);
+a read replica splits load off the primary the same way it already does
+in the simulator. Verified synthetically — a 3-node chain (frontend →
+backend → Postgres) at `expected_rps` 50 stays 1 instance / $70 total;
+the same chain at 5,000 rps needs 10 backend instances and 25 Postgres
+instances (Postgres's declared capacity is lower) at $1,000/mo; at 20,000
+rps, $4,000/mo. Checked live against the real Stock Hinge project too:
+its stated peak is 40-80 rps, comfortably under every one of its nodes'
+single-instance capacity (the lowest is Postgres at 200 rps/instance), so
+its total is unchanged at $220/mo against its $300/mo budget — correctly
+so; at that real, modest scale nothing here actually needs a second
+instance. The new model only diverges from the old flat guess once a
+project's stated traffic would genuinely outgrow one instance of a
+component — which is exactly when a cost estimate is supposed to move.
+
+Per-instance dollar figures (`_MONTHLY_COST_USD`) are still the same
+deliberately rough, single-region, no-discount numbers as before — that
+part was never going to be "precise" without knowing a real cloud
+provider, region, and SKU, none of which this schema captures. What
+changed is that the estimate now scales with what the project actually
+says about itself, instead of pretending every node runs alone regardless
+of load. `COST_MODEL_VERSION` (new) tracks the instance-counting logic
+separately from `COST_VERSION` (the per-instance dollar figures
+themselves); `RULES_VERSION` bumped to v4 since `rule_over_budget`'s
+output changes for any project whose real load exceeds a node's declared
+capacity.
+
 ## What's next (not yet built)
 
 Phase 5 — existing-project ingestion (repo/ZIP → static analysis →
