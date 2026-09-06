@@ -15,7 +15,17 @@ class Settings:
     # is simply skipped and the architect's output is used as-is, same as
     # every other LLM-call fallback in this codebase.
     gemini_api_key: str = os.environ.get("GEMINI_API_KEY", "")
-    gemini_model: str = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
+    # Free-tier request quotas are scoped per model, not per account/key —
+    # confirmed live (see README): a day of judge-pass testing exhausted
+    # gemini-3.6-flash's separate 20-requests/day free quota, which
+    # silently disabled the judge (a graceful failure, not a crash — see
+    # _run_judge) until it reset. gemini-3.5-flash-lite gets its own,
+    # completely separate quota bucket, and is arguably the better fit
+    # for the judge's actual job anyway — applying a fixed checklist to
+    # a small prompt, not open-ended reasoning, so the lite tier's lower
+    # latency/cost is a real win with no quality tradeoff worth paying
+    # 3.6-flash's larger footprint for.
+    gemini_model: str = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
     cors_origins: list[str] = os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",")
 
 
