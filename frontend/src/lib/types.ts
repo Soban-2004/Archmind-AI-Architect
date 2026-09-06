@@ -148,10 +148,20 @@ export interface CategoryScore {
   findings: Finding[];
 }
 
+export interface CostLineItem {
+  node_id: string;
+  node_name: string;
+  monthly_cost_usd: number;
+  basis: string;
+}
+
 export interface Scorecard {
   rules_version: string;
   overall_score: number;
   categories: CategoryScore[];
+  estimated_monthly_cost_usd: number | null;
+  budget_monthly_usd: number | null;
+  cost_breakdown: CostLineItem[];
 }
 
 export interface ScorecardAnswer {

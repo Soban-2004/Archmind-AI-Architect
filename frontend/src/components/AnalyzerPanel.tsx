@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { AlertTriangle, SendHorizontal, X } from "lucide-react";
+import { AlertTriangle, DollarSign, SendHorizontal, X } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Category, Scorecard, Severity } from "@/lib/types";
 import { IconButton, ScoreRing, Spinner } from "./ui";
@@ -100,6 +100,56 @@ export function AnalyzerPanel({ projectId, versionId, onExit }: Props) {
         {!scorecard && !loadError && (
           <div className="flex items-center gap-2 py-6 text-xs text-slate-400 dark:text-slate-500">
             <Spinner className="h-4 w-4" /> Scoring…
+          </div>
+        )}
+
+        {scorecard && scorecard.estimated_monthly_cost_usd !== null && (
+          <div className="mb-2 rounded-xl border border-slate-200 bg-white px-3.5 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-800/50">
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-1.5 text-[13px] font-medium text-slate-700 dark:text-slate-200">
+                <DollarSign size={13} /> Estimated cost
+              </span>
+              <span
+                className={`text-sm font-bold ${
+                  scorecard.budget_monthly_usd !== null && scorecard.estimated_monthly_cost_usd > scorecard.budget_monthly_usd
+                    ? "text-red-600 dark:text-red-400"
+                    : "text-slate-700 dark:text-slate-200"
+                }`}
+              >
+                ${scorecard.estimated_monthly_cost_usd.toFixed(0)}/mo
+              </span>
+            </div>
+            {scorecard.budget_monthly_usd !== null && (
+              <>
+                <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                  <div
+                    className={`h-full rounded-full ${
+                      scorecard.estimated_monthly_cost_usd > scorecard.budget_monthly_usd ? "bg-red-500" : "bg-green-500"
+                    }`}
+                    style={{ width: `${Math.min(100, (scorecard.estimated_monthly_cost_usd / scorecard.budget_monthly_usd) * 100)}%` }}
+                  />
+                </div>
+                <p className="mt-1 text-[10.5px] text-slate-400 dark:text-slate-500">budget: ${scorecard.budget_monthly_usd.toFixed(0)}/mo</p>
+              </>
+            )}
+            {scorecard.cost_breakdown.length > 0 && (
+              <details className="mt-2">
+                <summary className="cursor-pointer text-[10.5px] text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300">
+                  breakdown by component
+                </summary>
+                <ul className="mt-1.5 space-y-0.5">
+                  {scorecard.cost_breakdown.map((item) => (
+                    <li key={item.node_id} className="flex justify-between gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                      <span className="truncate">{item.node_name}</span>
+                      <span className="shrink-0">${item.monthly_cost_usd.toFixed(0)}/mo</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-1.5 text-[10px] italic text-slate-400 dark:text-slate-500">
+                  Rough, declared per-component estimates — not a real quote. See README for basis.
+                </p>
+              </details>
+            )}
           </div>
         )}
 

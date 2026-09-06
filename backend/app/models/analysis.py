@@ -53,10 +53,23 @@ class CategoryScore(BaseModel):
     findings: list[Finding]
 
 
+class CostLineItem(BaseModel):
+    node_id: str
+    node_name: str
+    monthly_cost_usd: float
+    basis: str
+
+
 class Scorecard(BaseModel):
     rules_version: str
     overall_score: int
     categories: list[CategoryScore]
+    # Populated from analyzer/cost.py — a real computed number, not just
+    # whether a budget was stated (see rule_over_budget). None only if the
+    # architecture has no nodes yet.
+    estimated_monthly_cost_usd: float | None = None
+    budget_monthly_usd: float | None = None  # the parsed ceiling this was checked against, if any
+    cost_breakdown: list[CostLineItem] = []
 
     def all_findings(self) -> list[Finding]:
         return [f for c in self.categories for f in c.findings]

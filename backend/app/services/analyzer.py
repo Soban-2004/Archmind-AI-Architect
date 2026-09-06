@@ -9,11 +9,12 @@ match a real fired rule are dropped before the answer is returned.
 """
 from __future__ import annotations
 
+from app.analyzer.cost import estimate_monthly_cost, parse_budget_ceiling
 from app.analyzer.rules import ALL_RULES, RULES_VERSION
 from app.llm.factory import get_llm_provider
 from app.llm.prompts import build_scorecard_qa_prompt
 from app.models.analysis import Category, CategoryScore, Scorecard, ScorecardAnswer
-from app.models.state import ArchitectureState
+from app.models.state import ArchitectureState, ConstraintType
 
 
 def score_architecture(state: ArchitectureState) -> Scorecard:
@@ -30,7 +31,19 @@ def score_architecture(state: ArchitectureState) -> Scorecard:
         categories.append(CategoryScore(category=cat, score=score, findings=findings))
 
     overall = round(sum(c.score for c in categories) / len(categories))
-    return Scorecard(rules_version=RULES_VERSION, overall_score=overall, categories=categories)
+
+    estimated_cost, breakdown = (None, []) if not state.nodes else estimate_monthly_cost(state)
+    budget_str = next((c.value for c in state.constraints if c.type == ConstraintType.budget_monthly_usd), None)
+    budget_ceiling = parse_budget_ceiling(budget_str) if budget_str else None
+
+    return Scorecard(
+        rules_version=RULES_VERSION,
+        overall_score=overall,
+        categories=categories,
+        estimated_monthly_cost_usd=estimated_cost,
+        budget_monthly_usd=budget_ceiling,
+        cost_breakdown=breakdown,
+    )
 
 
 async def explain_scorecard(state: ArchitectureState, scorecard: Scorecard, question: str) -> ScorecardAnswer:

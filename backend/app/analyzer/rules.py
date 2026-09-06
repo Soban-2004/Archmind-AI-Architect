@@ -15,10 +15,11 @@ from __future__ import annotations
 
 from typing import Callable
 
+from app.analyzer.cost import estimate_monthly_cost, parse_budget_ceiling
 from app.models.analysis import SEVERITY_POINTS, Category, Finding, Severity
 from app.models.state import ArchitectureState, ConstraintType, DatabaseRole, InfraType, ServiceType, SyncAsync
 
-RULES_VERSION = "v2"
+RULES_VERSION = "v3"  # v3: added rule_over_budget, the first rule to actually compute cost rather than just check whether a budget was stated
 
 RuleFn = Callable[[ArchitectureState], list[Finding]]
 
@@ -238,6 +239,32 @@ def rule_no_budget_constraint(state: ArchitectureState) -> list[Finding]:
     )]
 
 
+def rule_over_budget(state: ArchitectureState) -> list[Finding]:
+    """The only rule in Category.cost that actually checks a number against
+    a number, rather than just whether a budget was stated at all — see
+    analyzer/cost.py for the declared per-component cost assumptions this
+    is built on."""
+    if not state.nodes:
+        return []
+    budget_str = next((c.value for c in state.constraints if c.type == ConstraintType.budget_monthly_usd), None)
+    if budget_str is None:
+        return []  # already flagged by rule_no_budget_constraint
+    ceiling = parse_budget_ceiling(budget_str)
+    if ceiling is None or ceiling <= 0:
+        return []
+
+    total, _breakdown = estimate_monthly_cost(state)
+    if total <= ceiling:
+        return []
+
+    over_pct = (total / ceiling - 1) * 100
+    severity = Severity.major if over_pct >= 50 else Severity.moderate
+    return [_finding(
+        "over_budget", Category.cost, severity,
+        f"Estimated infrastructure cost is ~${total:.0f}/month against a stated budget of ~${ceiling:.0f}/month ({over_pct:.0f}% over).",
+    )]
+
+
 # ---------------------------------------------------------------------------
 # Maintainability: unspecified service language; monolith at scale
 # ---------------------------------------------------------------------------
@@ -276,6 +303,7 @@ ALL_RULES: list[RuleFn] = [
     rule_long_sync_chain,
     rule_hard_external_dependency,
     rule_no_budget_constraint,
+    rule_over_budget,
     rule_no_language_specified,
     rule_monolith_at_scale,
 ]
