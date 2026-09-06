@@ -60,7 +60,14 @@ const FEATURES = [
  */
 export function Landing({ onNewProject, onImportRepo, busy }: Props) {
   return (
-    <div className="relative flex h-full flex-col overflow-y-auto bg-bp-paper font-plex-sans text-bp-ink">
+    // w-full matters here, not just h-full: the parent in page.tsx is a
+    // row flex container (`flex min-h-0 flex-1`), and a flex item with no
+    // explicit width shrinks to fit its own content by default — which,
+    // since everything inside is capped at max-w-5xl and centered with
+    // mx-auto, silently left this whole component sized to that 1024px
+    // cap with nothing to center within, showing up as a real empty gap
+    // on the right of any viewport wider than that. Found live.
+    <div className="relative flex h-full w-full flex-col overflow-y-auto bg-bp-paper font-plex-sans text-bp-ink">
       {/* Blueprint grid backdrop — fades out before the "how it works"
           section so it reads as a hero treatment, not wallpaper for the
           whole page. */}

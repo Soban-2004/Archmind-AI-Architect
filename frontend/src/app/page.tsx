@@ -482,16 +482,25 @@ export default function Home() {
               <Boxes size={17} />
             </div>
             <div className="leading-tight">
-              <ProjectSwitcher
-                projectId={projectId}
-                projectName={projectName || "AI Architect"}
-                onSwitch={handleSwitchProject}
-                onCreate={handleShowLanding}
-              />
-              {view === "app" && (
-                <p className="px-2 text-[11px] text-slate-400 dark:text-slate-500">
-                  {viewingHistorical ? "editing will branch from here" : latestVersionId ? "editing latest version" : "new project"}
-                </p>
+              {view === "app" ? (
+                <>
+                  <ProjectSwitcher
+                    projectId={projectId}
+                    projectName={projectName || "AI Architect"}
+                    onSwitch={handleSwitchProject}
+                    onCreate={handleShowLanding}
+                  />
+                  <p className="px-2 text-[11px] text-slate-400 dark:text-slate-500">
+                    {viewingHistorical ? "editing will branch from here" : latestVersionId ? "editing latest version" : "new project"}
+                  </p>
+                </>
+              ) : (
+                // No switcher/"+ New" chrome on the landing or import
+                // screens — the whole page is already "start something
+                // new or pick a path in," so a project-switcher control
+                // (whose own dropdown offers "+ New" again) is pure
+                // redundancy here, not a real affordance. Found live.
+                <p className="px-2 text-sm font-semibold text-slate-800 dark:text-slate-100">AI Architect</p>
               )}
             </div>
           </div>

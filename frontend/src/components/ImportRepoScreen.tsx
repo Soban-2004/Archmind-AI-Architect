@@ -72,7 +72,11 @@ export function ImportRepoScreen({ onSuccess, onCancel }: Props) {
   }
 
   return (
-    <div className="flex h-full flex-col items-center justify-center overflow-y-auto px-6 py-10">
+    // w-full matters here too (see the identical fix + explanation in
+    // Landing.tsx) — without it this flex item shrinks to its own content
+    // width inside page.tsx's row flex container, and justify-center has
+    // nothing to center within.
+    <div className="flex h-full w-full flex-col items-center justify-center overflow-y-auto px-6 py-10">
       <div className="w-full max-w-xl">
         <button
           onClick={onCancel}
