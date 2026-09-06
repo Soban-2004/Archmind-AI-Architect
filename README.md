@@ -538,6 +538,34 @@ centroid: new nodes now align to a sibling's x and stack directly below
 it. Verified with the same reproduction: 3 backends added across 3
 separate edits now land in one column, evenly spaced.
 
+## Simulator silently ignored range-valued expected_rps
+
+Found while walking the user through why the real Stock Hinge simulation
+showed movement at the frontend: every node in a live run showed exactly
+`10 rps`, regardless of the project's actual stated `expected_rps` of
+`40-80`. Cause: `_base_entry_rps` did a bare `float(c.value)`, which
+raises on a range string and falls back to `FALLBACK_ENTRY_RPS = 10.0` —
+silently, no error surfaced anywhere, so a simulation could run against
+a completely wrong baseline for any project whose constraint (the
+overwhelmingly common case — the model almost always writes constraints
+as ranges) wasn't a bare number. The exact same bug shape `cost.py`'s
+`parse_budget_ceiling` already had a fix for, just never applied here.
+
+Extracted the shared parser into `analyzer/numeric.py`
+(`parse_upper_bound`) so both callers — and any future one — go through
+one tested implementation instead of each hand-rolling `float(value)`
+and hoping. `cost.py`'s `parse_budget_ceiling` is now a one-line wrapper
+over it, kept for callers that already import that name.
+
+Verified live through the real API: the same project, same version,
+before the fix showed 10 rps everywhere; after, correctly shows 80 rps
+(the upper bound) everywhere, which in turn revealed something genuinely
+useful that the bug had been hiding — at the project's own stated peak
+load, `PostgreSQL DB` and both `Market Data API` nodes sit at 80%
+utilization (warning), not comfortably idle. Not a crisis, but real
+information the silent fallback had been quietly hiding as "everything's
+fine at 10 rps."
+
 ## What's next (not yet built)
 
 Phase 5 — existing-project ingestion (repo/ZIP → static analysis →

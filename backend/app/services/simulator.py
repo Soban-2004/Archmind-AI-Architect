@@ -6,8 +6,9 @@ declared and documented here; nothing is inferred at runtime.
 
 Declared rules (the whole model, in one place):
   1. Traffic enters at nodes with no incoming edges, at the project's
-     expected_rps constraint (or a small fallback if unset), times the
-     requested multiplier.
+     expected_rps constraint (its upper bound, if stated as a range like
+     "40-80" — see _base_entry_rps; a small fallback if unset or
+     unparseable), times the requested multiplier.
   2. A node forwards its FULL incoming load down EVERY outgoing edge
      (a conservative "every downstream call happens on every request"
      fan-out assumption — simpler and more conservative than guessing
@@ -39,6 +40,7 @@ Declared rules (the whole model, in one place):
 from __future__ import annotations
 
 from app.analyzer.capacity import capacity_for
+from app.analyzer.numeric import parse_upper_bound
 from app.models.simulation import EdgeLoad, NodeLoad, SimulationFinding, SimulationResult
 from app.models.state import ArchitectureState, ConstraintType, Edge
 
@@ -52,12 +54,21 @@ OVERLOADED_THRESHOLD = 100.0
 
 
 def _base_entry_rps(state: ArchitectureState) -> float:
+    """expected_rps is stored as free text and, like every other numeric
+    constraint the model writes, usually a range ("40-80") rather than a
+    bare number — this used to silently fail to parse a range at all
+    (`float("40-80")` raises) and fall back to a generic 10 rps regardless
+    of what was actually stated, making every simulation run against the
+    wrong baseline for any project with a range-valued constraint. Now
+    goes through the same shared range parser cost.py uses, taking the
+    upper bound (the more conservative "worst case" reading for a
+    capacity simulation, matching the peak-load spirit of the rest of
+    this model)."""
     for c in state.constraints:
         if c.type == ConstraintType.expected_rps:
-            try:
-                return float(c.value)
-            except ValueError:
-                pass
+            parsed = parse_upper_bound(c.value)
+            if parsed is not None:
+                return parsed
     return FALLBACK_ENTRY_RPS
 
 

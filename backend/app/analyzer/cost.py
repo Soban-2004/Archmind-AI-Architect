@@ -10,8 +10,7 @@ more precise than it is. Bump COST_VERSION if these numbers change.
 """
 from __future__ import annotations
 
-import re
-
+from app.analyzer.numeric import parse_upper_bound
 from app.models.analysis import CostLineItem
 from app.models.state import ArchitectureState, Node
 
@@ -70,9 +69,8 @@ def estimate_monthly_cost(state: ArchitectureState) -> tuple[float, list[CostLin
 def parse_budget_ceiling(value: str) -> float | None:
     """budget_monthly_usd is stored as free text and, in every real value
     seen from the model this session, a range ("50-100", "$200-300") more
-    often than a bare number — take the upper bound as the ceiling to
-    check against, the more permissive reading of "a budget of $50-100"."""
-    numbers = re.findall(r"[\d.]+", value)
-    if not numbers:
-        return None
-    return float(numbers[-1])
+    often than a bare number — the upper bound is the more permissive
+    reading of "a budget of $50-100" to check against. Thin wrapper over
+    the shared parser (see numeric.py) kept so existing imports of this
+    name don't need to change."""
+    return parse_upper_bound(value)
