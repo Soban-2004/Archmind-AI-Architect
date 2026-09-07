@@ -51,24 +51,19 @@ const FEATURES = [
 ];
 
 /**
- * The drafting-sheet frame (dashed rule, corner ticks) around a diagram —
- * reused for the hero and every scenario below it so they read as
- * numbered figures in one document, not unrelated screenshots. What's
- * inside the frame is always MiniArchitecturePreview: the real canvas
- * components, not an illustration of them. `fig`/`rev` are optional — the
- * scenario rows below already print their own Fig. number in the text
- * column next to the diagram, so repeating it inside the frame too would
- * just be noise there.
+ * The drafting-sheet frame (corner ticks, bordered plate) around a
+ * diagram — used for the scenario rows further down, where several
+ * diagrams sitting in a row benefit from reading as contained figures.
+ * The hero diagram deliberately does NOT use this: boxed in a bordered
+ * card, it read as "one more small screenshot" when its whole job is to
+ * look like the actual product at real size, floating over the page. The
+ * scenario rows already print their own Fig. number in the text column
+ * next to the diagram, so this frame stays unlabeled — just the border
+ * and corner ticks, no header to repeat it.
  */
-function Figure({ fig, rev, children }: { fig?: string; rev?: string; children: ReactNode }) {
+function Figure({ children }: { children: ReactNode }) {
   return (
-    <div className="relative rounded-[10px] border border-bp-line-strong bg-bp-surface p-4 pb-3.5 before:pointer-events-none before:absolute before:-left-px before:-top-px before:h-2.5 before:w-2.5 before:border-l-[1.5px] before:border-t-[1.5px] before:border-bp-line-strong after:pointer-events-none after:absolute after:-bottom-px after:-right-px after:h-2.5 after:w-2.5 after:border-b-[1.5px] after:border-r-[1.5px] after:border-bp-line-strong">
-      {fig && (
-        <div className="mb-2.5 flex items-baseline justify-between border-b border-dashed border-bp-line pb-2.5 font-plex-mono text-[10.5px] uppercase tracking-wide text-bp-muted">
-          <span>{fig}</span>
-          {rev && <span>{rev}</span>}
-        </div>
-      )}
+    <div className="relative rounded-[10px] border border-bp-line-strong bg-bp-surface p-4 before:pointer-events-none before:absolute before:-left-px before:-top-px before:h-2.5 before:w-2.5 before:border-l-[1.5px] before:border-t-[1.5px] before:border-bp-line-strong after:pointer-events-none after:absolute after:-bottom-px after:-right-px after:h-2.5 after:w-2.5 after:border-b-[1.5px] after:border-r-[1.5px] after:border-bp-line-strong">
       <div className="overflow-hidden rounded-md border border-bp-line">{children}</div>
     </div>
   );
@@ -125,8 +120,11 @@ export function Landing({ onNewProject, onImportRepo, busy, existingProject, onC
             size, so a wide diagram inside the right column could force
             the whole grid wider than the page instead of ever shrinking
             to fit. min-w-0 below is the same fix applied to the column
-            itself, for defense in depth. */}
-        <div className="grid grid-cols-1 items-center gap-14 pt-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
+            itself, for defense in depth. The diagram column gets the
+            larger share on purpose: this is the one diagram that has to
+            read at a glance as "the whole product," not a supporting
+            illustration next to the copy. */}
+        <div className="grid grid-cols-1 items-center gap-14 pt-6 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.3fr)]">
           <div>
             <span className="inline-flex items-center gap-2 rounded-full border border-bp-line-strong px-3 py-1 font-plex-mono text-[11px] uppercase tracking-wide text-bp-accent">
               <span className="h-1.5 w-1.5 rounded-full bg-bp-good shadow-[0_0_0_3px_rgba(5,150,105,0.2)]" />
@@ -177,10 +175,23 @@ export function Landing({ onNewProject, onImportRepo, busy, existingProject, onC
             )}
           </div>
 
-          <div className="min-w-0 animate-fade-in">
-            <Figure fig="Fig. 01 — live architecture canvas" rev="Rev. A">
-              <MiniArchitecturePreview state={HERO_SCENARIO.state} layout={HERO_SCENARIO.layout} simulation={HERO_SCENARIO.simulation} />
-            </Figure>
+          {/* No Figure frame here on purpose — a bordered card read as
+              "one more small screenshot," when this diagram's whole job is
+              to look like the actual product, at real size, floating over
+              the page rather than boxed away in a corner. lg:-mr-7 cancels
+              the section's own right padding so it runs out to the same
+              edge the rest of the page content stops at, instead of
+              stopping 28px short of it. maxZoom={1.15} lets it use that
+              extra room instead of capping at the same 1:1 scale the
+              boxed scenario diagrams use — everything here is vector/CSS,
+              so it stays crisp. */}
+          <div className="min-w-0 animate-fade-in lg:-mr-7">
+            <MiniArchitecturePreview
+              state={HERO_SCENARIO.state}
+              layout={HERO_SCENARIO.layout}
+              simulation={HERO_SCENARIO.simulation}
+              maxZoom={1.15}
+            />
             <p className="mt-3 text-center font-plex-mono text-[10.5px] tracking-wide text-bp-muted">
               Live traffic simulation — every node was proposed as a validated command, never drawn freehand.
             </p>

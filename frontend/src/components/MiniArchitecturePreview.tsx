@@ -15,7 +15,7 @@ const nodeTypes: NodeTypes = { archNode: ArchNodeCard, trafficSource: TrafficSou
 const edgeTypes: EdgeTypes = { flow: FlowEdge };
 
 const PADDING = 28; // px of breathing room around the diagram on every side
-const MAX_ZOOM = 1; // never render a node bigger than its real on-canvas size
+const DEFAULT_MAX_ZOOM = 1; // never render a node bigger than its real on-canvas size, by default
 const MIN_ZOOM = 0.32;
 const TRAFFIC_SOURCE_SIZE = { width: 150, height: 92 }; // real size of TrafficSourceNode's own markup
 
@@ -56,6 +56,11 @@ interface Props {
   state: ArchitectureState;
   layout: LayoutMap;
   simulation?: SimulationResult | null;
+  /** Raise past 1 to let a diagram with a lot of room to spare (the hero,
+   * unframed and given most of a wide column) render larger than the
+   * product's own real 1:1 node size — everything here is vector/CSS, not
+   * a raster screenshot, so it stays perfectly crisp scaled up. */
+  maxZoom?: number;
 }
 
 /**
@@ -75,7 +80,7 @@ interface Props {
  * scale (capped at its true 1:1 size, never blown up) — the diagram shows
  * at its natural size instead of being cropped into an arbitrary box.
  */
-export function MiniArchitecturePreview({ state, layout, simulation }: Props) {
+export function MiniArchitecturePreview({ state, layout, simulation, maxZoom = DEFAULT_MAX_ZOOM }: Props) {
   const { nodes, edges } = useMemo(() => {
     const base = toFlowElements(state, layout);
     return simulation ? applySimulation(base.nodes, base.edges, simulation) : base;
@@ -101,7 +106,7 @@ export function MiniArchitecturePreview({ state, layout, simulation }: Props) {
   // fall back to a plausible guess (the diagram's own content width, so
   // zoom starts at 1) rather than a divide-by-zero or a collapsed box.
   const effectiveWidth = width || bounds.width + PADDING * 2;
-  const zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, (effectiveWidth - PADDING * 2) / bounds.width));
+  const zoom = Math.min(maxZoom, Math.max(MIN_ZOOM, (effectiveWidth - PADDING * 2) / bounds.width));
   const height = Math.round(bounds.height * zoom + PADDING * 2);
   const viewport = { x: PADDING - bounds.x * zoom, y: PADDING - bounds.y * zoom, zoom };
 
