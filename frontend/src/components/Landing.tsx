@@ -115,14 +115,17 @@ export function Landing({ onNewProject, onImportRepo, busy, existingProject, onC
 
       {/* --- Hero --------------------------------------------------------- */}
       {/* Deliberately NOT capped at max-w-5xl like the rest of the page
-          below — that 1024px cap, split across two columns, left the
-          diagram with barely more room than a thumbnail no matter how the
-          split was tuned. The text column is a fixed, comfortable reading
-          width (it doesn't need more); the diagram gets whatever's left of
-          the actual window, uncapped, so it keeps growing on a wider
-          screen instead of hitting an arbitrary ceiling. */}
-      <div className="relative flex w-full flex-col gap-10 px-7 pb-4 pt-14 lg:flex-row lg:items-center lg:gap-10">
-        <div className="lg:w-[420px] lg:shrink-0">
+          below — a 1024px cap left both columns cramped no matter the
+          split. True 50/50 (grid-cols-2, not a fixed-width text column
+          plus flex-1) so text and diagram carry equal visual weight, per
+          feedback — text pinned to the left edge by the section's own
+          px-7, diagram filling the other half exactly, not "whatever's
+          left over." The real tradeoff of true 50/50 with a 5-column
+          left-to-right diagram: node cards land smaller than an earlier,
+          diagram-dominant version did — see the sizing note by
+          MiniArchitecturePreview below. */}
+      <div className="relative flex w-full flex-col gap-10 px-7 pb-4 pt-14 lg:grid lg:grid-cols-2 lg:items-center lg:gap-14">
+        <div className="min-w-0">
           <span className="inline-flex items-center gap-2 rounded-full border border-bp-line-strong px-3 py-1 font-plex-mono text-[11px] uppercase tracking-wide text-bp-accent">
             <span className="h-1.5 w-1.5 rounded-full bg-bp-good shadow-[0_0_0_3px_rgba(5,150,105,0.2)]" />
             AI-native system design
@@ -175,16 +178,20 @@ export function Landing({ onNewProject, onImportRepo, busy, existingProject, onC
         {/* No Figure frame here on purpose — a bordered card read as "one
             more small screenshot," when this diagram's whole job is to
             look like the actual product, floating over the page rather
-            than boxed away in a corner. maxZoom={1.15} + HERO_SCENARIO's
-            own tuned node spacing (see landingScenarios.ts) targets ~230px
-            cards and a ~480px canvas — big enough to read as the hero
-            visual without dominating the section above it. */}
-        <div className="min-w-0 flex-1 animate-fade-in">
+            than boxed away in a corner. No custom maxZoom either (default
+            caps at 1, real 1:1 node size) — a true 50/50 split with a
+            5-column left-to-right flow (Users, Storefront, API Gateway,
+            the Orders/Inventory branch, then their datastores) genuinely
+            doesn't have room to blow the cards up past real size the way
+            the earlier, diagram-dominant layout did; on a typical laptop-
+            width window this lands around 120-150px-wide cards, growing
+            toward the full 200px real size on a wide monitor. That's the
+            real cost of equal weight with this many stages, not a bug. */}
+        <div className="min-w-0 animate-fade-in">
           <MiniArchitecturePreview
             state={HERO_SCENARIO.state}
             layout={HERO_SCENARIO.layout}
             simulation={HERO_SCENARIO.simulation}
-            maxZoom={1.15}
             staggerReveal
             trafficSourcePosition={HERO_USERS_POSITION}
           />

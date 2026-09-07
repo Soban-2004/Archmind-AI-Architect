@@ -61,40 +61,50 @@ export interface Scenario {
   simulation: SimulationResult;
 }
 
-// --- Fig. 01 — hero: a real branching topology, not a flat chain -------
-// A deliberately different shape from the shared base topology below —
-// two columns by four rows, so it reads as a real branching diagram
-// rather than either a thin flat chain or an overly tall vertical strip.
-// Two real entry points (Storefront and API Gateway both have no
-// incoming edge, by design) so simView.ts's own synthetic "Users" node —
-// the same mechanism that already draws it for a live simulation on a
-// real project — attaches to both automatically; API Gateway then fans
-// out into a genuinely separate branch (Orders API vs. Inventory API,
-// each with its own datastore) instead of one linear pipe.
+// --- Fig. 01 — hero: a real, architecturally valid request flow --------
+// Strictly sequential through the first three stages (a user's browser
+// only ever talks to Storefront; Storefront calls API Gateway internally,
+// not the other way around, and Users never reaches API Gateway
+// directly) — the branch only starts where it's actually real: API
+// Gateway routing to more than one backend service. Five columns, left
+// to right, matching the real product's own canvas convention (dagre
+// rankdir "LR" in lib/layout.ts) instead of the earlier top-down version:
 //
-// HGAP/VGAP, tuned together with the maxZoom={1.15} passed in
-// Landing.tsx, are what the on-screen node size and spacing actually come
-// from: at a representative container width this lands at roughly
-// 220-240px-wide node cards and a ~480px total canvas height.
-const HGAP = 48;
-const VGAP = 30;
-const HERO_COL_L = 0;
-const HERO_COL_R = NODE_WIDTH + HGAP; // 248
-const HERO_ROW_ENTRY = TRAFFIC_SOURCE_HEIGHT + VGAP; // Storefront / API Gateway
-const HERO_ROW_BACKEND = HERO_ROW_ENTRY + NODE_HEIGHT + VGAP; // Orders API / Inventory API
-const HERO_ROW_DATA = HERO_ROW_BACKEND + NODE_HEIGHT + VGAP; // PostgreSQL / Redis Cache
+//   Users -> Storefront -> API Gateway -> { Orders API, Inventory API }
+//                                             |             |
+//                                        PostgreSQL     Redis Cache
+//
+// Storefront is now the ONLY real node with no incoming edge (API Gateway
+// has one from Storefront, unlike the previous version); simView.ts's
+// synthetic "Users" node (the same mechanism a live simulation uses)
+// attaches to just that one node automatically — no special-casing
+// needed, it falls straight out of the corrected topology.
+const HGAP = 40;
+const VGAP = 40;
+const HERO_COL_USERS = 0;
+const HERO_COL_STORE = HERO_COL_USERS + TRAFFIC_SOURCE_WIDTH + HGAP;
+const HERO_COL_GW = HERO_COL_STORE + NODE_WIDTH + HGAP;
+const HERO_COL_BACKEND = HERO_COL_GW + NODE_WIDTH + HGAP;
+const HERO_COL_DATA = HERO_COL_BACKEND + NODE_WIDTH + HGAP;
+
+// The branch (Orders/Inventory and their datastores) is the only place
+// with two rows; every single-node column centers on that same vertical
+// span so the whole diagram reads as one flow fanning out cleanly at the
+// end, not nodes scattered at arbitrary heights.
+const HERO_ROW_TOP = 0;
+const HERO_ROW_BOTTOM = NODE_HEIGHT + VGAP;
+const HERO_BRANCH_SPAN = HERO_ROW_BOTTOM + NODE_HEIGHT;
+const HERO_SINGLE_ROW_Y = (HERO_BRANCH_SPAN - NODE_HEIGHT) / 2;
 
 // Where the synthetic "Users" node (simView.ts's applySimulation) has to
-// be placed for the branching layout to actually work: centered above the
-// two entry nodes, row 0. Left to simView's own default — left of the
-// entry nodes' average position, the heuristic its real left-to-right
-// canvas use case needs — its edge to API Gateway would route straight
-// across Storefront, which was the actual cause of the reported crossing
-// lines (there's only ever one diagonal edge in this topology otherwise:
-// API Gateway -> Orders API, with nothing else to cross).
+// be placed — column 0, vertically centered on the same branch span, since
+// TrafficSourceNode's real height (92) differs from a real node's (68) and
+// simply wouldn't center itself in an LR strip left to the default
+// left-of-entry heuristic (see MiniArchitecturePreview's
+// trafficSourcePosition prop for why that default doesn't apply here).
 export const HERO_USERS_POSITION = {
-  x: (HERO_COL_L + HERO_COL_R + NODE_WIDTH) / 2 - TRAFFIC_SOURCE_WIDTH / 2,
-  y: 0,
+  x: HERO_COL_USERS,
+  y: (HERO_BRANCH_SPAN - TRAFFIC_SOURCE_HEIGHT) / 2,
 };
 
 const heroNodes: ArchitectureState["nodes"] = [
@@ -107,10 +117,7 @@ const heroNodes: ArchitectureState["nodes"] = [
 ];
 
 const heroEdges: ArchitectureState["edges"] = [
-  // Storefront has no downstream edge here on purpose — it's the one
-  // user-facing entry point with nothing further to show in a
-  // deliberately simple hero; API Gateway is the one that fans out into
-  // the real backend topology beneath it.
+  { id: "e_store_gw", from_id: "n_store", to_id: "n_gw", protocol: "http", sync_async: "sync" },
   { id: "e_gw_orders", from_id: "n_gw", to_id: "n_orders", protocol: "http", sync_async: "sync" },
   { id: "e_gw_inventory", from_id: "n_gw", to_id: "n_inventory", protocol: "http", sync_async: "sync" },
   { id: "e_orders_db", from_id: "n_orders", to_id: "n_db", protocol: "sql", sync_async: "sync" },
@@ -118,12 +125,12 @@ const heroEdges: ArchitectureState["edges"] = [
 ];
 
 const heroLayout: LayoutMap = {
-  n_store: { x: HERO_COL_L, y: HERO_ROW_ENTRY },
-  n_gw: { x: HERO_COL_R, y: HERO_ROW_ENTRY },
-  n_orders: { x: HERO_COL_L, y: HERO_ROW_BACKEND },
-  n_inventory: { x: HERO_COL_R, y: HERO_ROW_BACKEND },
-  n_db: { x: HERO_COL_L, y: HERO_ROW_DATA },
-  n_cache: { x: HERO_COL_R, y: HERO_ROW_DATA },
+  n_store: { x: HERO_COL_STORE, y: HERO_SINGLE_ROW_Y },
+  n_gw: { x: HERO_COL_GW, y: HERO_SINGLE_ROW_Y },
+  n_orders: { x: HERO_COL_BACKEND, y: HERO_ROW_TOP },
+  n_inventory: { x: HERO_COL_BACKEND, y: HERO_ROW_BOTTOM },
+  n_db: { x: HERO_COL_DATA, y: HERO_ROW_TOP },
+  n_cache: { x: HERO_COL_DATA, y: HERO_ROW_BOTTOM },
 };
 
 export const HERO_SCENARIO: Scenario = {
@@ -138,7 +145,7 @@ export const HERO_SCENARIO: Scenario = {
     multiplier: 1,
     killed_node_ids: [],
     loads: [
-      { node_id: "n_store", node_name: "Storefront", incoming_rps: 45, capacity_rps: 400, utilization_pct: 11, status: "ok", basis: "1 instance @ 400 rps" },
+      { node_id: "n_store", node_name: "Storefront", incoming_rps: 60, capacity_rps: 400, utilization_pct: 15, status: "ok", basis: "1 instance @ 400 rps" },
       { node_id: "n_gw", node_name: "API Gateway", incoming_rps: 60, capacity_rps: 800, utilization_pct: 8, status: "ok", basis: "1 instance @ 800 rps" },
       { node_id: "n_orders", node_name: "Orders API", incoming_rps: 35, capacity_rps: 250, utilization_pct: 14, status: "ok", basis: "1 instance @ 250 rps" },
       { node_id: "n_inventory", node_name: "Inventory API", incoming_rps: 25, capacity_rps: 300, utilization_pct: 8, status: "ok", basis: "1 instance @ 300 rps" },
@@ -146,6 +153,7 @@ export const HERO_SCENARIO: Scenario = {
       { node_id: "n_cache", node_name: "Redis Cache", incoming_rps: 18, capacity_rps: 2000, utilization_pct: 1, status: "ok", basis: "1 instance @ 2000 rps" },
     ],
     edge_loads: [
+      { edge_id: "e_store_gw", from_id: "n_store", to_id: "n_gw", rps: 60 },
       { edge_id: "e_gw_orders", from_id: "n_gw", to_id: "n_orders", rps: 35 },
       { edge_id: "e_gw_inventory", from_id: "n_gw", to_id: "n_inventory", rps: 25 },
       { edge_id: "e_orders_db", from_id: "n_orders", to_id: "n_db", rps: 20 },
