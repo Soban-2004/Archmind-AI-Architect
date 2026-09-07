@@ -261,7 +261,10 @@ export function Landing({ onNewProject, onImportRepo, busy, existingProject, onC
             replayed here against fixed traffic so &ldquo;structurally validated&rdquo; has something to point at
             beyond the resting state above.
           </p>
-          <div className="mt-10 space-y-14">
+          {/* divide-y (not space-y) so each scenario gets a real boundary
+              from its neighbors, not just vertical whitespace that could
+              read as one continuous block. */}
+          <div className="mt-10 divide-y divide-bp-line">
             {SCENARIOS.map((s, i) => {
               const topFinding = s.simulation.findings[0];
               const textBlock = (
@@ -285,7 +288,7 @@ export function Landing({ onNewProject, onImportRepo, busy, existingProject, onC
                 </div>
               );
               return (
-                <div key={s.id} className="grid grid-cols-1 items-center gap-10 lg:grid-cols-2">
+                <div key={s.id} className="grid grid-cols-1 items-center gap-10 py-12 first:pt-0 last:pb-0 lg:grid-cols-2">
                   {i % 2 === 0 ? (
                     <>
                       {textBlock}

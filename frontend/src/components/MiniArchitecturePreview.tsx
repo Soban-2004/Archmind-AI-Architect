@@ -24,6 +24,58 @@ function nodeSize(n: Node): { width: number; height: number } {
   return n.type === "trafficSource" ? { width: TRAFFIC_SOURCE_WIDTH, height: TRAFFIC_SOURCE_HEIGHT } : { width: NODE_WIDTH, height: NODE_HEIGHT };
 }
 
+// Two independent style layers (arrival pulse, stagger reveal) can both
+// want to animate the same node — CSS supports that natively via a
+// comma-separated `animation` list, each entry animating its own
+// property (outline vs. opacity here) with its own timing, so they never
+// actually fight each other. This just appends rather than overwriting.
+function combineAnimation(existing: unknown, addition: string): string {
+  return typeof existing === "string" && existing.length > 0 ? `${existing}, ${addition}` : addition;
+}
+
+const PULSE_KEYFRAME: Record<string, string> = {
+  ok: "edge-arrival-pulse-ok",
+  warning: "edge-arrival-pulse-warning",
+  overloaded: "edge-arrival-pulse-overloaded",
+};
+
+/**
+ * "A request just landed here" — an outline ring that pulses on a node
+ * every time traffic actually arrives, not just the dot moving along the
+ * edge toward it. Looped at the SAME duration as the fastest particle
+ * flowing into that node (FlowEdge.tsx's own flowSpeed), so the pulse
+ * reads as caused by the traffic, not a decoration running on its own
+ * clock. Colored by the node's real simStatus — ok/warning/overloaded,
+ * the same palette simEdgeStyle already uses for the edge itself — so an
+ * overloaded node's pulse reads more urgent than a healthy one's. Killed
+ * nodes, and any node with nothing actually flowing into it, don't pulse.
+ */
+function withArrivalPulse(nodes: Node[], edges: Edge[]) {
+  const incomingSpeed = new Map<string, number>();
+  for (const e of edges) {
+    const data = e.data as { flowing?: boolean; flowSpeed?: number } | undefined;
+    if (!data?.flowing) continue;
+    const speed = data.flowSpeed ?? 1.2;
+    const current = incomingSpeed.get(e.target);
+    if (current === undefined || speed < current) incomingSpeed.set(e.target, speed);
+  }
+
+  return nodes.map((n) => {
+    const speed = incomingSpeed.get(n.id);
+    const status = (n.data as { simStatus?: string } | undefined)?.simStatus;
+    const keyframe = status ? PULSE_KEYFRAME[status] : undefined;
+    if (speed === undefined || !keyframe) return n;
+    return {
+      ...n,
+      style: {
+        ...n.style,
+        outlineStyle: "solid" as const,
+        animation: combineAnimation(n.style?.animation, `${keyframe} ${speed}s ease-in-out infinite`),
+      },
+    };
+  });
+}
+
 /**
  * Fades nodes in row by row (grouped by their real Y position — rows in
  * every current fixture share an exact Y, so no fuzzy-matching needed),
@@ -41,13 +93,21 @@ function withStaggerReveal(nodes: Node[], edges: Edge[]) {
 
   const revealedNodes = nodes.map((n) => ({
     ...n,
-    style: { ...n.style, opacity: 0, animation: "node-in 0.5s ease-out both", animationDelay: `${delayForY(n.position.y)}ms` },
+    style: {
+      ...n.style,
+      opacity: 0,
+      animation: combineAnimation(n.style?.animation, "node-in 0.5s ease-out both"),
+      animationDelay: `${delayForY(n.position.y)}ms`,
+    },
   }));
 
   const delayByNodeId = new Map(nodes.map((n) => [n.id, delayForY(n.position.y)]));
   const revealedEdges = edges.map((e) => {
     const delay = Math.max(delayByNodeId.get(e.source) ?? 0, delayByNodeId.get(e.target) ?? 0) + REVEAL_EDGE_EXTRA_MS;
-    return { ...e, style: { ...e.style, opacity: 0, animation: "node-in 0.4s ease-out both", animationDelay: `${delay}ms` } };
+    return {
+      ...e,
+      style: { ...e.style, opacity: 0, animation: combineAnimation(e.style?.animation, "node-in 0.4s ease-out both"), animationDelay: `${delay}ms` },
+    };
   });
 
   return { nodes: revealedNodes, edges: revealedEdges };
@@ -142,7 +202,12 @@ export function MiniArchitecturePreview({
           nodes: withSim.nodes.map((n) => (n.id === TRAFFIC_SOURCE_ID ? { ...n, position: trafficSourcePosition } : n)),
         }
       : withSim;
-    return staggerReveal ? withStaggerReveal(positioned.nodes, positioned.edges) : positioned;
+    // Arrival pulses apply whenever there's a real simulation to react to
+    // (not opt-in like staggerReveal) — "traffic landing on a node" is
+    // part of what "live traffic simulation" already means on every one
+    // of these diagrams, not a hero-only flourish.
+    const pulsed = simulation ? { ...positioned, nodes: withArrivalPulse(positioned.nodes, positioned.edges) } : positioned;
+    return staggerReveal ? withStaggerReveal(pulsed.nodes, pulsed.edges) : pulsed;
   }, [state, layout, simulation, staggerReveal, trafficSourcePosition]);
 
   const bounds = useMemo(() => computeBounds(nodes), [nodes]);

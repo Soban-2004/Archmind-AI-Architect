@@ -225,6 +225,70 @@ body {
   }
 }
 
+/* "A request just landed here" — a ring that expands out from a node's
+   own border and fades, timed to loop at the same rate as the particles
+   already flowing into it (see FlowEdge.tsx's <animateMotion>). Animates
+   outline-width/-offset/-color, not box-shadow — ArchNodeCard already has
+   its own static box-shadow for the resting card elevation, and an
+   `animation` on that property would replace it outright for the whole
+   (infinite) duration rather than layer on top of it; outline draws
+   independently outside the box, so the two never conflict. One keyframe
+   per real sim status color (ok/warning/overloaded) rather than a single
+   parameterized one — plain CSS keyframes can't take a color argument, and
+   this avoids needing a custom property + non-standard inline-style cast
+   just to pick a color per node. */
+@keyframes edge-arrival-pulse-ok {
+  0% {
+    outline-width: 0px;
+    outline-offset: 0px;
+    outline-color: rgba(22, 163, 74, 0.6);
+  }
+  70% {
+    outline-width: 6px;
+    outline-offset: 3px;
+    outline-color: rgba(22, 163, 74, 0);
+  }
+  100% {
+    outline-width: 0px;
+    outline-offset: 0px;
+    outline-color: rgba(22, 163, 74, 0);
+  }
+}
+@keyframes edge-arrival-pulse-warning {
+  0% {
+    outline-width: 0px;
+    outline-offset: 0px;
+    outline-color: rgba(217, 119, 6, 0.6);
+  }
+  70% {
+    outline-width: 6px;
+    outline-offset: 3px;
+    outline-color: rgba(217, 119, 6, 0);
+  }
+  100% {
+    outline-width: 0px;
+    outline-offset: 0px;
+    outline-color: rgba(217, 119, 6, 0);
+  }
+}
+@keyframes edge-arrival-pulse-overloaded {
+  0% {
+    outline-width: 0px;
+    outline-offset: 0px;
+    outline-color: rgba(220, 38, 38, 0.65);
+  }
+  70% {
+    outline-width: 7px;
+    outline-offset: 3px;
+    outline-color: rgba(220, 38, 38, 0);
+  }
+  100% {
+    outline-width: 0px;
+    outline-offset: 0px;
+    outline-color: rgba(220, 38, 38, 0);
+  }
+}
+
 @keyframes flow-dash {
   to {
     stroke-dashoffset: -16;
