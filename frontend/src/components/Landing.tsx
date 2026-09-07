@@ -1,7 +1,9 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { ArrowRight, FolderUp, GitCompare, Layers, MessageSquare, ScanSearch, ShieldCheck, Sparkles, Wallet, Waves } from "lucide-react";
-import { HeroDiagram } from "./HeroDiagram";
+import { HERO_SCENARIO, SCENARIOS } from "@/lib/landingScenarios";
+import { MiniArchitecturePreview } from "./MiniArchitecturePreview";
 
 interface Props {
   onNewProject: () => void;
@@ -44,6 +46,25 @@ const FEATURES = [
 ];
 
 /**
+ * The drafting-sheet frame (fig label, dashed rule, corner ticks) around a
+ * diagram — reused for the hero and every scenario below it so they read
+ * as numbered figures in one document, not unrelated screenshots. What's
+ * inside the frame is always MiniArchitecturePreview: the real canvas
+ * components, not an illustration of them.
+ */
+function Figure({ fig, rev, children }: { fig: string; rev?: string; children: ReactNode }) {
+  return (
+    <div className="relative rounded-[10px] border border-bp-line-strong bg-bp-surface p-4 pb-3.5 before:pointer-events-none before:absolute before:-left-px before:-top-px before:h-2.5 before:w-2.5 before:border-l-[1.5px] before:border-t-[1.5px] before:border-bp-line-strong after:pointer-events-none after:absolute after:-bottom-px after:-right-px after:h-2.5 after:w-2.5 after:border-b-[1.5px] after:border-r-[1.5px] after:border-bp-line-strong">
+      <div className="mb-2.5 flex items-baseline justify-between border-b border-dashed border-bp-line pb-2.5 font-plex-mono text-[10.5px] uppercase tracking-wide text-bp-muted">
+        <span>{fig}</span>
+        {rev && <span>{rev}</span>}
+      </div>
+      <div className="overflow-hidden rounded-md border border-bp-line">{children}</div>
+    </div>
+  );
+}
+
+/**
  * A "blueprint" identity, not the templated purple-gradient SaaS hero —
  * IBM Plex type (engineering-drawing lineage, not the usual Inter/Space
  * Grotesk) and a schematic vocabulary (grid backdrop, annotated plate,
@@ -55,8 +76,9 @@ const FEATURES = [
  * Shown once, on a genuinely first visit (no project remembered yet) —
  * and re-openable any time via ProjectSwitcher's "+ New". Deliberately no
  * fabricated trust signals (no invented testimonials, user counts, or
- * logos) — HeroDiagram is a real, live animated preview of the product's
- * own simulation technique, not a stock illustration or a static screenshot.
+ * logos) — every diagram on this page, hero included, is rendered by
+ * MiniArchitecturePreview, i.e. the product's own live canvas components
+ * fed fixed fixture data, not a stock illustration or a static screenshot.
  */
 export function Landing({ onNewProject, onImportRepo, busy }: Props) {
   return (
@@ -127,7 +149,12 @@ export function Landing({ onNewProject, onImportRepo, busy }: Props) {
           </div>
 
           <div className="animate-fade-in">
-            <HeroDiagram />
+            <Figure fig="Fig. 01 — live architecture canvas" rev="Rev. A">
+              <MiniArchitecturePreview state={HERO_SCENARIO.state} layout={HERO_SCENARIO.layout} simulation={HERO_SCENARIO.simulation} height={280} />
+            </Figure>
+            <p className="mt-3 text-center font-plex-mono text-[10.5px] tracking-wide text-bp-muted">
+              Live traffic simulation — every node was proposed as a validated command, never drawn freehand.
+            </p>
           </div>
         </div>
 
@@ -162,6 +189,27 @@ export function Landing({ onNewProject, onImportRepo, busy }: Props) {
                   </div>
                   <p className="mt-1 text-[12.5px] leading-relaxed text-bp-muted">{detail}</p>
                 </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* --- Scenarios ---------------------------------------------------- */}
+        <div className="mt-14 border-t border-bp-line pt-10">
+          <h2 className="font-plex-mono text-[11px] uppercase tracking-[0.12em] text-bp-muted">See it under real conditions</h2>
+          <p className="mt-2 max-w-2xl text-[13px] leading-relaxed text-bp-muted">
+            The same simulator, the same capacity rules, and the same canvas the product runs on your own project —
+            replayed here against fixed traffic so &ldquo;structurally validated&rdquo; has something to point at
+            beyond the resting state above.
+          </p>
+          <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+            {SCENARIOS.map((s) => (
+              <div key={s.id}>
+                <Figure fig={s.fig}>
+                  <MiniArchitecturePreview state={s.state} layout={s.layout} simulation={s.simulation} height={230} />
+                </Figure>
+                <p className="mt-3 text-[13.5px] font-semibold tracking-tight">{s.title}</p>
+                <p className="mt-1 text-[12.5px] leading-relaxed text-bp-muted">{s.description}</p>
               </div>
             ))}
           </div>

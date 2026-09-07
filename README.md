@@ -1142,3 +1142,45 @@ in this environment (no browser automation tool available) — verification
 here is real compiled/typechecked code plus live SSE/API responses
 inspected directly, not a screenshot; worth a manual look before treating
 the visual layer as fully confirmed.
+
+## Landing page: the diagrams are the real canvas, not an illustration of it
+
+Two live user reports fixed first: ~25% of the landing page was empty on
+the right on a real browser (`Landing.tsx` and `ImportRepoScreen.tsx`'s
+root `<div>`s had `h-full` but no `w-full` — inside `page.tsx`'s row-flex
+wrapper, a flex item with no explicit width shrinks to its own content, so
+everything capped at `max-w-5xl`/`max-w-xl` and centered with `mx-auto`
+had nothing wider to center within), and the `ProjectSwitcher` + "+ New"
+control was showing on the landing/import views where it made no sense —
+now the header renders a plain "AI Architect" label until `view === "app"`.
+
+Then the bigger ask: the hero diagram should look *exactly* like the
+product's own canvas, not a bespoke illustration of it — and further down
+the page, show real scenarios (overloaded, load-balancer fan-out, and
+more) with diagrams and explanations, not just the resting state.
+
+The literal way to guarantee "exactly how it looks in our systems" is to
+render it with the same components the real canvas uses, not to redraw
+them. `MiniArchitecturePreview.tsx` is a small non-interactive
+`<ReactFlow>` instance using the exact same `nodeTypes`/`edgeTypes`
+(`ArchNodeCard`, `FlowEdge`, `TrafficSourceNode`) and the exact same
+`toFlowElements` + `applySimulation` pipeline `ArchitectureCanvas.tsx`
+runs on a real project — panning/zooming/dragging/selecting all disabled,
+`fitView` locked, otherwise identical. `lib/landingScenarios.ts` hand-
+authors four fixed fixtures in the real `ArchitectureState`/
+`SimulationResult` shapes (there's no live project to simulate before a
+visitor has created one): a steady-state hero, a 10x traffic burst that
+overloads a single-instance Orders API, a load-balancer fan-out across
+three replicas, and a hard external dependency killed mid-run — each one
+a real scenario the product's own simulator (Phase 7) actually models,
+not an invented one. `HeroDiagram.tsx` (the earlier bespoke IBM-Plex
+schematic mock) is deleted; the drafting-sheet frame around each diagram
+(fig label, dashed rule, corner ticks) survives as a small `Figure`
+helper in `Landing.tsx` so the real canvas renders sit inside the same
+"numbered figure" visual language the rest of the page already uses.
+
+Verified via `tsc --noEmit`, `eslint --max-warnings=0`, and a full
+`next build` — all clean. As with the rest of this landing-page work, no
+browser automation is available in this environment, so the actual pixel
+layout (particle motion, fitView framing at various widths) is unverified
+beyond compiled/typechecked code; worth a look on localhost.
