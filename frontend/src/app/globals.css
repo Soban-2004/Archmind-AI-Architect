@@ -225,47 +225,11 @@ body {
   }
 }
 
-/* "A request just landed here" — the node's own background/border/icon
-   briefly brighten from within and fade back, timed to loop at the same
-   rate as the particles already flowing into it (see FlowEdge.tsx's
-   <animateMotion>). A pure `filter: brightness()/saturate()` shift, not a
-   ring or glow shape added around the card: no new geometry, nothing that
-   could visually compete with the card itself at a glance, no property
-   collision with ArchNodeCard's own static resting box-shadow either
-   (filter is untouched by anything else on this component). Works
-   identically against every node kind's own background color (blue/
-   emerald/purple/orange/slate) without needing to know or match it — a
-   brightness multiplier amplifies whatever color is already there, unlike
-   a fixed overlay color would. Peak intensity still varies by real sim
-   status (ok/warning/overloaded) so a struggling node's flash reads
-   slightly more urgent, even though the effect is otherwise identical. */
-@keyframes edge-arrival-glow-ok {
-  0%,
-  100% {
-    filter: brightness(1) saturate(1);
-  }
-  50% {
-    filter: brightness(1.22) saturate(1.15);
-  }
-}
-@keyframes edge-arrival-glow-warning {
-  0%,
-  100% {
-    filter: brightness(1) saturate(1);
-  }
-  50% {
-    filter: brightness(1.28) saturate(1.25);
-  }
-}
-@keyframes edge-arrival-glow-overloaded {
-  0%,
-  100% {
-    filter: brightness(1) saturate(1);
-  }
-  50% {
-    filter: brightness(1.32) saturate(1.35);
-  }
-}
+/* The per-arrival "impact" reaction (flash + scale-punch, plus a shake
+   for overloaded nodes) lives entirely in ImpactArchNode.tsx via the Web
+   Animations API now, not CSS keyframes here — it has to be a real
+   discrete event per particle arrival, not something a looping @keyframes
+   animation can express. See that component for the why. */
 
 @keyframes flow-dash {
   to {

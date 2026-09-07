@@ -7,11 +7,11 @@ import { toFlowElements } from "@/lib/diffView";
 import { applySimulation, TRAFFIC_SOURCE_ID } from "@/lib/simView";
 import type { ArchitectureState, SimulationResult } from "@/lib/types";
 import { NODE_HEIGHT, NODE_WIDTH, TRAFFIC_SOURCE_HEIGHT, TRAFFIC_SOURCE_WIDTH, type LayoutMap } from "@/lib/layout";
-import { ArchNodeCard } from "./ArchNodeCard";
 import { FlowEdge } from "./FlowEdge";
+import { ImpactArchNode } from "./ImpactArchNode";
 import { TrafficSourceNode } from "./TrafficSourceNode";
 
-const nodeTypes: NodeTypes = { archNode: ArchNodeCard, trafficSource: TrafficSourceNode };
+const nodeTypes: NodeTypes = { archNode: ImpactArchNode, trafficSource: TrafficSourceNode };
 const edgeTypes: EdgeTypes = { flow: FlowEdge };
 
 const PADDING = 24; // px of breathing room around the diagram on every side
@@ -33,48 +33,33 @@ function combineAnimation(existing: unknown, addition: string): string {
   return typeof existing === "string" && existing.length > 0 ? `${existing}, ${addition}` : addition;
 }
 
-const GLOW_KEYFRAME: Record<string, string> = {
-  ok: "edge-arrival-glow-ok",
-  warning: "edge-arrival-glow-warning",
-  overloaded: "edge-arrival-glow-overloaded",
-};
-
 /**
- * "A request just landed here" — the node briefly brightens from within
- * and fades back, rather than a ring or shape appearing around it: no new
- * geometry competing with the card itself, just a brightness/saturation
- * shift on what's already there (see globals.css's edge-arrival-glow-*
- * keyframes). Looped at the SAME duration as the fastest particle flowing
- * into that node (FlowEdge.tsx's own flowSpeed), so the glow reads as
- * caused by the traffic, not a decoration running on its own clock.
- * Peak intensity follows the node's real simStatus — ok/warning/
- * overloaded, the same palette simEdgeStyle already uses for the edge
- * itself — so a struggling node's flash reads slightly more urgent.
- * Killed nodes, and any node with nothing actually flowing into it,
- * don't glow.
+ * Annotates each node with how often traffic actually arrives at it —
+ * `arrivalSpeed`/`arrivalCount`, straight from its fastest incoming
+ * flowing edge's own real FlowEdge.tsx particle config (see simView.ts's
+ * intensityFor) — so ImpactArchNode can fire its own discrete, one-shot
+ * "impact" reaction (a real per-arrival event via the Web Animations API,
+ * not a looping CSS animation — see that component for why) on the exact
+ * same cadence particles really arrive: a new one reaches its target
+ * every `arrivalSpeed / arrivalCount` seconds, count particles evenly
+ * spaced across one `arrivalSpeed`-second lap. Pure data, no style
+ * mutation — ImpactArchNode owns the actual animation, not this pipeline.
  */
-function withArrivalPulse(nodes: Node[], edges: Edge[]) {
-  const incomingSpeed = new Map<string, number>();
+function withArrivalData(nodes: Node[], edges: Edge[]) {
+  const incoming = new Map<string, { speed: number; count: number }>();
   for (const e of edges) {
-    const data = e.data as { flowing?: boolean; flowSpeed?: number } | undefined;
+    const data = e.data as { flowing?: boolean; flowSpeed?: number; flowCount?: number } | undefined;
     if (!data?.flowing) continue;
     const speed = data.flowSpeed ?? 1.2;
-    const current = incomingSpeed.get(e.target);
-    if (current === undefined || speed < current) incomingSpeed.set(e.target, speed);
+    const count = data.flowCount ?? 1;
+    const current = incoming.get(e.target);
+    if (current === undefined || speed < current.speed) incoming.set(e.target, { speed, count });
   }
 
   return nodes.map((n) => {
-    const speed = incomingSpeed.get(n.id);
-    const status = (n.data as { simStatus?: string } | undefined)?.simStatus;
-    const keyframe = status ? GLOW_KEYFRAME[status] : undefined;
-    if (speed === undefined || !keyframe) return n;
-    return {
-      ...n,
-      style: {
-        ...n.style,
-        animation: combineAnimation(n.style?.animation, `${keyframe} ${speed}s ease-in-out infinite`),
-      },
-    };
+    const arrival = incoming.get(n.id);
+    if (!arrival) return n;
+    return { ...n, data: { ...n.data, arrivalSpeed: arrival.speed, arrivalCount: arrival.count } };
   });
 }
 
@@ -172,11 +157,13 @@ interface Props {
 
 /**
  * The landing page's diagrams are not a separate illustration of the
- * product — they ARE the product's own canvas. Same nodeTypes/edgeTypes
- * (ArchNodeCard, FlowEdge, TrafficSourceNode), same toFlowElements /
- * applySimulation pipeline ArchitectureCanvas.tsx uses on real projects,
- * just fed fixed fixture data (lib/landingScenarios.ts) instead of a live
- * version, and locked down so a visitor can't pan/zoom/drag it.
+ * product — they ARE the product's own canvas. Same edgeTypes (FlowEdge),
+ * same toFlowElements/applySimulation pipeline ArchitectureCanvas.tsx uses
+ * on real projects, just fed fixed fixture data (lib/landingScenarios.ts)
+ * instead of a live version, and locked down so a visitor can't pan/zoom/
+ * drag it. Nodes render through ImpactArchNode, a thin landing-only
+ * wrapper that renders the real ArchNodeCard unchanged and adds the
+ * per-arrival impact reaction around it — see that component.
  *
  * Deliberately does NOT use React Flow's own `fitView` — every attempt to
  * squeeze these into a small fixed-height box and auto-fit into it kept
@@ -204,12 +191,12 @@ export function MiniArchitecturePreview({
           nodes: withSim.nodes.map((n) => (n.id === TRAFFIC_SOURCE_ID ? { ...n, position: trafficSourcePosition } : n)),
         }
       : withSim;
-    // Arrival pulses apply whenever there's a real simulation to react to
+    // Arrival data applies whenever there's a real simulation to react to
     // (not opt-in like staggerReveal) — "traffic landing on a node" is
     // part of what "live traffic simulation" already means on every one
     // of these diagrams, not a hero-only flourish.
-    const pulsed = simulation ? { ...positioned, nodes: withArrivalPulse(positioned.nodes, positioned.edges) } : positioned;
-    return staggerReveal ? withStaggerReveal(pulsed.nodes, pulsed.edges) : pulsed;
+    const withArrivals = simulation ? { ...positioned, nodes: withArrivalData(positioned.nodes, positioned.edges) } : positioned;
+    return staggerReveal ? withStaggerReveal(withArrivals.nodes, withArrivals.edges) : withArrivals;
   }, [state, layout, simulation, staggerReveal, trafficSourcePosition]);
 
   const bounds = useMemo(() => computeBounds(nodes), [nodes]);
