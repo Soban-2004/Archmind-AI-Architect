@@ -209,6 +209,22 @@ body {
   animation: sweep 1.3s ease-in-out infinite;
 }
 
+/* Opacity-only on purpose (no transform, unlike .animate-fade-in above) —
+   used for the landing hero's staggered per-node/edge reveal, applied via
+   inline `animation`/`animationDelay` on individual React Flow nodes and
+   edges (see MiniArchitecturePreview.tsx). React Flow already positions
+   each node with its own inline `transform: translate(...)`; animating
+   `transform` again here would fight that and make nodes visibly jump
+   during the reveal instead of just fading in in place. */
+@keyframes node-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 @keyframes flow-dash {
   to {
     stroke-dashoffset: -16;

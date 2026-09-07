@@ -1,6 +1,6 @@
 import type { ArchitectureState, SimulationResult } from "./types";
 import type { LayoutMap } from "./layout";
-import { NODE_HEIGHT, NODE_WIDTH } from "./layout";
+import { NODE_HEIGHT, NODE_WIDTH, TRAFFIC_SOURCE_HEIGHT } from "./layout";
 
 // Fixed illustrative fixtures for the landing page's live previews — real
 // ArchitectureState / SimulationResult shapes (exactly what the backend
@@ -61,19 +61,58 @@ export interface Scenario {
   simulation: SimulationResult;
 }
 
-// --- Fig. 01 — hero: one simple, complete chain -----------------------
-// Deliberately smaller than the full base topology (no cache branch) —
-// this is the very first thing a visitor sees, and a single clean row
-// reads immediately as "one complete design" rather than something to
-// study. The fuller topology (with the cache branch) shows up below in
-// the scenarios, where the extra realism earns its keep.
-const heroNodes: ArchitectureState["nodes"] = baseNodes.filter((n) => n.id !== "n_cache");
-const heroEdges: ArchitectureState["edges"] = baseEdges.filter((e) => e.id !== "e_orders_cache");
+// --- Fig. 01 — hero: a real branching topology, not a flat chain -------
+// A deliberately different shape from the shared base topology below —
+// this is the one diagram whose whole job is to fill real vertical space
+// at a large, legible size, not read as a compact "complete design" next
+// to the copy. Two real entry points (Storefront and API Gateway both
+// have no incoming edge, by design) so simView.ts's own synthetic "Users"
+// node — the same mechanism that already draws it for a live simulation
+// on a real project — attaches to both automatically; API Gateway then
+// fans out into a genuinely separate branch (Orders API vs. Inventory
+// API, each with its own datastore) instead of one linear pipe.
+//
+// HGAP/VGAP are much larger than the base topology's dagre-derived
+// spacing (60/50 vs. 100/40 world units) — tuned together with the
+// maxZoom={1.45} passed in Landing.tsx so the *rendered* result reads as
+// a spacious, real-size canvas: ~290px-wide node cards with ~85-90px of
+// real empty space between them, not a compressed flowchart.
+const HGAP = 60;
+const VGAP = 50;
+const HERO_COL_L = 0;
+const HERO_COL_R = NODE_WIDTH + HGAP; // 260
+const HERO_ROW_USERS = 0;
+const HERO_ROW_ENTRY = HERO_ROW_USERS + TRAFFIC_SOURCE_HEIGHT + VGAP; // Storefront / API Gateway
+const HERO_ROW_BACKEND = HERO_ROW_ENTRY + NODE_HEIGHT + VGAP; // Orders API / Inventory API
+const HERO_ROW_DATA = HERO_ROW_BACKEND + NODE_HEIGHT + VGAP; // PostgreSQL / Redis Cache
+
+const heroNodes: ArchitectureState["nodes"] = [
+  { id: "n_store", node_kind: "service", name: "Storefront", type: "frontend", language: "TypeScript", scaling_mode: "stateless" },
+  { id: "n_gw", node_kind: "infra_node", name: "API Gateway", type: "api_gateway" },
+  { id: "n_orders", node_kind: "service", name: "Orders API", type: "service", language: "Go", scaling_mode: "stateless" },
+  { id: "n_inventory", node_kind: "service", name: "Inventory API", type: "service", language: "Go", scaling_mode: "stateless" },
+  { id: "n_db", node_kind: "database", name: "PostgreSQL", type: "relational", engine: "postgres", role: "primary" },
+  { id: "n_cache", node_kind: "database", name: "Redis Cache", type: "keyvalue", engine: "redis", role: "cache" },
+];
+
+const heroEdges: ArchitectureState["edges"] = [
+  // Storefront has no downstream edge here on purpose — it's the one
+  // user-facing entry point with nothing further to show in a
+  // deliberately simple hero; API Gateway is the one that fans out into
+  // the real backend topology beneath it.
+  { id: "e_gw_orders", from_id: "n_gw", to_id: "n_orders", protocol: "http", sync_async: "sync" },
+  { id: "e_gw_inventory", from_id: "n_gw", to_id: "n_inventory", protocol: "http", sync_async: "sync" },
+  { id: "e_orders_db", from_id: "n_orders", to_id: "n_db", protocol: "sql", sync_async: "sync" },
+  { id: "e_inventory_cache", from_id: "n_inventory", to_id: "n_cache", protocol: "cache", sync_async: "sync" },
+];
+
 const heroLayout: LayoutMap = {
-  n_store: { x: 0, y: 0 },
-  n_gw: { x: COL, y: 0 },
-  n_orders: { x: COL * 2, y: 0 },
-  n_db: { x: COL * 3, y: 0 },
+  n_store: { x: HERO_COL_L, y: HERO_ROW_ENTRY },
+  n_gw: { x: HERO_COL_R, y: HERO_ROW_ENTRY },
+  n_orders: { x: HERO_COL_L, y: HERO_ROW_BACKEND },
+  n_inventory: { x: HERO_COL_R, y: HERO_ROW_BACKEND },
+  n_db: { x: HERO_COL_L, y: HERO_ROW_DATA },
+  n_cache: { x: HERO_COL_R, y: HERO_ROW_DATA },
 };
 
 export const HERO_SCENARIO: Scenario = {
@@ -88,15 +127,18 @@ export const HERO_SCENARIO: Scenario = {
     multiplier: 1,
     killed_node_ids: [],
     loads: [
-      { node_id: "n_store", node_name: "Storefront", incoming_rps: 40, capacity_rps: 400, utilization_pct: 10, status: "ok", basis: "1 instance @ 400 rps" },
-      { node_id: "n_gw", node_name: "API Gateway", incoming_rps: 40, capacity_rps: 800, utilization_pct: 5, status: "ok", basis: "1 instance @ 800 rps" },
-      { node_id: "n_orders", node_name: "Orders API", incoming_rps: 40, capacity_rps: 250, utilization_pct: 16, status: "ok", basis: "1 instance @ 250 rps" },
-      { node_id: "n_db", node_name: "PostgreSQL", incoming_rps: 22, capacity_rps: 300, utilization_pct: 7, status: "ok", basis: "1 instance @ 300 rps" },
+      { node_id: "n_store", node_name: "Storefront", incoming_rps: 45, capacity_rps: 400, utilization_pct: 11, status: "ok", basis: "1 instance @ 400 rps" },
+      { node_id: "n_gw", node_name: "API Gateway", incoming_rps: 60, capacity_rps: 800, utilization_pct: 8, status: "ok", basis: "1 instance @ 800 rps" },
+      { node_id: "n_orders", node_name: "Orders API", incoming_rps: 35, capacity_rps: 250, utilization_pct: 14, status: "ok", basis: "1 instance @ 250 rps" },
+      { node_id: "n_inventory", node_name: "Inventory API", incoming_rps: 25, capacity_rps: 300, utilization_pct: 8, status: "ok", basis: "1 instance @ 300 rps" },
+      { node_id: "n_db", node_name: "PostgreSQL", incoming_rps: 20, capacity_rps: 300, utilization_pct: 7, status: "ok", basis: "1 instance @ 300 rps" },
+      { node_id: "n_cache", node_name: "Redis Cache", incoming_rps: 18, capacity_rps: 2000, utilization_pct: 1, status: "ok", basis: "1 instance @ 2000 rps" },
     ],
     edge_loads: [
-      { edge_id: "e_store_gw", from_id: "n_store", to_id: "n_gw", rps: 40 },
-      { edge_id: "e_gw_orders", from_id: "n_gw", to_id: "n_orders", rps: 40 },
-      { edge_id: "e_orders_db", from_id: "n_orders", to_id: "n_db", rps: 22 },
+      { edge_id: "e_gw_orders", from_id: "n_gw", to_id: "n_orders", rps: 35 },
+      { edge_id: "e_gw_inventory", from_id: "n_gw", to_id: "n_inventory", rps: 25 },
+      { edge_id: "e_orders_db", from_id: "n_orders", to_id: "n_db", rps: 20 },
+      { edge_id: "e_inventory_cache", from_id: "n_inventory", to_id: "n_cache", rps: 18 },
     ],
     findings: [],
   },

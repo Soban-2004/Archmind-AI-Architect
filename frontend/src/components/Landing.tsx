@@ -178,16 +178,21 @@ export function Landing({ onNewProject, onImportRepo, busy, existingProject, onC
             page rather than boxed away in a corner. flex-1 with no
             max-width takes every pixel the text column and its own gap
             don't need, growing with the window instead of stopping at a
-            fraction of a capped container. maxZoom={1.15} lets it use
-            that room instead of stopping at the same 1:1 scale the boxed
-            scenario diagrams use — everything here is vector/CSS, so it
-            stays crisp at any size. */}
+            fraction of a capped container. maxZoom={1.45}, tuned together
+            with HERO_SCENARIO's own generous node spacing (see
+            landingScenarios.ts), is what actually makes the cards render
+            big — everything here is vector/CSS, so it stays crisp scaled
+            up. staggerReveal turns the load-in into a real sequence
+            (Users, then Storefront/Gateway, then the backend branch, then
+            the datastores) instead of the whole diagram popping in at
+            once. */}
         <div className="min-w-0 flex-1 animate-fade-in">
           <MiniArchitecturePreview
             state={HERO_SCENARIO.state}
             layout={HERO_SCENARIO.layout}
             simulation={HERO_SCENARIO.simulation}
-            maxZoom={1.15}
+            maxZoom={1.45}
+            staggerReveal
           />
           <p className="mt-3 text-center font-plex-mono text-[10.5px] tracking-wide text-bp-muted">
             Live traffic simulation — every node was proposed as a validated command, never drawn freehand.

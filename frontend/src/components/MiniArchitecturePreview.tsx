@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Background, BackgroundVariant, ReactFlow, ReactFlowProvider, type EdgeTypes, type Node, type NodeTypes } from "@xyflow/react";
+import { Background, BackgroundVariant, ReactFlow, ReactFlowProvider, type Edge, type EdgeTypes, type Node, type NodeTypes } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { toFlowElements } from "@/lib/diffView";
 import { applySimulation } from "@/lib/simView";
 import type { ArchitectureState, SimulationResult } from "@/lib/types";
-import { NODE_HEIGHT, NODE_WIDTH, type LayoutMap } from "@/lib/layout";
+import { NODE_HEIGHT, NODE_WIDTH, TRAFFIC_SOURCE_HEIGHT, TRAFFIC_SOURCE_WIDTH, type LayoutMap } from "@/lib/layout";
 import { ArchNodeCard } from "./ArchNodeCard";
 import { FlowEdge } from "./FlowEdge";
 import { TrafficSourceNode } from "./TrafficSourceNode";
@@ -17,10 +17,40 @@ const edgeTypes: EdgeTypes = { flow: FlowEdge };
 const PADDING = 28; // px of breathing room around the diagram on every side
 const DEFAULT_MAX_ZOOM = 1; // never render a node bigger than its real on-canvas size, by default
 const MIN_ZOOM = 0.32;
-const TRAFFIC_SOURCE_SIZE = { width: 150, height: 92 }; // real size of TrafficSourceNode's own markup
+const REVEAL_ROW_STEP_MS = 140; // gap between one row's reveal and the next
+const REVEAL_EDGE_EXTRA_MS = 90; // an edge reveals slightly after its later endpoint, not simultaneously
 
 function nodeSize(n: Node): { width: number; height: number } {
-  return n.type === "trafficSource" ? TRAFFIC_SOURCE_SIZE : { width: NODE_WIDTH, height: NODE_HEIGHT };
+  return n.type === "trafficSource" ? { width: TRAFFIC_SOURCE_WIDTH, height: TRAFFIC_SOURCE_HEIGHT } : { width: NODE_WIDTH, height: NODE_HEIGHT };
+}
+
+/**
+ * Fades nodes in row by row (grouped by their real Y position — rows in
+ * every current fixture share an exact Y, so no fuzzy-matching needed),
+ * each edge following just after whichever of its two endpoints reveals
+ * later. Opacity only — see globals.css's node-in keyframe comment for
+ * why it can't also animate `transform` without fighting React Flow's own
+ * positioning transform on the same element. Applied via inline
+ * `style`/`animationDelay`, the same mechanism `edgeStyle`/`simEdgeStyle`
+ * already use to set stroke color inline — nothing here needs a CSS class.
+ */
+function withStaggerReveal(nodes: Node[], edges: Edge[]) {
+  const rowYs = Array.from(new Set(nodes.map((n) => Math.round(n.position.y)))).sort((a, b) => a - b);
+  const rowIndex = new Map(rowYs.map((y, i) => [y, i]));
+  const delayForY = (y: number) => (rowIndex.get(Math.round(y)) ?? 0) * REVEAL_ROW_STEP_MS;
+
+  const revealedNodes = nodes.map((n) => ({
+    ...n,
+    style: { ...n.style, opacity: 0, animation: "node-in 0.5s ease-out both", animationDelay: `${delayForY(n.position.y)}ms` },
+  }));
+
+  const delayByNodeId = new Map(nodes.map((n) => [n.id, delayForY(n.position.y)]));
+  const revealedEdges = edges.map((e) => {
+    const delay = Math.max(delayByNodeId.get(e.source) ?? 0, delayByNodeId.get(e.target) ?? 0) + REVEAL_EDGE_EXTRA_MS;
+    return { ...e, style: { ...e.style, opacity: 0, animation: "node-in 0.4s ease-out both", animationDelay: `${delay}ms` } };
+  });
+
+  return { nodes: revealedNodes, edges: revealedEdges };
 }
 
 /**
@@ -61,6 +91,12 @@ interface Props {
    * product's own real 1:1 node size — everything here is vector/CSS, not
    * a raster screenshot, so it stays perfectly crisp scaled up. */
   maxZoom?: number;
+  /** Reveals rows one after another instead of the whole diagram fading
+   * in as a single block — see withStaggerReveal above. Opt-in (default
+   * off) since the boxed scenario diagrams further down the page read
+   * fine appearing all at once; it's the hero's entrance that benefits
+   * from a real sequence. */
+  staggerReveal?: boolean;
 }
 
 /**
@@ -80,11 +116,12 @@ interface Props {
  * scale (capped at its true 1:1 size, never blown up) — the diagram shows
  * at its natural size instead of being cropped into an arbitrary box.
  */
-export function MiniArchitecturePreview({ state, layout, simulation, maxZoom = DEFAULT_MAX_ZOOM }: Props) {
+export function MiniArchitecturePreview({ state, layout, simulation, maxZoom = DEFAULT_MAX_ZOOM, staggerReveal = false }: Props) {
   const { nodes, edges } = useMemo(() => {
     const base = toFlowElements(state, layout);
-    return simulation ? applySimulation(base.nodes, base.edges, simulation) : base;
-  }, [state, layout, simulation]);
+    const withSim = simulation ? applySimulation(base.nodes, base.edges, simulation) : base;
+    return staggerReveal ? withStaggerReveal(withSim.nodes, withSim.edges) : withSim;
+  }, [state, layout, simulation, staggerReveal]);
 
   const bounds = useMemo(() => computeBounds(nodes), [nodes]);
 

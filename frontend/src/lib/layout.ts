@@ -10,6 +10,15 @@ import type { ArchitectureState } from "./types";
 export const NODE_WIDTH = 200;
 export const NODE_HEIGHT = 68;
 
+// Real, constant size of the synthetic "Users" traffic-source marker
+// (TrafficSourceNode.tsx) — the same kind of fact as NODE_WIDTH/HEIGHT
+// above (a real component's actual rendered size), kept here so anything
+// doing layout math ahead of a render (hand-placed landing fixtures,
+// MiniArchitecturePreview's deterministic bounds calculation) has one
+// shared source for it instead of a magic number copied in two places.
+export const TRAFFIC_SOURCE_WIDTH = 150;
+export const TRAFFIC_SOURCE_HEIGHT = 92;
+
 export type LayoutMap = Record<string, { x: number; y: number }>;
 
 export function computeDagreLayout(state: ArchitectureState): LayoutMap {
