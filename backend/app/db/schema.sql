@@ -1,4 +1,4 @@
-I le not many one wondering-- AI Architect schema (spec §3.2). Run this once against your Supabase
+-- AI Architect schema (spec §3.2). Run this once against your Supabase
 -- Postgres database (SQL Editor in the Supabase dashboard, or `psql`).
 
 create extension if not exists pgcrypto;
