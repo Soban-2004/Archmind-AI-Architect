@@ -20,14 +20,22 @@ visibly reduces the *downstream* node's cost too — not just its own
 utilization bar. Without load data (e.g. an empty architecture) this
 degrades to the old flat 1-instance-per-node estimate.
 
-Per-instance dollar figures are still deliberately rough, single-small-
+Per-instance dollar figures are still deliberately rough, single-SMALL-
 managed-instance numbers — a real bill depends on region, vendor, and
-committed-use discounts this tool has no way to know. What changed is HOW
-MANY instances that estimate is multiplied by, not the honesty of the
-per-instance number itself. Every estimate is shown with its basis so it's
-never presented as more precise than it actually is. Bump COST_VERSION if
-the per-instance numbers change; bump COST_MODEL_VERSION if the
-instance-counting logic itself changes.
+committed-use discounts this tool has no way to know. What changed in v2
+was HOW MANY instances that estimate is multiplied by, not the honesty of
+the per-instance number itself.
+
+v3 (COST_VERSION) change: a node's declared `size` (analyzer/sizing.py) —
+small/medium/large/xlarge, defaulting to small — now scales the per-
+instance number by that tier's cost_multiplier, and a database's declared
+`storage_gb` adds a separate, independent per-GB line on top. Both are
+purely additive: a node that never sets either behaves exactly as before
+(size defaults to small = 1.0x, storage_gb defaults to None = no line).
+Every estimate is shown with its basis so it's never presented as more
+precise than it actually is. Bump COST_VERSION if the per-instance/
+per-GB numbers change; bump COST_MODEL_VERSION if the instance-counting
+logic itself changes.
 """
 from __future__ import annotations
 
@@ -35,10 +43,11 @@ import math
 
 from app.analyzer.capacity import capacity_for
 from app.analyzer.numeric import parse_upper_bound
+from app.analyzer.sizing import STORAGE_COST_PER_GB_USD, size_spec_for
 from app.models.analysis import CostLineItem
 from app.models.state import ArchitectureState, Node
 
-COST_VERSION = "v1"
+COST_VERSION = "v2"
 COST_MODEL_VERSION = "v2"  # v2: instance count derived from real load / declared capacity, not a flat 1
 
 # Rough monthly USD for one small managed instance of each kind — the same
@@ -74,9 +83,30 @@ def monthly_cost_for(node: Node) -> tuple[float, str]:
     else:
         key = node.node_kind
 
-    cost = _MONTHLY_COST_USD.get(key, FALLBACK_MONTHLY_COST_USD)
-    basis = f"declared default for {key} (cost set {COST_VERSION})" if key in _MONTHLY_COST_USD else f"no declared default for {key}; using fallback"
+    base_cost = _MONTHLY_COST_USD.get(key, FALLBACK_MONTHLY_COST_USD)
+    spec = size_spec_for(node)
+    cost = base_cost * spec.cost_multiplier
+
+    if key not in _MONTHLY_COST_USD:
+        basis = f"no declared default for {key}; using fallback"
+    elif spec.cost_multiplier == 1.0:
+        basis = f"declared default for {key} (cost set {COST_VERSION})"
+    else:
+        basis = f"declared default for {key} (cost set {COST_VERSION}); {spec.label} instance ({spec.vcpu} vCPU / {spec.ram_gb}GB) -> {spec.cost_multiplier:g}x"
+
     return float(cost), basis
+
+
+def _storage_cost_for(node: Node) -> tuple[float, str | None]:
+    """A database's declared `storage_gb` (None by default — most nodes
+    never set it) adds its own cost line, independent of instance count:
+    storage is billed by volume, not multiplied by how many compute
+    instances the load happens to need this run."""
+    storage_gb = getattr(node, "storage_gb", None)
+    if not storage_gb:
+        return 0.0, None
+    cost = storage_gb * STORAGE_COST_PER_GB_USD
+    return cost, f"{storage_gb}GB storage @ ${STORAGE_COST_PER_GB_USD}/GB"
 
 
 def _instances_for(node: Node, load_rps: float) -> tuple[int, str | None]:
@@ -108,7 +138,13 @@ def estimate_monthly_cost(state: ArchitectureState, incoming_rps: dict[str, floa
         load = incoming_rps.get(n.id, 0.0) if incoming_rps is not None else 0.0
         instances, note = _instances_for(n, load)
         cost = unit_cost * instances
+        storage_cost, storage_note = _storage_cost_for(n)
+        cost += storage_cost
+
         full_basis = f"{basis}; {note}" if note else basis
+        if storage_note:
+            full_basis = f"{full_basis}; {storage_note}"
+
         breakdown.append(CostLineItem(node_id=n.id, node_name=n.name, monthly_cost_usd=round(cost, 2), basis=full_basis))
         total += cost
     return round(total, 2), breakdown

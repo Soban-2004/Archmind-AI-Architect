@@ -141,16 +141,25 @@ export function AnalyzerPanel({ projectId, versionId, onExit }: Props) {
                 <summary className="cursor-pointer text-[10.5px] text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300">
                   breakdown by component
                 </summary>
-                <ul className="mt-1.5 space-y-0.5">
+                <ul className="mt-1.5 space-y-1.5">
                   {scorecard.cost_breakdown.map((item) => (
-                    <li key={item.node_id} className="flex justify-between gap-2 text-[11px] text-slate-500 dark:text-slate-400">
-                      <span className="truncate">{item.node_name}</span>
-                      <span className="shrink-0">${item.monthly_cost_usd.toFixed(0)}/mo</span>
+                    <li key={item.node_id}>
+                      <div className="flex justify-between gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                        <span className="truncate">{item.node_name}</span>
+                        <span className="shrink-0">${item.monthly_cost_usd.toFixed(0)}/mo</span>
+                      </div>
+                      {/* The real "why" behind this number — instance size,
+                          how many instances the load needs, declared
+                          storage — was always computed (capacity.py/cost.py
+                          build a real basis string per line) but never
+                          actually shown here before; only the disclaimer
+                          below pointed at the README instead. */}
+                      <p className="truncate text-[10px] text-slate-400 dark:text-slate-500">{item.basis}</p>
                     </li>
                   ))}
                 </ul>
                 <p className="mt-1.5 text-[10px] italic text-slate-400 dark:text-slate-500">
-                  Rough, declared per-component estimates — not a real quote. See README for basis.
+                  Rough, declared per-component estimates — not a real quote.
                 </p>
               </details>
             )}

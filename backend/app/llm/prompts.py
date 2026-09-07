@@ -67,9 +67,9 @@ ATTRIBUTE_SHAPE_RULES = """Every add_node's `attributes` MUST match the shape fo
 EXACTLY — the JSON Schema shows `attributes` as a generic object, so
 these are not visible there; use ONLY the values listed here, never a
 synonym:
-- node_type="service": {"type": one of "gateway" | "service" | "worker" | "frontend" | "edge_cdn" (use "service" for a generic backend service — NOT "backend"), "language"?: string, "responsibilities"?: string, "scaling_mode"?: "stateless" | "stateful"}
-- node_type="database": {"type": one of "relational" | "document" | "keyvalue" | "search" | "graph", "engine": string (e.g. "postgres", "redis"), "role"?: "primary" | "replica" | "cache"}
-- node_type="queue": {"type": one of "queue" | "pubsub" | "stream", "engine": string (e.g. "sqs", "kafka")}
+- node_type="service": {"type": one of "gateway" | "service" | "worker" | "frontend" | "edge_cdn" (use "service" for a generic backend service — NOT "backend"), "language"?: string, "responsibilities"?: string, "scaling_mode"?: "stateless" | "stateful", "size"?: "small" | "medium" | "large" | "xlarge" (a compute tier, defaults to "small" — set this deliberately for a production/high-scale tier instead of leaving every node at the default)}
+- node_type="database": {"type": one of "relational" | "document" | "keyvalue" | "search" | "graph", "engine": string (e.g. "postgres", "redis"), "role"?: "primary" | "replica" | "cache", "size"?: "small" | "medium" | "large" | "xlarge" (same compute tier as service, defaults to "small"), "storage_gb"?: integer (provisioned storage; only set this when the user's stated data volume or scale genuinely calls for declaring it — omit rather than guess a number with no basis)}
+- node_type="queue": {"type": one of "queue" | "pubsub" | "stream", "engine": string (e.g. "sqs", "kafka"), "size"?: "small" | "medium" | "large" | "xlarge" (defaults to "small")}
 - node_type="external_dependency": {"type": one of "third_party_api" | "payment" | "market_data" | "auth_provider" | "storage" (use "third_party_api" for a generic external API — NOT "api"), "criticality"?: "hard" | "soft"}
 - node_type="infra_node": {"type": one of "cdn" | "load_balancer" | "api_gateway" | "object_storage" | "container_runtime" | "observability"}"""
 

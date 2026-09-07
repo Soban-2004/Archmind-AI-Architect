@@ -1184,3 +1184,62 @@ Verified via `tsc --noEmit`, `eslint --max-warnings=0`, and a full
 browser automation is available in this environment, so the actual pixel
 layout (particle motion, fitView framing at various widths) is unverified
 beyond compiled/typechecked code; worth a look on localhost.
+
+## Instance sizing and storage — a real gap, closed
+
+Asked directly: does the cost/capacity model account for compute size (2
+vCPU vs. 8 vCPU) or storage volume the way real infra decisions do? It
+didn't — checked `state.py`, `capacity.py`, and `cost.py` to confirm
+rather than guess: every node of a given kind was assumed to be one
+identical "small instance", forever. The only thing that ever varied was
+instance *count* (cost.py v2's own load-aware provisioning); there was no
+way to represent a node as deliberately bigger or smaller, and nowhere in
+the schema to even declare it.
+
+Closed via a new declared dataset, `analyzer/sizing.py`, in the same
+spirit as capacity.py/cost.py themselves: a node's `size` (small/medium/
+large/xlarge, defaulting to small — every node from before this existed
+behaves identically, since small's multiplier is 1.0) scales both
+`capacity_for()` and `monthly_cost_for()` by that tier's declared
+capacity/cost multiplier. Cost scales sub-linearly with capacity (a
+"large" instance costs less per unit of capacity than 4 separate "small"
+ones would) — a genuine, real tradeoff between sizing up and scaling out,
+not a wash. Deliberately t-shirt sizes, not named vendor instance types
+("t3.medium") — real cloud pricing depends on region/vendor/commitment
+level this tool has no way to know (cost.py's own docstring already says
+so), and naming a specific SKU would quietly imply an accuracy this
+doesn't have while tying a vendor-agnostic tool to one vendor's naming.
+
+`storage_gb` (Database only) is a genuinely separate axis, not folded
+into the size multiplier — storage cost is about data volume, not
+request-throughput capacity, so it gets its own independent per-GB cost
+line, added only when actually declared.
+
+The LLM's `ATTRIBUTE_SHAPE_RULES` (the one shared prompt fragment every
+node-creating flow already uses) now documents both fields, so it can
+declare them deliberately — e.g. an actual production tier can now mean
+"bigger instances", not just "more replicas". `NodeDetailCard`'s existing
+generic field-rendering and editable-field-dropdown mechanism (built once,
+already reused for `scaling_mode`/`role`) picks both up with a few lines,
+no new UI — though `storage_gb` exposed a real pre-existing gap: it's the
+first *numeric* editable field this card has ever had, and the save path
+only ever sent raw strings (every prior editable field was a string/enum,
+so this never mattered before). Fixed properly rather than routing around
+it: editable-field descriptors gained a `numeric` flag, the save path
+converts to a real number (or null) before sending, and the input renders
+as `type="number"`.
+
+Also fixed in the same pass: `AnalyzerPanel`'s cost breakdown was already
+receiving a real per-line `basis` string from the backend (capacity.py/
+cost.py have always returned one) and never actually rendering it — only
+a generic "see README" disclaimer. Now shows the real basis per line,
+which is exactly where the new size/storage numbers actually explain
+themselves.
+
+New `backend/tests/test_sizing.py` covers: default-small nodes produce
+byte-identical numbers to before this existed (explicit regression
+check), size scaling capacity/cost by the declared multiplier, sub-linear
+cost vs. capacity, storage_gb as an independent line (present and absent),
+infra_node/external_dependency nodes (no `size` field at all) unaffected,
+and size + real load scaling composing correctly together. Full backend
+suite (51 tests) and `tsc`/`eslint`/`next build` all clean.

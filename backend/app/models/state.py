@@ -36,6 +36,20 @@ class ScalingMode(str, Enum):
     stateful = "stateful"
 
 
+class InstanceSize(str, Enum):
+    """A t-shirt-size compute tier, not a specific vendor instance type
+    (no "t3.medium") — see analyzer/sizing.py for why: real cloud pricing
+    depends on region/vendor/commitment this tool has no way to know, and
+    naming a specific SKU would imply an accuracy this doesn't have.
+    Defaults to `small` for every node — the implicit assumption every
+    node already carried before this field existed, so a node that never
+    sets it behaves exactly as it always has."""
+    small = "small"
+    medium = "medium"
+    large = "large"
+    xlarge = "xlarge"
+
+
 class Service(BaseModel):
     id: str
     node_kind: Literal["service"] = "service"
@@ -44,6 +58,7 @@ class Service(BaseModel):
     language: Optional[str] = None
     responsibilities: Optional[str] = None
     scaling_mode: ScalingMode = ScalingMode.stateless
+    size: InstanceSize = InstanceSize.small
 
 
 class DatabaseType(str, Enum):
@@ -67,6 +82,13 @@ class Database(BaseModel):
     type: DatabaseType
     engine: str
     role: DatabaseRole = DatabaseRole.primary
+    size: InstanceSize = InstanceSize.small
+    # Provisioned storage, in GB — a separate axis from `size`: storage
+    # cost scales with data volume, not with the request-throughput
+    # capacity a compute tier buys you. None (the default) means "not
+    # declared" — no storage cost line is added, matching every
+    # database's behavior before this field existed.
+    storage_gb: Optional[int] = None
 
 
 class QueueType(str, Enum):
@@ -81,6 +103,7 @@ class Queue(BaseModel):
     name: str
     type: QueueType
     engine: str
+    size: InstanceSize = InstanceSize.small
 
 
 class ExternalDependencyType(str, Enum):

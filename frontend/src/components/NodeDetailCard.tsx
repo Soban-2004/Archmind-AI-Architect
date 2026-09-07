@@ -19,17 +19,25 @@ const FIELD_LABEL: Record<string, string> = {
   scaling_mode: "Scaling",
   responsibilities: "Responsibilities",
   criticality: "Criticality",
+  size: "Size",
+  storage_gb: "Storage",
 };
 
+const SIZE_OPTIONS = ["small", "medium", "large", "xlarge"];
+
 // Which of the fields above make sense to expose for direct editing on
-// each node kind, and how — a free-text input, or one of a fixed set of
-// values (matches the enums the backend schema actually accepts; an
-// invalid value would just be rejected by the same validation a chat
-// edit goes through, but there's no reason to let the UI offer one).
-const EDITABLE_FIELDS: Partial<Record<NodeKind, { key: string; select?: string[] }[]>> = {
-  service: [{ key: "language" }, { key: "responsibilities" }, { key: "scaling_mode", select: ["stateless", "stateful"] }],
-  database: [{ key: "engine" }, { key: "role", select: ["primary", "replica", "cache"] }],
-  queue: [{ key: "engine" }],
+// each node kind, and how — a free-text input, one of a fixed set of
+// values, or (`numeric`) a number input whose value gets sent as an
+// actual number, not a string (matches the enums/types the backend schema
+// actually accepts; an invalid value would just be rejected by the same
+// validation a chat edit goes through, but there's no reason to let the
+// UI offer one). `size` was the first field every kind here shares, so
+// it's listed once and spread in rather than repeated per kind.
+const SIZE_FIELD = { key: "size", select: SIZE_OPTIONS };
+const EDITABLE_FIELDS: Partial<Record<NodeKind, { key: string; select?: string[]; numeric?: boolean }[]>> = {
+  service: [{ key: "language" }, { key: "responsibilities" }, { key: "scaling_mode", select: ["stateless", "stateful"] }, SIZE_FIELD],
+  database: [{ key: "engine" }, { key: "role", select: ["primary", "replica", "cache"] }, SIZE_FIELD, { key: "storage_gb", numeric: true }],
+  queue: [{ key: "engine" }, SIZE_FIELD],
   external_dependency: [{ key: "criticality", select: ["hard", "soft"] }],
 };
 
@@ -68,11 +76,18 @@ export function NodeDetailCard({ node, load, finding, onClose, onSave, killed, o
 
   const fields = Object.entries(FIELD_LABEL)
     .filter(([key]) => node[key] !== undefined && node[key] !== null && node[key] !== "")
-    .map(([key, label]) => ({ key, label, value: String(node[key]).replace(/_/g, " ") }));
+    .map(([key, label]) => ({ key, label, value: key === "storage_gb" ? `${node[key]} GB` : String(node[key]).replace(/_/g, " ") }));
+
+  // A field can be a string (language, engine, ...) or a number
+  // (storage_gb) on the real node — both need to round-trip through the
+  // draft's plain string inputs the same way.
+  function displayValue(raw: unknown): string {
+    return typeof raw === "string" || typeof raw === "number" ? String(raw) : "";
+  }
 
   function startEditing() {
     const initial: Record<string, string> = { name: node.name };
-    for (const f of editableFields) initial[f.key] = typeof node[f.key] === "string" ? (node[f.key] as string) : "";
+    for (const f of editableFields) initial[f.key] = displayValue(node[f.key]);
     setDraft(initial);
     setError(null);
     setEditing(true);
@@ -89,8 +104,16 @@ export function NodeDetailCard({ node, load, finding, onClose, onSave, killed, o
       if (draft.name !== node.name && draft.name.trim()) attributes.name = draft.name.trim();
       for (const f of editableFields) {
         const next = draft[f.key] ?? "";
-        const prev = typeof node[f.key] === "string" ? (node[f.key] as string) : "";
-        if (next !== prev) attributes[f.key] = next || null;
+        const prev = displayValue(node[f.key]);
+        if (next === prev) continue;
+        if (f.numeric) {
+          if (next.trim() !== "" && Number.isNaN(Number(next))) {
+            throw new Error(`${FIELD_LABEL[f.key] ?? f.key} must be a number`);
+          }
+          attributes[f.key] = next.trim() === "" ? null : Number(next);
+        } else {
+          attributes[f.key] = next || null;
+        }
       }
       if (Object.keys(attributes).length > 0) await onSave(node.id, attributes);
       setEditing(false);
@@ -199,6 +222,8 @@ export function NodeDetailCard({ node, load, finding, onClose, onSave, killed, o
                 </select>
               ) : (
                 <input
+                  type={f.numeric ? "number" : "text"}
+                  min={f.numeric ? 0 : undefined}
                   value={draft[f.key] ?? ""}
                   onChange={(e) => setDraft((d) => ({ ...d, [f.key]: e.target.value }))}
                   className="mt-0.5 w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"

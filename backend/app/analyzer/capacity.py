@@ -5,16 +5,23 @@ it's a FIXED, versioned, inspectable assumption, not something the LLM
 invents per run. Bump CAPACITY_VERSION if these numbers change.
 
 These are deliberately round, conservative, order-of-magnitude figures for
-a single small instance of each kind — a real system's actual ceiling
+a single SMALL instance of each kind — a real system's actual ceiling
 depends on hardware, query complexity, and tuning this tool has no way to
 know. Treat every simulation output as "given these assumptions", never as
 a real capacity prediction.
+
+v2 change: that "small instance" assumption is no longer unconditional — a
+node's declared `size` (see analyzer/sizing.py) scales the number by that
+tier's capacity_multiplier. A node that never sets `size` defaults to
+small (multiplier 1.0), so this is purely additive: every number below is
+still exactly what a "small" node gets, unchanged.
 """
 from __future__ import annotations
 
+from app.analyzer.sizing import size_spec_for
 from app.models.state import Node
 
-CAPACITY_VERSION = "v1"
+CAPACITY_VERSION = "v2"
 
 # requests/sec a single small instance of each kind is assumed to
 # saturate at, absent any other signal from the graph
@@ -46,6 +53,15 @@ def capacity_for(node: Node) -> tuple[float, str]:
     else:
         key = node.node_kind
 
-    capacity = _DEFAULT_CAPACITY_RPS.get(key, FALLBACK_CAPACITY_RPS)
-    basis = f"declared default for {key} (capacity set {CAPACITY_VERSION})" if key in _DEFAULT_CAPACITY_RPS else f"no declared default for {key}; using fallback"
+    base_capacity = _DEFAULT_CAPACITY_RPS.get(key, FALLBACK_CAPACITY_RPS)
+    spec = size_spec_for(node)
+    capacity = base_capacity * spec.capacity_multiplier
+
+    if key not in _DEFAULT_CAPACITY_RPS:
+        basis = f"no declared default for {key}; using fallback"
+    elif spec.capacity_multiplier == 1.0:
+        basis = f"declared default for {key} (capacity set {CAPACITY_VERSION})"
+    else:
+        basis = f"declared default for {key} (capacity set {CAPACITY_VERSION}); {spec.label} instance ({spec.vcpu} vCPU / {spec.ram_gb}GB) -> {spec.capacity_multiplier:g}x"
+
     return float(capacity), basis
