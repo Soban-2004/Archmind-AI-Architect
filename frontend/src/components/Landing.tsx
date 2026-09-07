@@ -46,19 +46,24 @@ const FEATURES = [
 ];
 
 /**
- * The drafting-sheet frame (fig label, dashed rule, corner ticks) around a
- * diagram — reused for the hero and every scenario below it so they read
- * as numbered figures in one document, not unrelated screenshots. What's
+ * The drafting-sheet frame (dashed rule, corner ticks) around a diagram —
+ * reused for the hero and every scenario below it so they read as
+ * numbered figures in one document, not unrelated screenshots. What's
  * inside the frame is always MiniArchitecturePreview: the real canvas
- * components, not an illustration of them.
+ * components, not an illustration of them. `fig`/`rev` are optional — the
+ * scenario rows below already print their own Fig. number in the text
+ * column next to the diagram, so repeating it inside the frame too would
+ * just be noise there.
  */
-function Figure({ fig, rev, children }: { fig: string; rev?: string; children: ReactNode }) {
+function Figure({ fig, rev, children }: { fig?: string; rev?: string; children: ReactNode }) {
   return (
     <div className="relative rounded-[10px] border border-bp-line-strong bg-bp-surface p-4 pb-3.5 before:pointer-events-none before:absolute before:-left-px before:-top-px before:h-2.5 before:w-2.5 before:border-l-[1.5px] before:border-t-[1.5px] before:border-bp-line-strong after:pointer-events-none after:absolute after:-bottom-px after:-right-px after:h-2.5 after:w-2.5 after:border-b-[1.5px] after:border-r-[1.5px] after:border-bp-line-strong">
-      <div className="mb-2.5 flex items-baseline justify-between border-b border-dashed border-bp-line pb-2.5 font-plex-mono text-[10.5px] uppercase tracking-wide text-bp-muted">
-        <span>{fig}</span>
-        {rev && <span>{rev}</span>}
-      </div>
+      {fig && (
+        <div className="mb-2.5 flex items-baseline justify-between border-b border-dashed border-bp-line pb-2.5 font-plex-mono text-[10.5px] uppercase tracking-wide text-bp-muted">
+          <span>{fig}</span>
+          {rev && <span>{rev}</span>}
+        </div>
+      )}
       <div className="overflow-hidden rounded-md border border-bp-line">{children}</div>
     </div>
   );
@@ -208,16 +213,45 @@ export function Landing({ onNewProject, onImportRepo, busy }: Props) {
             replayed here against fixed traffic so &ldquo;structurally validated&rdquo; has something to point at
             beyond the resting state above.
           </p>
-          <div className="mt-6 grid grid-cols-1 gap-8 md:grid-cols-2">
-            {SCENARIOS.map((s) => (
-              <div key={s.id} className="min-w-0">
-                <Figure fig={s.fig}>
-                  <MiniArchitecturePreview state={s.state} layout={s.layout} simulation={s.simulation} height={220} />
-                </Figure>
-                <p className="mt-3 text-[13.5px] font-semibold tracking-tight">{s.title}</p>
-                <p className="mt-1 text-[12.5px] leading-relaxed text-bp-muted">{s.description}</p>
-              </div>
-            ))}
+          <div className="mt-10 space-y-14">
+            {SCENARIOS.map((s, i) => {
+              const topFinding = s.simulation.findings[0];
+              const textBlock = (
+                <div className="min-w-0">
+                  <p className="font-plex-mono text-[11px] tracking-wide text-bp-accent">{s.fig}</p>
+                  <h3 className="mt-2 text-[19px] font-semibold tracking-tight text-balance">{s.title}</h3>
+                  <p className="mt-2.5 text-[13.5px] leading-relaxed text-bp-muted">{s.description}</p>
+                  <div className="mt-4 space-y-1.5 border-t border-dashed border-bp-line pt-3.5 font-plex-mono text-[10.5px] tracking-wide text-bp-muted">
+                    <p>
+                      SCENARIO: {s.simulation.scenario} · MULTIPLIER: ×{s.simulation.multiplier}
+                    </p>
+                    {topFinding && <p className="text-bp-accent-2">→ {topFinding.message}</p>}
+                  </div>
+                </div>
+              );
+              const diagramBlock = (
+                <div className="min-w-0">
+                  <Figure>
+                    <MiniArchitecturePreview state={s.state} layout={s.layout} simulation={s.simulation} height={260} />
+                  </Figure>
+                </div>
+              );
+              return (
+                <div key={s.id} className="grid grid-cols-1 items-center gap-10 lg:grid-cols-2">
+                  {i % 2 === 0 ? (
+                    <>
+                      {textBlock}
+                      {diagramBlock}
+                    </>
+                  ) : (
+                    <>
+                      {diagramBlock}
+                      {textBlock}
+                    </>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
 

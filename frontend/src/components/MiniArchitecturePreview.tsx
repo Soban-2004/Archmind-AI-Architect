@@ -6,6 +6,8 @@ import {
   BackgroundVariant,
   ReactFlow,
   ReactFlowProvider,
+  useNodesInitialized,
+  useReactFlow,
   type EdgeTypes,
   type NodeTypes,
   type ReactFlowInstance,
@@ -31,6 +33,27 @@ interface Props {
 }
 
 /**
+ * The real bug behind nodes getting cut off on the right: each custom
+ * node (ArchNodeCard etc.) only reports its real measured width/height to
+ * React Flow's store *after* its own first render — `fitView` called from
+ * `onInit` can fire before every node has finished that measurement pass,
+ * so it silently fits to whichever nodes happened to be measured yet
+ * (usually not the last one or two in the array) and the rest render
+ * outside the fitted viewport, clipped by the wrapper's overflow-hidden.
+ * `useNodesInitialized()` flips true only once every node has reported a
+ * real size — re-fitting then (not just on container resize) is what
+ * actually guarantees every node is visible.
+ */
+function FitWhenReady({ padding }: { padding: number }) {
+  const { fitView } = useReactFlow();
+  const nodesInitialized = useNodesInitialized();
+  useEffect(() => {
+    if (nodesInitialized) fitView({ padding, duration: 0 });
+  }, [nodesInitialized, fitView, padding]);
+  return null;
+}
+
+/**
  * The landing page's diagrams are not a separate illustration of the
  * product — they ARE the product's own canvas. Same nodeTypes/edgeTypes
  * (ArchNodeCard, FlowEdge, TrafficSourceNode), same toFlowElements /
@@ -40,16 +63,15 @@ interface Props {
  * figure that happens to be rendered by the real, live component tree, SVG
  * <animateMotion> traffic particles included.
  *
- * A plain `fitView` prop only fits once, at the instant React Flow first
- * measures its container. Inside a small CSS grid card whose track width
- * isn't settled until the grid/webfont layout finishes, that first
- * measurement can land on the wrong (sometimes near-zero) size and the
- * diagram renders badly scaled — and unlike the real interactive canvas,
- * there's no pan/zoom here for a visitor to correct it by hand, so a bad
- * first fit just stays broken. A ResizeObserver on the wrapper re-runs
- * fitView every time the container's real size changes, so the diagram
- * always ends up correctly framed and fully visible regardless of when
- * that settling happens.
+ * Two independent timing races can make a plain `fitView` prop land wrong,
+ * and unlike the real interactive canvas there's no pan/zoom here for a
+ * visitor to correct it by hand — so both are covered explicitly:
+ *  - the wrapper's own size isn't settled yet (a small CSS grid card
+ *    whose track width depends on webfont metrics / grid layout still
+ *    resolving) — a ResizeObserver re-fits whenever that size changes;
+ *  - the nodes themselves haven't finished their first measurement pass
+ *    yet (see FitWhenReady above) — the actual cause of nodes getting
+ *    silently clipped off the edge in testing.
  */
 export function MiniArchitecturePreview({ state, layout, simulation, height = 240 }: Props) {
   const base = toFlowElements(state, layout);
@@ -94,6 +116,7 @@ export function MiniArchitecturePreview({ state, layout, simulation, height = 24
           preventScrolling={false}
         >
           <Background variant={BackgroundVariant.Dots} gap={20} size={1.5} color="var(--rf-dot-color)" />
+          <FitWhenReady padding={FIT_PADDING} />
         </ReactFlow>
       </div>
     </ReactFlowProvider>
