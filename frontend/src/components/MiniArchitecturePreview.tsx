@@ -24,31 +24,34 @@ function nodeSize(n: Node): { width: number; height: number } {
   return n.type === "trafficSource" ? { width: TRAFFIC_SOURCE_WIDTH, height: TRAFFIC_SOURCE_HEIGHT } : { width: NODE_WIDTH, height: NODE_HEIGHT };
 }
 
-// Two independent style layers (arrival pulse, stagger reveal) can both
+// Two independent style layers (arrival glow, stagger reveal) can both
 // want to animate the same node — CSS supports that natively via a
 // comma-separated `animation` list, each entry animating its own
-// property (outline vs. opacity here) with its own timing, so they never
+// property (filter vs. opacity here) with its own timing, so they never
 // actually fight each other. This just appends rather than overwriting.
 function combineAnimation(existing: unknown, addition: string): string {
   return typeof existing === "string" && existing.length > 0 ? `${existing}, ${addition}` : addition;
 }
 
-const PULSE_KEYFRAME: Record<string, string> = {
-  ok: "edge-arrival-pulse-ok",
-  warning: "edge-arrival-pulse-warning",
-  overloaded: "edge-arrival-pulse-overloaded",
+const GLOW_KEYFRAME: Record<string, string> = {
+  ok: "edge-arrival-glow-ok",
+  warning: "edge-arrival-glow-warning",
+  overloaded: "edge-arrival-glow-overloaded",
 };
 
 /**
- * "A request just landed here" — an outline ring that pulses on a node
- * every time traffic actually arrives, not just the dot moving along the
- * edge toward it. Looped at the SAME duration as the fastest particle
- * flowing into that node (FlowEdge.tsx's own flowSpeed), so the pulse
- * reads as caused by the traffic, not a decoration running on its own
- * clock. Colored by the node's real simStatus — ok/warning/overloaded,
- * the same palette simEdgeStyle already uses for the edge itself — so an
- * overloaded node's pulse reads more urgent than a healthy one's. Killed
- * nodes, and any node with nothing actually flowing into it, don't pulse.
+ * "A request just landed here" — the node briefly brightens from within
+ * and fades back, rather than a ring or shape appearing around it: no new
+ * geometry competing with the card itself, just a brightness/saturation
+ * shift on what's already there (see globals.css's edge-arrival-glow-*
+ * keyframes). Looped at the SAME duration as the fastest particle flowing
+ * into that node (FlowEdge.tsx's own flowSpeed), so the glow reads as
+ * caused by the traffic, not a decoration running on its own clock.
+ * Peak intensity follows the node's real simStatus — ok/warning/
+ * overloaded, the same palette simEdgeStyle already uses for the edge
+ * itself — so a struggling node's flash reads slightly more urgent.
+ * Killed nodes, and any node with nothing actually flowing into it,
+ * don't glow.
  */
 function withArrivalPulse(nodes: Node[], edges: Edge[]) {
   const incomingSpeed = new Map<string, number>();
@@ -63,13 +66,12 @@ function withArrivalPulse(nodes: Node[], edges: Edge[]) {
   return nodes.map((n) => {
     const speed = incomingSpeed.get(n.id);
     const status = (n.data as { simStatus?: string } | undefined)?.simStatus;
-    const keyframe = status ? PULSE_KEYFRAME[status] : undefined;
+    const keyframe = status ? GLOW_KEYFRAME[status] : undefined;
     if (speed === undefined || !keyframe) return n;
     return {
       ...n,
       style: {
         ...n.style,
-        outlineStyle: "solid" as const,
         animation: combineAnimation(n.style?.animation, `${keyframe} ${speed}s ease-in-out infinite`),
       },
     };
