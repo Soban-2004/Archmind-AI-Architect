@@ -7,11 +7,11 @@ import { toFlowElements } from "@/lib/diffView";
 import { applySimulation, TRAFFIC_SOURCE_ID } from "@/lib/simView";
 import type { ArchitectureState, SimulationResult } from "@/lib/types";
 import { NODE_HEIGHT, NODE_WIDTH, TRAFFIC_SOURCE_HEIGHT, TRAFFIC_SOURCE_WIDTH, type LayoutMap } from "@/lib/layout";
+import { ArchNodeCard } from "./ArchNodeCard";
 import { FlowEdge } from "./FlowEdge";
-import { ImpactArchNode } from "./ImpactArchNode";
 import { TrafficSourceNode } from "./TrafficSourceNode";
 
-const nodeTypes: NodeTypes = { archNode: ImpactArchNode, trafficSource: TrafficSourceNode };
+const nodeTypes: NodeTypes = { archNode: ArchNodeCard, trafficSource: TrafficSourceNode };
 const edgeTypes: EdgeTypes = { flow: FlowEdge };
 
 const PADDING = 24; // px of breathing room around the diagram on every side
@@ -24,43 +24,12 @@ function nodeSize(n: Node): { width: number; height: number } {
   return n.type === "trafficSource" ? { width: TRAFFIC_SOURCE_WIDTH, height: TRAFFIC_SOURCE_HEIGHT } : { width: NODE_WIDTH, height: NODE_HEIGHT };
 }
 
-// Two independent style layers (arrival glow, stagger reveal) can both
-// want to animate the same node — CSS supports that natively via a
-// comma-separated `animation` list, each entry animating its own
-// property (filter vs. opacity here) with its own timing, so they never
-// actually fight each other. This just appends rather than overwriting.
+// withStaggerReveal below sets both `animation` and `animationDelay` on
+// nodes/edges that may already carry a style from elsewhere — append
+// rather than overwrite so it composes instead of clobbering anything
+// already there.
 function combineAnimation(existing: unknown, addition: string): string {
   return typeof existing === "string" && existing.length > 0 ? `${existing}, ${addition}` : addition;
-}
-
-/**
- * Annotates each node with how often traffic actually arrives at it —
- * `arrivalSpeed`/`arrivalCount`, straight from its fastest incoming
- * flowing edge's own real FlowEdge.tsx particle config (see simView.ts's
- * intensityFor) — so ImpactArchNode can fire its own discrete, one-shot
- * "impact" reaction (a real per-arrival event via the Web Animations API,
- * not a looping CSS animation — see that component for why) on the exact
- * same cadence particles really arrive: a new one reaches its target
- * every `arrivalSpeed / arrivalCount` seconds, count particles evenly
- * spaced across one `arrivalSpeed`-second lap. Pure data, no style
- * mutation — ImpactArchNode owns the actual animation, not this pipeline.
- */
-function withArrivalData(nodes: Node[], edges: Edge[]) {
-  const incoming = new Map<string, { speed: number; count: number }>();
-  for (const e of edges) {
-    const data = e.data as { flowing?: boolean; flowSpeed?: number; flowCount?: number } | undefined;
-    if (!data?.flowing) continue;
-    const speed = data.flowSpeed ?? 1.2;
-    const count = data.flowCount ?? 1;
-    const current = incoming.get(e.target);
-    if (current === undefined || speed < current.speed) incoming.set(e.target, { speed, count });
-  }
-
-  return nodes.map((n) => {
-    const arrival = incoming.get(n.id);
-    if (!arrival) return n;
-    return { ...n, data: { ...n.data, arrivalSpeed: arrival.speed, arrivalCount: arrival.count } };
-  });
 }
 
 /**
@@ -157,13 +126,11 @@ interface Props {
 
 /**
  * The landing page's diagrams are not a separate illustration of the
- * product — they ARE the product's own canvas. Same edgeTypes (FlowEdge),
- * same toFlowElements/applySimulation pipeline ArchitectureCanvas.tsx uses
- * on real projects, just fed fixed fixture data (lib/landingScenarios.ts)
- * instead of a live version, and locked down so a visitor can't pan/zoom/
- * drag it. Nodes render through ImpactArchNode, a thin landing-only
- * wrapper that renders the real ArchNodeCard unchanged and adds the
- * per-arrival impact reaction around it — see that component.
+ * product — they ARE the product's own canvas. Same nodeTypes/edgeTypes
+ * (ArchNodeCard, FlowEdge, TrafficSourceNode), same toFlowElements /
+ * applySimulation pipeline ArchitectureCanvas.tsx uses on real projects,
+ * just fed fixed fixture data (lib/landingScenarios.ts) instead of a live
+ * version, and locked down so a visitor can't pan/zoom/drag it.
  *
  * Deliberately does NOT use React Flow's own `fitView` — every attempt to
  * squeeze these into a small fixed-height box and auto-fit into it kept
@@ -191,12 +158,7 @@ export function MiniArchitecturePreview({
           nodes: withSim.nodes.map((n) => (n.id === TRAFFIC_SOURCE_ID ? { ...n, position: trafficSourcePosition } : n)),
         }
       : withSim;
-    // Arrival data applies whenever there's a real simulation to react to
-    // (not opt-in like staggerReveal) — "traffic landing on a node" is
-    // part of what "live traffic simulation" already means on every one
-    // of these diagrams, not a hero-only flourish.
-    const withArrivals = simulation ? { ...positioned, nodes: withArrivalData(positioned.nodes, positioned.edges) } : positioned;
-    return staggerReveal ? withStaggerReveal(withArrivals.nodes, withArrivals.edges) : withArrivals;
+    return staggerReveal ? withStaggerReveal(positioned.nodes, positioned.edges) : positioned;
   }, [state, layout, simulation, staggerReveal, trafficSourcePosition]);
 
   const bounds = useMemo(() => computeBounds(nodes), [nodes]);

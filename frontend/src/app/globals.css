@@ -225,12 +225,6 @@ body {
   }
 }
 
-/* The per-arrival "impact" reaction (flash + scale-punch, plus a shake
-   for overloaded nodes) lives entirely in ImpactArchNode.tsx via the Web
-   Animations API now, not CSS keyframes here — it has to be a real
-   discrete event per particle arrival, not something a looping @keyframes
-   animation can express. See that component for the why. */
-
 @keyframes flow-dash {
   to {
     stroke-dashoffset: -16;
