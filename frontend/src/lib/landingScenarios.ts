@@ -12,11 +12,14 @@ import { NODE_HEIGHT, NODE_WIDTH, TRAFFIC_SOURCE_HEIGHT, TRAFFIC_SOURCE_WIDTH } 
 // product uses, so what a visitor sees here is pixel-for-pixel what the
 // product itself renders, not a separate illustration of it.
 
-// Column/row spacing mirrors lib/layout.ts's own dagre config (200x68
-// nodes, ranksep 100, nodesep 40) so these hand-placed fixtures read as the
-// product's real auto-layout, not a bespoke arrangement.
-const COL = NODE_WIDTH + 100; // 300
-const ROW = NODE_HEIGHT + 40; // 108
+// Tighter than lib/layout.ts's own dagre config (200x68 nodes, ranksep
+// 100, nodesep 40) on purpose: these three scenario diagrams sit in a
+// boxed half-width column (Figure + a 50/50 row split), nowhere near as
+// much room as the hero gets, and the old 300/108 spacing was landing
+// them at MiniArchitecturePreview's own zoom floor — at or below the
+// minimum legible size, not just "a bit small."
+const COL = NODE_WIDTH + 40; // 240
+const ROW = NODE_HEIGHT + 30; // 98
 
 // --- Shared base topology: Storefront -> Gateway -> Orders API -> {DB, Cache}
 const baseNodes: ArchitectureState["nodes"] = [
@@ -35,9 +38,9 @@ const baseEdges: ArchitectureState["edges"] = [
 ];
 
 const baseLayout: LayoutMap = {
-  n_store: { x: 0, y: 54 },
-  n_gw: { x: COL, y: 54 },
-  n_orders: { x: COL * 2, y: 54 },
+  n_store: { x: 0, y: ROW / 2 },
+  n_gw: { x: COL, y: ROW / 2 },
+  n_orders: { x: COL * 2, y: ROW / 2 },
   n_db: { x: COL * 3, y: 0 },
   n_cache: { x: COL * 3, y: ROW },
 };

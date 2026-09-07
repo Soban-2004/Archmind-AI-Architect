@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { ArrowRight, FolderUp, GitCompare, Layers, MessageSquare, ScanSearch, ShieldCheck, Sparkles, Wallet, Waves } from "lucide-react";
+import { ArrowRight, Boxes, FolderUp, GitCompare, Layers, MessageSquare, ScanSearch, ShieldCheck, Sparkles, Wallet, Waves } from "lucide-react";
 import { HERO_SCENARIO, HERO_USERS_POSITION, SCENARIOS } from "@/lib/landingScenarios";
 import { MiniArchitecturePreview } from "./MiniArchitecturePreview";
 
@@ -122,8 +122,20 @@ export function Landing({ onNewProject, onImportRepo, busy, existingProject, onC
           legible, and equal weight left them at ~120-150px. Text still
           pins to the left edge via the section's own px-7. */}
       <div className="relative flex w-full flex-col gap-10 px-7 pb-4 pt-14 lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-center lg:gap-14">
-        <div className="min-w-0">
-          <span className="inline-flex items-center gap-2 rounded-full border border-bp-line-strong px-3 py-1 font-plex-mono text-[11px] uppercase tracking-wide text-bp-accent">
+        {/* pl-[30px]: nudges the text block right of the section's own
+            px-7 edge — the header bar above already names the product in
+            passing, but this is the first thing said inside the page's
+            own content, so it gets a proper wordmark, not just the small
+            eyebrow tagline underneath it. */}
+        <div className="min-w-0 pl-[30px]">
+          <div className="flex items-center gap-2">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-bp-accent text-white">
+              <Boxes size={15} />
+            </div>
+            <span className="font-plex-mono text-[15px] font-bold tracking-tight">AI Architect</span>
+          </div>
+
+          <span className="mt-4 inline-flex items-center gap-2 rounded-full border border-bp-line-strong px-3 py-1 font-plex-mono text-[11px] uppercase tracking-wide text-bp-accent">
             <span className="h-1.5 w-1.5 rounded-full bg-bp-good shadow-[0_0_0_3px_rgba(5,150,105,0.2)]" />
             AI-native system design
           </span>
@@ -232,8 +244,17 @@ export function Landing({ onNewProject, onImportRepo, busy, existingProject, onC
           </div>
         </div>
 
-        {/* --- Scenarios ---------------------------------------------------- */}
-        <div className="mt-14 border-t border-bp-line pt-10">
+      </div>
+
+      {/* --- Scenarios ---------------------------------------------------- */}
+      {/* Broken out of the max-w-5xl wrapper above for the same reason the
+          hero was: these diagrams were landing at (or below) the
+          MiniArchitecturePreview's own zoom floor inside a half of a
+          1024px-capped column — genuinely at or near the minimum legible
+          size, not just "a bit small." Full width like the hero gives
+          each scenario's own 50/50 split real room to work with. */}
+      <div className="relative w-full px-7">
+        <div className="border-t border-bp-line pt-10">
           <h2 className="font-plex-mono text-[11px] uppercase tracking-[0.12em] text-bp-muted">See it under real conditions</h2>
           <p className="mt-2 max-w-2xl text-[13px] leading-relaxed text-bp-muted">
             The same simulator, the same capacity rules, and the same canvas the product runs on your own project —
@@ -282,7 +303,7 @@ export function Landing({ onNewProject, onImportRepo, busy, existingProject, onC
           </div>
         </div>
 
-        <div className="mt-14 border-t border-bp-line pt-6 pb-4 text-center font-plex-mono text-[10.5px] tracking-wide text-bp-muted">
+        <div className="mx-auto mt-14 w-full max-w-5xl border-t border-bp-line pt-6 pb-4 text-center font-plex-mono text-[10.5px] tracking-wide text-bp-muted">
           BUILT AS A VALIDATED COMMAND PIPELINE — NOT A DIAGRAM GENERATOR
         </div>
       </div>
