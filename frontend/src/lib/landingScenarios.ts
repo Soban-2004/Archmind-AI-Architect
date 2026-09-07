@@ -61,14 +61,28 @@ export interface Scenario {
   simulation: SimulationResult;
 }
 
-// --- Fig. 01 — hero: steady, healthy traffic -------------------------------
+// --- Fig. 01 — hero: one simple, complete chain -----------------------
+// Deliberately smaller than the full base topology (no cache branch) —
+// this is the very first thing a visitor sees, and a single clean row
+// reads immediately as "one complete design" rather than something to
+// study. The fuller topology (with the cache branch) shows up below in
+// the scenarios, where the extra realism earns its keep.
+const heroNodes: ArchitectureState["nodes"] = baseNodes.filter((n) => n.id !== "n_cache");
+const heroEdges: ArchitectureState["edges"] = baseEdges.filter((e) => e.id !== "e_orders_cache");
+const heroLayout: LayoutMap = {
+  n_store: { x: 0, y: 0 },
+  n_gw: { x: COL, y: 0 },
+  n_orders: { x: COL * 2, y: 0 },
+  n_db: { x: COL * 3, y: 0 },
+};
+
 export const HERO_SCENARIO: Scenario = {
   id: "hero",
   fig: "Fig. 01",
   title: "Live architecture canvas",
   description: "Every node was proposed as a validated command, never drawn freehand.",
-  state: baseState(),
-  layout: baseLayout,
+  state: { nodes: heroNodes, edges: heroEdges, constraints: [], adrs: [] },
+  layout: heroLayout,
   simulation: {
     scenario: "steady_state",
     multiplier: 1,
@@ -78,13 +92,11 @@ export const HERO_SCENARIO: Scenario = {
       { node_id: "n_gw", node_name: "API Gateway", incoming_rps: 40, capacity_rps: 800, utilization_pct: 5, status: "ok", basis: "1 instance @ 800 rps" },
       { node_id: "n_orders", node_name: "Orders API", incoming_rps: 40, capacity_rps: 250, utilization_pct: 16, status: "ok", basis: "1 instance @ 250 rps" },
       { node_id: "n_db", node_name: "PostgreSQL", incoming_rps: 22, capacity_rps: 300, utilization_pct: 7, status: "ok", basis: "1 instance @ 300 rps" },
-      { node_id: "n_cache", node_name: "Redis", incoming_rps: 18, capacity_rps: 2000, utilization_pct: 1, status: "ok", basis: "1 instance @ 2000 rps" },
     ],
     edge_loads: [
       { edge_id: "e_store_gw", from_id: "n_store", to_id: "n_gw", rps: 40 },
       { edge_id: "e_gw_orders", from_id: "n_gw", to_id: "n_orders", rps: 40 },
       { edge_id: "e_orders_db", from_id: "n_orders", to_id: "n_db", rps: 22 },
-      { edge_id: "e_orders_cache", from_id: "n_orders", to_id: "n_cache", rps: 18 },
     ],
     findings: [],
   },

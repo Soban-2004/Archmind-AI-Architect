@@ -107,7 +107,13 @@ export function Landing({ onNewProject, onImportRepo, busy }: Props) {
 
       <div className="relative mx-auto w-full max-w-5xl px-7 py-10">
         {/* --- Hero ------------------------------------------------------ */}
-        <div className="grid grid-cols-1 items-center gap-14 pt-6 lg:grid-cols-[1.05fr_1fr]">
+        {/* minmax(0, ...) on both tracks, not plain fr — a bare fr grid
+            track's minimum width defaults to its content's intrinsic
+            size, so a wide diagram inside the right column could force
+            the whole grid wider than the page instead of ever shrinking
+            to fit. min-w-0 below is the same fix applied to the column
+            itself, for defense in depth. */}
+        <div className="grid grid-cols-1 items-center gap-14 pt-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
           <div>
             <span className="inline-flex items-center gap-2 rounded-full border border-bp-line-strong px-3 py-1 font-plex-mono text-[11px] uppercase tracking-wide text-bp-accent">
               <span className="h-1.5 w-1.5 rounded-full bg-bp-good shadow-[0_0_0_3px_rgba(5,150,105,0.2)]" />
@@ -148,9 +154,9 @@ export function Landing({ onNewProject, onImportRepo, busy }: Props) {
             </p>
           </div>
 
-          <div className="animate-fade-in">
+          <div className="min-w-0 animate-fade-in">
             <Figure fig="Fig. 01 — live architecture canvas" rev="Rev. A">
-              <MiniArchitecturePreview state={HERO_SCENARIO.state} layout={HERO_SCENARIO.layout} simulation={HERO_SCENARIO.simulation} height={280} />
+              <MiniArchitecturePreview state={HERO_SCENARIO.state} layout={HERO_SCENARIO.layout} simulation={HERO_SCENARIO.simulation} height={200} />
             </Figure>
             <p className="mt-3 text-center font-plex-mono text-[10.5px] tracking-wide text-bp-muted">
               Live traffic simulation — every node was proposed as a validated command, never drawn freehand.
@@ -202,11 +208,11 @@ export function Landing({ onNewProject, onImportRepo, busy }: Props) {
             replayed here against fixed traffic so &ldquo;structurally validated&rdquo; has something to point at
             beyond the resting state above.
           </p>
-          <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className="mt-6 grid grid-cols-1 gap-8 md:grid-cols-2">
             {SCENARIOS.map((s) => (
-              <div key={s.id}>
+              <div key={s.id} className="min-w-0">
                 <Figure fig={s.fig}>
-                  <MiniArchitecturePreview state={s.state} layout={s.layout} simulation={s.simulation} height={230} />
+                  <MiniArchitecturePreview state={s.state} layout={s.layout} simulation={s.simulation} height={220} />
                 </Figure>
                 <p className="mt-3 text-[13.5px] font-semibold tracking-tight">{s.title}</p>
                 <p className="mt-1 text-[12.5px] leading-relaxed text-bp-muted">{s.description}</p>
