@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
   Background,
   BackgroundVariant,
@@ -33,16 +33,14 @@ interface Props {
 }
 
 /**
- * The real bug behind nodes getting cut off on the right: each custom
- * node (ArchNodeCard etc.) only reports its real measured width/height to
- * React Flow's store *after* its own first render — `fitView` called from
- * `onInit` can fire before every node has finished that measurement pass,
- * so it silently fits to whichever nodes happened to be measured yet
- * (usually not the last one or two in the array) and the rest render
- * outside the fitted viewport, clipped by the wrapper's overflow-hidden.
- * `useNodesInitialized()` flips true only once every node has reported a
- * real size — re-fitting then (not just on container resize) is what
- * actually guarantees every node is visible.
+ * Each custom node (ArchNodeCard etc.) only reports its real measured
+ * width/height to React Flow's store after its own first render —
+ * `fitView` called from `onInit` can in principle fire before every node
+ * has finished that pass. `useNodesInitialized()` flips true only once
+ * every node has reported a real size; re-fitting then closes that gap.
+ * (With the `useMemo` below keeping node/edge identity stable, this now
+ * mostly just runs once right after mount — see the memoization comment
+ * further down for what was actually causing nodes to go missing.)
  */
 function FitWhenReady({ padding }: { padding: number }) {
   const { fitView } = useReactFlow();
@@ -63,19 +61,31 @@ function FitWhenReady({ padding }: { padding: number }) {
  * figure that happens to be rendered by the real, live component tree, SVG
  * <animateMotion> traffic particles included.
  *
- * Two independent timing races can make a plain `fitView` prop land wrong,
- * and unlike the real interactive canvas there's no pan/zoom here for a
- * visitor to correct it by hand — so both are covered explicitly:
- *  - the wrapper's own size isn't settled yet (a small CSS grid card
- *    whose track width depends on webfont metrics / grid layout still
- *    resolving) — a ResizeObserver re-fits whenever that size changes;
- *  - the nodes themselves haven't finished their first measurement pass
- *    yet (see FitWhenReady above) — the actual cause of nodes getting
- *    silently clipped off the edge in testing.
+ * The actual, confirmed cause of nodes getting clipped: `nodes`/`edges`
+ * were being rebuilt with `toFlowElements`/`applySimulation` directly in
+ * the render body, with no memoization — every render produced brand-new
+ * node objects, even when `state`/`layout`/`simulation` hadn't changed.
+ * React Flow only keeps a node's already-measured size across a `nodes`
+ * prop update when the incoming object is the SAME reference as before
+ * (see `adoptUserNodes` in @xyflow/system); a fresh object every render
+ * fails that check, so React Flow throws away every node's measured
+ * dimensions and starts re-measuring from scratch. On the landing page,
+ * the background project-preload effect in page.tsx fires several state
+ * updates right after mount — each one re-renders Landing, which was
+ * enough to keep resetting mid-measurement and leave some nodes
+ * permanently stuck "not yet measured", i.e. invisible. `useMemo` below
+ * (the same pattern ArchitectureCanvas.tsx already uses for this exact
+ * derivation) keeps the same node/edge objects across re-renders whenever
+ * the real inputs haven't changed, so React Flow's measurements survive.
+ * FitWhenReady and the ResizeObserver below stay as a second layer of
+ * defense for the timing races described above, now that they're no
+ * longer fighting a losing battle against constant resets.
  */
 export function MiniArchitecturePreview({ state, layout, simulation, height = 240 }: Props) {
-  const base = toFlowElements(state, layout);
-  const { nodes, edges } = simulation ? applySimulation(base.nodes, base.edges, simulation) : base;
+  const { nodes, edges } = useMemo(() => {
+    const base = toFlowElements(state, layout);
+    return simulation ? applySimulation(base.nodes, base.edges, simulation) : base;
+  }, [state, layout, simulation]);
 
   const wrapperRef = useRef<HTMLDivElement>(null);
   const instanceRef = useRef<ReactFlowInstance | null>(null);
