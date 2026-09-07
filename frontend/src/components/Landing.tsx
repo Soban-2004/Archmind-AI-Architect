@@ -179,7 +179,7 @@ export function Landing({ onNewProject, onImportRepo, busy, existingProject, onC
 
           <div className="min-w-0 animate-fade-in">
             <Figure fig="Fig. 01 — live architecture canvas" rev="Rev. A">
-              <MiniArchitecturePreview state={HERO_SCENARIO.state} layout={HERO_SCENARIO.layout} simulation={HERO_SCENARIO.simulation} height={200} />
+              <MiniArchitecturePreview state={HERO_SCENARIO.state} layout={HERO_SCENARIO.layout} simulation={HERO_SCENARIO.simulation} />
             </Figure>
             <p className="mt-3 text-center font-plex-mono text-[10.5px] tracking-wide text-bp-muted">
               Live traffic simulation — every node was proposed as a validated command, never drawn freehand.
@@ -250,7 +250,7 @@ export function Landing({ onNewProject, onImportRepo, busy, existingProject, onC
               const diagramBlock = (
                 <div className="min-w-0">
                   <Figure>
-                    <MiniArchitecturePreview state={s.state} layout={s.layout} simulation={s.simulation} height={260} />
+                    <MiniArchitecturePreview state={s.state} layout={s.layout} simulation={s.simulation} />
                   </Figure>
                 </div>
               );
