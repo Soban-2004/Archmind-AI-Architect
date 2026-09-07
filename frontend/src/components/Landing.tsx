@@ -116,15 +116,12 @@ export function Landing({ onNewProject, onImportRepo, busy, existingProject, onC
       {/* --- Hero --------------------------------------------------------- */}
       {/* Deliberately NOT capped at max-w-5xl like the rest of the page
           below — a 1024px cap left both columns cramped no matter the
-          split. True 50/50 (grid-cols-2, not a fixed-width text column
-          plus flex-1) so text and diagram carry equal visual weight, per
-          feedback — text pinned to the left edge by the section's own
-          px-7, diagram filling the other half exactly, not "whatever's
-          left over." The real tradeoff of true 50/50 with a 5-column
-          left-to-right diagram: node cards land smaller than an earlier,
-          diagram-dominant version did — see the sizing note by
-          MiniArchitecturePreview below. */}
-      <div className="relative flex w-full flex-col gap-10 px-7 pb-4 pt-14 lg:grid lg:grid-cols-2 lg:items-center lg:gap-14">
+          split. Side by side, not stacked — but 60/40 in the diagram's
+          favor (minmax(0,2fr) minmax(0,3fr)), not a true 50/50: a
+          5-column left-to-right flow needs real width to keep its cards
+          legible, and equal weight left them at ~120-150px. Text still
+          pins to the left edge via the section's own px-7. */}
+      <div className="relative flex w-full flex-col gap-10 px-7 pb-4 pt-14 lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-center lg:gap-14">
         <div className="min-w-0">
           <span className="inline-flex items-center gap-2 rounded-full border border-bp-line-strong px-3 py-1 font-plex-mono text-[11px] uppercase tracking-wide text-bp-accent">
             <span className="h-1.5 w-1.5 rounded-full bg-bp-good shadow-[0_0_0_3px_rgba(5,150,105,0.2)]" />
@@ -179,14 +176,11 @@ export function Landing({ onNewProject, onImportRepo, busy, existingProject, onC
             more small screenshot," when this diagram's whole job is to
             look like the actual product, floating over the page rather
             than boxed away in a corner. No custom maxZoom either (default
-            caps at 1, real 1:1 node size) — a true 50/50 split with a
-            5-column left-to-right flow (Users, Storefront, API Gateway,
-            the Orders/Inventory branch, then their datastores) genuinely
-            doesn't have room to blow the cards up past real size the way
-            the earlier, diagram-dominant layout did; on a typical laptop-
-            width window this lands around 120-150px-wide cards, growing
-            toward the full 200px real size on a wide monitor. That's the
-            real cost of equal weight with this many stages, not a bug. */}
+            caps at 1, real 1:1 node size — legible cards matter more than
+            hitting an exact ratio here). At the 60/40 split above, a
+            5-column left-to-right flow lands around 150-190px-wide cards
+            on a typical laptop-width window, climbing to the full 200px
+            real size on a wide monitor. */}
         <div className="min-w-0 animate-fade-in">
           <MiniArchitecturePreview
             state={HERO_SCENARIO.state}

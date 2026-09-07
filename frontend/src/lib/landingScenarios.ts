@@ -80,11 +80,18 @@ export interface Scenario {
 // attaches to just that one node automatically — no special-casing
 // needed, it falls straight out of the corrected topology.
 const HGAP = 40;
-const VGAP = 40;
+const VGAP = 56;
+// The gap right after API Gateway gets extra room on top of the normal
+// HGAP — that's the one transition where a single node's two outgoing
+// edges have to visibly separate toward two vertically-offset targets,
+// and they need real horizontal distance to develop into a clean curve
+// before reaching the branch; too little of it is what made the two
+// edges look like they left Gateway at one crowded, sharp angle.
+const BRANCH_GAP_EXTRA = 24;
 const HERO_COL_USERS = 0;
 const HERO_COL_STORE = HERO_COL_USERS + TRAFFIC_SOURCE_WIDTH + HGAP;
 const HERO_COL_GW = HERO_COL_STORE + NODE_WIDTH + HGAP;
-const HERO_COL_BACKEND = HERO_COL_GW + NODE_WIDTH + HGAP;
+const HERO_COL_BACKEND = HERO_COL_GW + NODE_WIDTH + HGAP + BRANCH_GAP_EXTRA;
 const HERO_COL_DATA = HERO_COL_BACKEND + NODE_WIDTH + HGAP;
 
 // The branch (Orders/Inventory and their datastores) is the only place
