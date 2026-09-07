@@ -1,6 +1,6 @@
 import type { ArchitectureState, SimulationResult } from "./types";
 import type { LayoutMap } from "./layout";
-import { NODE_HEIGHT, NODE_WIDTH, TRAFFIC_SOURCE_HEIGHT } from "./layout";
+import { NODE_HEIGHT, NODE_WIDTH, TRAFFIC_SOURCE_HEIGHT, TRAFFIC_SOURCE_WIDTH } from "./layout";
 
 // Fixed illustrative fixtures for the landing page's live previews — real
 // ArchitectureState / SimulationResult shapes (exactly what the backend
@@ -63,28 +63,39 @@ export interface Scenario {
 
 // --- Fig. 01 — hero: a real branching topology, not a flat chain -------
 // A deliberately different shape from the shared base topology below —
-// this is the one diagram whose whole job is to fill real vertical space
-// at a large, legible size, not read as a compact "complete design" next
-// to the copy. Two real entry points (Storefront and API Gateway both
-// have no incoming edge, by design) so simView.ts's own synthetic "Users"
-// node — the same mechanism that already draws it for a live simulation
-// on a real project — attaches to both automatically; API Gateway then
-// fans out into a genuinely separate branch (Orders API vs. Inventory
-// API, each with its own datastore) instead of one linear pipe.
+// two columns by four rows, so it reads as a real branching diagram
+// rather than either a thin flat chain or an overly tall vertical strip.
+// Two real entry points (Storefront and API Gateway both have no
+// incoming edge, by design) so simView.ts's own synthetic "Users" node —
+// the same mechanism that already draws it for a live simulation on a
+// real project — attaches to both automatically; API Gateway then fans
+// out into a genuinely separate branch (Orders API vs. Inventory API,
+// each with its own datastore) instead of one linear pipe.
 //
-// HGAP/VGAP are much larger than the base topology's dagre-derived
-// spacing (60/50 vs. 100/40 world units) — tuned together with the
-// maxZoom={1.45} passed in Landing.tsx so the *rendered* result reads as
-// a spacious, real-size canvas: ~290px-wide node cards with ~85-90px of
-// real empty space between them, not a compressed flowchart.
-const HGAP = 60;
-const VGAP = 50;
+// HGAP/VGAP, tuned together with the maxZoom={1.15} passed in
+// Landing.tsx, are what the on-screen node size and spacing actually come
+// from: at a representative container width this lands at roughly
+// 220-240px-wide node cards and a ~480px total canvas height.
+const HGAP = 48;
+const VGAP = 30;
 const HERO_COL_L = 0;
-const HERO_COL_R = NODE_WIDTH + HGAP; // 260
-const HERO_ROW_USERS = 0;
-const HERO_ROW_ENTRY = HERO_ROW_USERS + TRAFFIC_SOURCE_HEIGHT + VGAP; // Storefront / API Gateway
+const HERO_COL_R = NODE_WIDTH + HGAP; // 248
+const HERO_ROW_ENTRY = TRAFFIC_SOURCE_HEIGHT + VGAP; // Storefront / API Gateway
 const HERO_ROW_BACKEND = HERO_ROW_ENTRY + NODE_HEIGHT + VGAP; // Orders API / Inventory API
 const HERO_ROW_DATA = HERO_ROW_BACKEND + NODE_HEIGHT + VGAP; // PostgreSQL / Redis Cache
+
+// Where the synthetic "Users" node (simView.ts's applySimulation) has to
+// be placed for the branching layout to actually work: centered above the
+// two entry nodes, row 0. Left to simView's own default — left of the
+// entry nodes' average position, the heuristic its real left-to-right
+// canvas use case needs — its edge to API Gateway would route straight
+// across Storefront, which was the actual cause of the reported crossing
+// lines (there's only ever one diagonal edge in this topology otherwise:
+// API Gateway -> Orders API, with nothing else to cross).
+export const HERO_USERS_POSITION = {
+  x: (HERO_COL_L + HERO_COL_R + NODE_WIDTH) / 2 - TRAFFIC_SOURCE_WIDTH / 2,
+  y: 0,
+};
 
 const heroNodes: ArchitectureState["nodes"] = [
   { id: "n_store", node_kind: "service", name: "Storefront", type: "frontend", language: "TypeScript", scaling_mode: "stateless" },

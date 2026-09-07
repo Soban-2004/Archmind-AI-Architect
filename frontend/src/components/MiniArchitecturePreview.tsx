@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Background, BackgroundVariant, ReactFlow, ReactFlowProvider, type Edge, type EdgeTypes, type Node, type NodeTypes } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { toFlowElements } from "@/lib/diffView";
-import { applySimulation } from "@/lib/simView";
+import { applySimulation, TRAFFIC_SOURCE_ID } from "@/lib/simView";
 import type { ArchitectureState, SimulationResult } from "@/lib/types";
 import { NODE_HEIGHT, NODE_WIDTH, TRAFFIC_SOURCE_HEIGHT, TRAFFIC_SOURCE_WIDTH, type LayoutMap } from "@/lib/layout";
 import { ArchNodeCard } from "./ArchNodeCard";
@@ -14,7 +14,7 @@ import { TrafficSourceNode } from "./TrafficSourceNode";
 const nodeTypes: NodeTypes = { archNode: ArchNodeCard, trafficSource: TrafficSourceNode };
 const edgeTypes: EdgeTypes = { flow: FlowEdge };
 
-const PADDING = 28; // px of breathing room around the diagram on every side
+const PADDING = 24; // px of breathing room around the diagram on every side
 const DEFAULT_MAX_ZOOM = 1; // never render a node bigger than its real on-canvas size, by default
 const MIN_ZOOM = 0.32;
 const REVEAL_ROW_STEP_MS = 140; // gap between one row's reveal and the next
@@ -97,6 +97,15 @@ interface Props {
    * fine appearing all at once; it's the hero's entrance that benefits
    * from a real sequence. */
   staggerReveal?: boolean;
+  /** Overrides where the synthetic "Users" node lands. simView.ts's own
+   * applySimulation always places it to the LEFT of the entry nodes'
+   * average position (sourceX = min(entryX) - 190) — correct for the
+   * real app's left-to-right canvases, but wrong for a top-down branching
+   * layout: left of two side-by-side entry nodes routes its edge to the
+   * *further* one straight across the *nearer* one, which is genuinely
+   * what was producing the crossing lines reported here, not the edge
+   * routing itself. Left undefined, the default (left-of-entry) applies. */
+  trafficSourcePosition?: { x: number; y: number };
 }
 
 /**
@@ -116,12 +125,25 @@ interface Props {
  * scale (capped at its true 1:1 size, never blown up) — the diagram shows
  * at its natural size instead of being cropped into an arbitrary box.
  */
-export function MiniArchitecturePreview({ state, layout, simulation, maxZoom = DEFAULT_MAX_ZOOM, staggerReveal = false }: Props) {
+export function MiniArchitecturePreview({
+  state,
+  layout,
+  simulation,
+  maxZoom = DEFAULT_MAX_ZOOM,
+  staggerReveal = false,
+  trafficSourcePosition,
+}: Props) {
   const { nodes, edges } = useMemo(() => {
     const base = toFlowElements(state, layout);
     const withSim = simulation ? applySimulation(base.nodes, base.edges, simulation) : base;
-    return staggerReveal ? withStaggerReveal(withSim.nodes, withSim.edges) : withSim;
-  }, [state, layout, simulation, staggerReveal]);
+    const positioned = trafficSourcePosition
+      ? {
+          ...withSim,
+          nodes: withSim.nodes.map((n) => (n.id === TRAFFIC_SOURCE_ID ? { ...n, position: trafficSourcePosition } : n)),
+        }
+      : withSim;
+    return staggerReveal ? withStaggerReveal(positioned.nodes, positioned.edges) : positioned;
+  }, [state, layout, simulation, staggerReveal, trafficSourcePosition]);
 
   const bounds = useMemo(() => computeBounds(nodes), [nodes]);
 
