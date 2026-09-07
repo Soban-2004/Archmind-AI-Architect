@@ -192,7 +192,11 @@ export function Landing({ onNewProject, onImportRepo, busy, existingProject, onC
             hitting an exact ratio here). At the 60/40 split above, a
             5-column left-to-right flow lands around 150-190px-wide cards
             on a typical laptop-width window, climbing to the full 200px
-            real size on a wide monitor. */}
+            real size on a wide monitor. showBackground={false}: unlike
+            the boxed scenario diagrams below, this one already floats
+            directly over the page's own blueprint dot-grid backdrop — a
+            second, independent React Flow dot pattern layered right
+            behind it was just visual noise, not a real canvas floor. */}
         <div className="min-w-0 animate-fade-in">
           <MiniArchitecturePreview
             state={HERO_SCENARIO.state}
@@ -200,6 +204,7 @@ export function Landing({ onNewProject, onImportRepo, busy, existingProject, onC
             simulation={HERO_SCENARIO.simulation}
             staggerReveal
             trafficSourcePosition={HERO_USERS_POSITION}
+            showBackground={false}
           />
           <p className="mt-3 text-center font-plex-mono text-[10.5px] tracking-wide text-bp-muted">
             Live traffic simulation — every node was proposed as a validated command, never drawn freehand.

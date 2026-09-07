@@ -122,6 +122,12 @@ interface Props {
    * what was producing the crossing lines reported here, not the edge
    * routing itself. Left undefined, the default (left-of-entry) applies. */
   trafficSourcePosition?: { x: number; y: number };
+  /** React Flow's own dot-grid canvas background. On by default (matches
+   * the real product's canvas), but the hero renders unframed directly
+   * over the page's own blueprint dot-grid backdrop (see Landing.tsx) —
+   * a second, independent dot pattern layered right behind it there was
+   * pure visual noise, not a real canvas floor to stand on. */
+  showBackground?: boolean;
 }
 
 /**
@@ -148,6 +154,7 @@ export function MiniArchitecturePreview({
   maxZoom = DEFAULT_MAX_ZOOM,
   staggerReveal = false,
   trafficSourcePosition,
+  showBackground = true,
 }: Props) {
   const { nodes, edges } = useMemo(() => {
     const base = toFlowElements(state, layout);
@@ -206,7 +213,7 @@ export function MiniArchitecturePreview({
           zoomOnDoubleClick={false}
           preventScrolling={false}
         >
-          <Background variant={BackgroundVariant.Dots} gap={20} size={1.5} color="var(--rf-dot-color)" />
+          {showBackground && <Background variant={BackgroundVariant.Dots} gap={20} size={1.5} color="var(--rf-dot-color)" />}
         </ReactFlow>
       </div>
     </ReactFlowProvider>
