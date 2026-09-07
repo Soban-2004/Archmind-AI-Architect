@@ -9,6 +9,11 @@ interface Props {
   onNewProject: () => void;
   onImportRepo: () => void;
   busy?: boolean;
+  /** The project remembered in localStorage, if its data has finished
+   * loading silently in the background (see page.tsx's mount effect) —
+   * null while there's nothing to resume, or while it's still loading. */
+  existingProject?: { id: string; name: string } | null;
+  onContinue?: () => void;
 }
 
 const HOW_IT_WORKS = [
@@ -78,14 +83,17 @@ function Figure({ fig, rev, children }: { fig?: string; rev?: string; children: 
  * (globals.css) — the rest of the app keeps its existing brand- and
  * slate-based palette and Geist type untouched.
  *
- * Shown once, on a genuinely first visit (no project remembered yet) —
- * and re-openable any time via ProjectSwitcher's "+ New". Deliberately no
- * fabricated trust signals (no invented testimonials, user counts, or
- * logos) — every diagram on this page, hero included, is rendered by
- * MiniArchitecturePreview, i.e. the product's own live canvas components
- * fed fixed fixture data, not a stock illustration or a static screenshot.
+ * Shown on every visit now, not just a first one — a returning visitor
+ * with a project already in progress gets a small, secondary "Continue"
+ * link (see existingProject/onContinue) rather than being silently routed
+ * around this page entirely; the two big CTAs stay the primary choice.
+ * Deliberately no fabricated trust signals (no invented testimonials,
+ * user counts, or logos) — every diagram on this page, hero included, is
+ * rendered by MiniArchitecturePreview, i.e. the product's own live canvas
+ * components fed fixed fixture data, not a stock illustration or a static
+ * screenshot.
  */
-export function Landing({ onNewProject, onImportRepo, busy }: Props) {
+export function Landing({ onNewProject, onImportRepo, busy, existingProject, onContinue }: Props) {
   return (
     // w-full matters here, not just h-full: the parent in page.tsx is a
     // row flex container (`flex min-h-0 flex-1`), and a flex item with no
@@ -157,6 +165,16 @@ export function Landing({ onNewProject, onImportRepo, busy }: Props) {
             <p className="mt-3.5 font-plex-mono text-[10.5px] tracking-wide text-bp-muted">
               NO ACCOUNT REQUIRED — STRAIGHT INTO EITHER FLOW
             </p>
+
+            {existingProject && onContinue && (
+              <button
+                onClick={onContinue}
+                className="group mt-4 flex items-center gap-1.5 font-plex-mono text-[11px] tracking-wide text-bp-muted transition hover:text-bp-accent"
+              >
+                <ArrowRight size={11} className="transition group-hover:translate-x-0.5" />
+                Continue &ldquo;{existingProject.name}&rdquo; — right where you left off
+              </button>
+            )}
           </div>
 
           <div className="min-w-0 animate-fade-in">

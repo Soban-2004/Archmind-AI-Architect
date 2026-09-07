@@ -27,11 +27,12 @@ const HISTORY_WIDTH = 240;
 const HISTORY_RAIL_WIDTH = 44;
 type Mode = "chat" | "analyze" | "simulate";
 // "landing"/"import" are the pre-project entry flow (Landing.tsx,
-// ImportRepoScreen.tsx) — "app" is the existing full editor. Defaults to
-// "landing" so a genuinely first-time visitor is asked to choose rather
-// than silently handed a blank project someone else already created; a
-// returning visitor (a project id remembered in localStorage) skips
-// straight to "app" in the mount effect below.
+// ImportRepoScreen.tsx) — "app" is the existing full editor. Always
+// defaults to "landing", even for a returning visitor with a project
+// remembered in localStorage — the landing page is the front door on
+// every visit now, not just a first one. The remembered project (if any)
+// still loads silently in the background (see the mount effect below) so
+// Landing's "Continue" link is instant, not a second network round trip.
 type View = "landing" | "import" | "app";
 
 /** Fill in positions dagre-fresh for any node the known layout doesn't
@@ -115,29 +116,29 @@ export default function Home() {
   }
 
   useEffect(() => {
+    // Landing renders immediately regardless of a remembered project —
+    // don't hold the whole page behind a "Loading…" spinner just to check
+    // whether there's something to resume. If there is, it loads silently
+    // in the background below; Landing's "Continue" link only appears once
+    // that resolves, and a stale/deleted id just gets dropped quietly
+    // rather than surfacing as a scary connectivity error (that's still
+    // what initError is for — genuine backend-unreachable failures, which
+    // surface through handleCreateProject/handleSwitchProject's own
+    // try/catch the moment a visitor actually tries to do something).
+    setInitializing(false);
+    const existing = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
+    if (!existing) return;
     (async () => {
       try {
-        const existing = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
-        // No project remembered -> this is a genuinely first-time visit
-        // (or the user explicitly asked for a fresh start, see
-        // handleShowLanding). Stay on the "landing" view's default and let
-        // the user actually choose between the two real entry paths,
-        // rather than the old behavior of silently auto-creating a blank
-        // "New Project" no one asked for.
-        if (existing) {
-          const project = await api.getProject(existing);
-          await openProject(project);
-          setView("app");
-        }
-      } catch (e) {
-        setInitError(e instanceof Error ? e.message : String(e));
-      } finally {
-        setInitializing(false);
+        const project = await api.getProject(existing);
+        await openProject(project);
+      } catch {
+        localStorage.removeItem(STORAGE_KEY);
       }
     })();
     // Deliberately run once on mount only — openProject is a fresh
     // function reference every render, and re-running this on every
-    // reference change would re-trigger project creation/loading in a loop.
+    // reference change would re-trigger project loading in a loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -517,7 +518,12 @@ export default function Home() {
           </div>
         ) : view === "landing" ? (
           <div className="flex min-h-0 flex-1">
-            <Landing onNewProject={handleCreateProject} onImportRepo={() => setView("import")} />
+            <Landing
+              onNewProject={handleCreateProject}
+              onImportRepo={() => setView("import")}
+              existingProject={projectId ? { id: projectId, name: projectName || "Untitled project" } : null}
+              onContinue={() => setView("app")}
+            />
           </div>
         ) : view === "import" ? (
           <div className="flex min-h-0 flex-1">
