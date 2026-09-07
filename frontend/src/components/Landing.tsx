@@ -113,91 +113,89 @@ export function Landing({ onNewProject, onImportRepo, busy, existingProject, onC
         }}
       />
 
-      <div className="relative mx-auto w-full max-w-5xl px-7 py-10">
-        {/* --- Hero ------------------------------------------------------ */}
-        {/* minmax(0, ...) on both tracks, not plain fr — a bare fr grid
-            track's minimum width defaults to its content's intrinsic
-            size, so a wide diagram inside the right column could force
-            the whole grid wider than the page instead of ever shrinking
-            to fit. min-w-0 below is the same fix applied to the column
-            itself, for defense in depth. The diagram column gets the
-            larger share on purpose: this is the one diagram that has to
-            read at a glance as "the whole product," not a supporting
-            illustration next to the copy. */}
-        <div className="grid grid-cols-1 items-center gap-14 pt-6 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.3fr)]">
-          <div>
-            <span className="inline-flex items-center gap-2 rounded-full border border-bp-line-strong px-3 py-1 font-plex-mono text-[11px] uppercase tracking-wide text-bp-accent">
-              <span className="h-1.5 w-1.5 rounded-full bg-bp-good shadow-[0_0_0_3px_rgba(5,150,105,0.2)]" />
-              AI-native system design
-            </span>
+      {/* --- Hero --------------------------------------------------------- */}
+      {/* Deliberately NOT capped at max-w-5xl like the rest of the page
+          below — that 1024px cap, split across two columns, left the
+          diagram with barely more room than a thumbnail no matter how the
+          split was tuned. The text column is a fixed, comfortable reading
+          width (it doesn't need more); the diagram gets whatever's left of
+          the actual window, uncapped, so it keeps growing on a wider
+          screen instead of hitting an arbitrary ceiling. */}
+      <div className="relative flex w-full flex-col gap-10 px-7 pb-4 pt-14 lg:flex-row lg:items-center lg:gap-10">
+        <div className="lg:w-[420px] lg:shrink-0">
+          <span className="inline-flex items-center gap-2 rounded-full border border-bp-line-strong px-3 py-1 font-plex-mono text-[11px] uppercase tracking-wide text-bp-accent">
+            <span className="h-1.5 w-1.5 rounded-full bg-bp-good shadow-[0_0_0_3px_rgba(5,150,105,0.2)]" />
+            AI-native system design
+          </span>
 
-            <h1 className="mt-5 text-[2.6rem] font-bold leading-[1.05] tracking-tight text-balance sm:text-5xl">
-              System architecture,
-              <br />
-              <span className="text-bp-accent">actually validated.</span>
-            </h1>
+          <h1 className="mt-5 text-[2.6rem] font-bold leading-[1.05] tracking-tight text-balance sm:text-5xl">
+            System architecture,
+            <br />
+            <span className="text-bp-accent">actually validated.</span>
+          </h1>
 
-            <p className="mt-5 max-w-md text-[15px] leading-relaxed text-bp-muted">
-              Describe a system, or point at one you&apos;ve already built. Every component the AI proposes is checked
-              against real structural rules before it ever reaches the diagram — it never just draws a pretty
-              picture and hopes.
-            </p>
+          <p className="mt-5 max-w-md text-[15px] leading-relaxed text-bp-muted">
+            Describe a system, or point at one you&apos;ve already built. Every component the AI proposes is checked
+            against real structural rules before it ever reaches the diagram — it never just draws a pretty picture
+            and hopes.
+          </p>
 
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <button
-                onClick={onNewProject}
-                disabled={busy}
-                className="group flex items-center justify-center gap-2 rounded-lg bg-bp-accent px-5 py-3.5 text-sm font-semibold text-white shadow-lg shadow-bp-accent/25 transition hover:-translate-y-0.5 hover:shadow-xl disabled:pointer-events-none disabled:opacity-50"
-              >
-                <MessageSquare size={15} /> Start a new project
-                <ArrowRight size={14} className="transition group-hover:translate-x-0.5" />
-              </button>
-              <button
-                onClick={onImportRepo}
-                disabled={busy}
-                className="flex items-center justify-center gap-2 rounded-lg border border-bp-line-strong bg-bp-surface px-5 py-3.5 text-sm font-semibold text-bp-ink shadow-sm transition hover:-translate-y-0.5 hover:shadow-md disabled:pointer-events-none disabled:opacity-50"
-              >
-                <FolderUp size={15} /> Import an existing repo
-              </button>
-            </div>
-            <p className="mt-3.5 font-plex-mono text-[10.5px] tracking-wide text-bp-muted">
-              NO ACCOUNT REQUIRED — STRAIGHT INTO EITHER FLOW
-            </p>
-
-            {existingProject && onContinue && (
-              <button
-                onClick={onContinue}
-                className="group mt-4 flex items-center gap-1.5 font-plex-mono text-[11px] tracking-wide text-bp-muted transition hover:text-bp-accent"
-              >
-                <ArrowRight size={11} className="transition group-hover:translate-x-0.5" />
-                Continue &ldquo;{existingProject.name}&rdquo; — right where you left off
-              </button>
-            )}
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+            <button
+              onClick={onNewProject}
+              disabled={busy}
+              className="group flex items-center justify-center gap-2 rounded-lg bg-bp-accent px-5 py-3.5 text-sm font-semibold text-white shadow-lg shadow-bp-accent/25 transition hover:-translate-y-0.5 hover:shadow-xl disabled:pointer-events-none disabled:opacity-50"
+            >
+              <MessageSquare size={15} /> Start a new project
+              <ArrowRight size={14} className="transition group-hover:translate-x-0.5" />
+            </button>
+            <button
+              onClick={onImportRepo}
+              disabled={busy}
+              className="flex items-center justify-center gap-2 rounded-lg border border-bp-line-strong bg-bp-surface px-5 py-3.5 text-sm font-semibold text-bp-ink shadow-sm transition hover:-translate-y-0.5 hover:shadow-md disabled:pointer-events-none disabled:opacity-50"
+            >
+              <FolderUp size={15} /> Import an existing repo
+            </button>
           </div>
+          <p className="mt-3.5 font-plex-mono text-[10.5px] tracking-wide text-bp-muted">
+            NO ACCOUNT REQUIRED — STRAIGHT INTO EITHER FLOW
+          </p>
 
-          {/* No Figure frame here on purpose — a bordered card read as
-              "one more small screenshot," when this diagram's whole job is
-              to look like the actual product, at real size, floating over
-              the page rather than boxed away in a corner. lg:-mr-7 cancels
-              the section's own right padding so it runs out to the same
-              edge the rest of the page content stops at, instead of
-              stopping 28px short of it. maxZoom={1.15} lets it use that
-              extra room instead of capping at the same 1:1 scale the
-              boxed scenario diagrams use — everything here is vector/CSS,
-              so it stays crisp. */}
-          <div className="min-w-0 animate-fade-in lg:-mr-7">
-            <MiniArchitecturePreview
-              state={HERO_SCENARIO.state}
-              layout={HERO_SCENARIO.layout}
-              simulation={HERO_SCENARIO.simulation}
-              maxZoom={1.15}
-            />
-            <p className="mt-3 text-center font-plex-mono text-[10.5px] tracking-wide text-bp-muted">
-              Live traffic simulation — every node was proposed as a validated command, never drawn freehand.
-            </p>
-          </div>
+          {existingProject && onContinue && (
+            <button
+              onClick={onContinue}
+              className="group mt-4 flex items-center gap-1.5 font-plex-mono text-[11px] tracking-wide text-bp-muted transition hover:text-bp-accent"
+            >
+              <ArrowRight size={11} className="transition group-hover:translate-x-0.5" />
+              Continue &ldquo;{existingProject.name}&rdquo; — right where you left off
+            </button>
+          )}
         </div>
 
+        {/* No Figure frame here on purpose — a bordered card read as "one
+            more small screenshot," when this diagram's whole job is to
+            look like the actual product, at real size, floating over the
+            page rather than boxed away in a corner. flex-1 with no
+            max-width takes every pixel the text column and its own gap
+            don't need, growing with the window instead of stopping at a
+            fraction of a capped container. maxZoom={1.15} lets it use
+            that room instead of stopping at the same 1:1 scale the boxed
+            scenario diagrams use — everything here is vector/CSS, so it
+            stays crisp at any size. */}
+        <div className="min-w-0 flex-1 animate-fade-in">
+          <MiniArchitecturePreview
+            state={HERO_SCENARIO.state}
+            layout={HERO_SCENARIO.layout}
+            simulation={HERO_SCENARIO.simulation}
+            maxZoom={1.15}
+          />
+          <p className="mt-3 text-center font-plex-mono text-[10.5px] tracking-wide text-bp-muted">
+            Live traffic simulation — every node was proposed as a validated command, never drawn freehand.
+          </p>
+        </div>
+      </div>
+
+      <div className="relative mx-auto w-full max-w-5xl px-7 pb-10">
         {/* --- How it works ---------------------------------------------- */}
         <div className="mt-16 border-t border-bp-line pt-10">
           <h2 className="font-plex-mono text-[11px] uppercase tracking-[0.12em] text-bp-muted">How it works — a three-stage pipeline</h2>
