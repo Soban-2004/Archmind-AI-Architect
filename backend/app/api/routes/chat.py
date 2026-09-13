@@ -2,10 +2,11 @@ import asyncio
 import json
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import StreamingResponse
 
+from app.rate_limit import LLM_LIMIT, limiter
 from app.services.interview import ChatTurnResult, handle_chat_turn
 
 router = APIRouter(prefix="/projects", tags=["chat"])
@@ -32,7 +33,14 @@ def _result_payload(result: ChatTurnResult) -> dict:
 
 
 @router.post("/{project_id}/chat")
-async def chat(project_id: UUID, body: dict):
+@limiter.limit(LLM_LIMIT)
+async def chat(request: Request, response: Response, project_id: UUID, body: dict):
+    # `response` is unused directly but MUST be declared: slowapi's
+    # headers_enabled=True (rate_limit.py) needs a real injected Response
+    # to write X-RateLimit-*/Retry-After headers onto for an endpoint that
+    # returns a plain dict, not a Response subclass — omitting it isn't a
+    # missing-headers bug, it's a hard crash on every request. Found live
+    # (see tests/test_rate_limit.py) before this ever reached a request.
     message = body.get("message", "")
     if not message.strip():
         raise HTTPException(400, "message is required")
@@ -45,7 +53,8 @@ async def chat(project_id: UUID, body: dict):
 
 
 @router.post("/{project_id}/chat/stream")
-async def chat_stream(project_id: UUID, body: dict):
+@limiter.limit(LLM_LIMIT)
+async def chat_stream(request: Request, project_id: UUID, body: dict):
     """Same real pipeline as POST /chat (handle_chat_turn) — this doesn't
     replace it, it's additive for a caller that wants live progress.
     Streamed as Server-Sent Events: a real `{"type": "stage", ...}` event

@@ -3,10 +3,14 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from app.api.routes import analyzer, chat, compare, ingestion, migration, projects, simulation
 from app.config import settings
 from app.db.client import close_pool, get_pool
+from app.rate_limit import limiter
 
 # INFO so the judge pass's verdicts (services/interview.py) are actually
 # visible — Python's root logger defaults to WARNING, which would
@@ -22,6 +26,14 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="AI Architect", lifespan=lifespan)
+
+# Per-IP rate limiting (see rate_limit.py) — this app is guest-mode-only
+# with no auth, so every endpoint is reachable by anyone. The exception
+# handler turns a limit hit into a real 429 with a Retry-After header
+# (slowapi's own default handler), not a silent failure or a 500.
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 app.add_middleware(
     CORSMiddleware,

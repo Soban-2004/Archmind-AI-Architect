@@ -11,8 +11,9 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, Response, UploadFile
 
+from app.rate_limit import INGEST_LIMIT, limiter
 from app.services.ingestion import ingest_repository, persist_ingestion
 
 router = APIRouter(prefix="/ingest", tags=["ingestion"])
@@ -21,7 +22,9 @@ MAX_UPLOAD_BYTES = 25_000_000  # 25MB — generous for a small sample project's 
 
 
 @router.post("")
-async def ingest_project(file: UploadFile = File(...), name: str = Form("Ingested Project")):
+@limiter.limit(INGEST_LIMIT)
+async def ingest_project(request: Request, response: Response, file: UploadFile = File(...), name: str = Form("Ingested Project")):
+    # `response` unused directly but required — see chat.py's `chat` for why.
     if not file.filename or not file.filename.lower().endswith(".zip"):
         raise HTTPException(400, "upload must be a .zip file")
 
