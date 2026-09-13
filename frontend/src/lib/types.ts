@@ -161,14 +161,26 @@ export interface TokenUsage {
 // carries the same payload shape the plain POST /chat returns.
 export type ChatStreamEvent = { type: "stage"; stage: string } | { type: "result"; payload: ChatResponse };
 
+// Mirrors backend/app/models/advisory.py's WebSource — a real search
+// result services/web_search.py actually fetched and fed to the prompt
+// for a time-sensitive advisory question ("current pricing", "is X still
+// maintained", see intent_router.py's needs_web_grounding), never
+// something the LLM itself claims to have found.
+export interface WebSource {
+  title: string;
+  url: string;
+  snippet: string;
+}
+
 export type ChatResponse =
   | { kind: "question"; question: string; quick_replies: string[]; usage: TokenUsage | null }
   | { kind: "architecture"; summary: string; version: VersionRow; diff: VersionDiff | null; usage: TokenUsage | null }
   // A non-mutating chat reply — a question/recommendation answer, a
   // what-if analysis narration, or the empty-commands safety net (see
   // backend/app/services/intent_router.py). Nothing on the canvas
-  // changed: no version, no diff.
-  | { kind: "answer"; answer: string; usage: TokenUsage | null }
+  // changed: no version, no diff. `sources` is only ever non-empty for a
+  // web-grounded advisory answer.
+  | { kind: "answer"; answer: string; usage: TokenUsage | null; sources?: WebSource[] }
   | { kind: "error"; error: string };
 
 // Mirrors backend/app/models/compare.py
@@ -283,4 +295,8 @@ export interface ChatMessage {
    * on hover, not the backend's own created_at (this app doesn't reload
    * conversation history into the UI yet, see README). */
   createdAt?: string;
+  /** Real sources a web-grounded advisory answer actually cited (see
+   * ChatResponse's "answer" variant) — undefined/empty for every other
+   * message, which is most of them. */
+  sources?: WebSource[];
 }

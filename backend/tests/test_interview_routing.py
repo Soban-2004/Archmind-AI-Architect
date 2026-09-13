@@ -16,7 +16,7 @@ empty-commands versioning safety net:
 """
 from __future__ import annotations
 
-from app.models.advisory import AdvisoryAnswer, AnalysisAnswer
+from app.models.advisory import AdvisoryAnswer, AnalysisAnswer, WebSource
 from app.models.commands import AddEdgeCommand, AddNodeCommand, InterviewTurnOutput
 from app.services.interview import handle_chat_turn
 from tests.conftest import FakeProvider, patch_provider
@@ -38,6 +38,55 @@ async def test_pure_question_answers_without_creating_a_version(monkeypatch, bas
     assert len(provider.structured_calls) == 1
     assert provider.structured_calls[0][2] is AdvisoryAnswer
     assert provider.interview_calls == []
+
+
+async def test_time_sensitive_question_is_grounded_in_a_real_web_search(monkeypatch, base_version, fake_repo):
+    """intent_router.py's needs_web_grounding recognizes this phrasing —
+    search_web (patched here so the test stays offline, same as the LLM
+    provider) gets called, and its real results are attached to the
+    response as `sources`, independent of whatever the LLM's own answer
+    text says."""
+    import app.services.interview as interview
+
+    fake_sources = [WebSource(title="Redis Cloud Pricing", url="https://redis.io/pricing", snippet="Starts at $0...")]
+
+    async def fake_search_web(query, max_results=3):
+        return fake_sources
+
+    monkeypatch.setattr(interview, "search_web", fake_search_web)
+
+    provider = FakeProvider(structured_response=AdvisoryAnswer(answer="Redis Cloud's current free tier covers small workloads."))
+    patch_provider(monkeypatch, provider)
+
+    result = await handle_chat_turn(base_version["project_id"], "What's the current pricing for Redis Cloud?", base_version["id"])
+
+    assert result.kind == "answer"
+    assert result.sources == fake_sources
+    # The prompt actually sent to the model includes the real search
+    # result, not just a mention that grounding happened.
+    system_prompt = provider.structured_calls[0][0]
+    assert "Redis Cloud Pricing" in system_prompt
+    assert "https://redis.io/pricing" in system_prompt
+
+
+async def test_ordinary_advisory_question_has_no_sources(monkeypatch, base_version, fake_repo):
+    """The common case: no time-sensitive phrasing -> search_web is never
+    called at all, and `sources` stays None -- byte-identical to the
+    advisory lane's behavior before web grounding existed."""
+    import app.services.interview as interview
+
+    async def fail_if_called(*args, **kwargs):
+        raise AssertionError("search_web should not be called for an ordinary advisory question")
+
+    monkeypatch.setattr(interview, "search_web", fail_if_called)
+
+    provider = FakeProvider(structured_response=AdvisoryAnswer(answer="A load balancer needs at least two backends to distribute across."))
+    patch_provider(monkeypatch, provider)
+
+    result = await handle_chat_turn(base_version["project_id"], "Why do we need a load balancer?", base_version["id"])
+
+    assert result.kind == "answer"
+    assert result.sources is None
 
 
 async def test_recommendation_answers_without_mutation(monkeypatch, base_version, fake_repo):

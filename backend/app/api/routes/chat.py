@@ -23,8 +23,11 @@ def _result_payload(result: ChatTurnResult) -> dict:
         # A non-mutating turn (services/intent_router.py's advisory/
         # analysis lanes, or the empty-commands safety net in
         # handle_chat_turn) — no version/diff, nothing on the canvas
-        # changed, this is purely a chat reply.
-        return {"kind": "answer", "answer": result.summary, "usage": result.usage}
+        # changed, this is purely a chat reply. `sources` is only ever
+        # populated for a web-grounded advisory answer (see
+        # _handle_advisory) — jsonable_encoder (used by the streaming
+        # route) handles the WebSource pydantic models fine either way.
+        return {"kind": "answer", "answer": result.summary, "usage": result.usage, "sources": result.sources or []}
     return {"kind": "architecture", "summary": result.summary, "version": result.version, "diff": result.diff, "usage": result.usage}
 
 

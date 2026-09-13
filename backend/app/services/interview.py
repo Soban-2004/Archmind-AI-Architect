@@ -9,7 +9,7 @@ from app.db import repository as repo
 from app.llm.factory import get_judge_provider, get_llm_provider
 from app.llm.prompts import build_advisory_prompt, build_analysis_prompt, build_judge_prompt, build_system_prompt, state_for_edit_prompt
 from app.llm.tokens import estimate_messages_tokens, estimate_tokens
-from app.models.advisory import AdvisoryAnswer, AnalysisAnswer
+from app.models.advisory import AdvisoryAnswer, AnalysisAnswer, WebSource
 from app.models.commands import AnnotateDecisionCommand, MutationCommand, UpdateNodeCommand
 from app.models.diff import VersionDiff
 from app.models.judge import JudgeVerdict
@@ -17,9 +17,10 @@ from app.models.state import ADR, ArchitectureState, TriggeredBy, empty_state, g
 from app.services.adr import build_templated_decision
 from app.services.deterministic import try_deterministic_command
 from app.services.diff import diff_states
-from app.services.intent_router import classify_intent, extract_multiplier
+from app.services.intent_router import classify_intent, extract_multiplier, needs_web_grounding
 from app.services.mutation_engine import apply_commands
 from app.services.simulator import run_simulation
+from app.services.web_search import search_web
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,10 @@ class ChatTurnResult:
     diff: VersionDiff | None = None
     error: str | None = None
     usage: dict[str, int] | None = None  # real token usage from the LLM call that produced this turn, if any
+    # Real, current web results actually fetched and fed to the prompt for
+    # this turn (see web_search.py) — None/empty for every turn that isn't
+    # a web-grounded advisory answer, which is most of them.
+    sources: list[WebSource] | None = None
 
 
 def _trim_history(history: list[dict], budget_tokens: int) -> tuple[list[dict], int]:
@@ -187,7 +192,20 @@ async def _handle_advisory(project_id: UUID, user_message: str, state: Architect
     Returns kind="answer" so the caller/frontend/API layer can render it
     without touching version/diff state at all."""
     provider = get_llm_provider()
-    prompt = build_advisory_prompt(state, user_message)
+
+    # Scoped web grounding (services/web_search.py) — only for the narrow,
+    # genuinely time-sensitive phrasings intent_router.py's
+    # needs_web_grounding recognizes ("current pricing", "is X still
+    # maintained", ...), not every advisory question. Fails soft to an
+    # empty list (no API key, a network error, a timeout), in which case
+    # this is byte-identical to the advisory lane's behavior before this
+    # existed.
+    sources: list[WebSource] = []
+    if needs_web_grounding(user_message):
+        await _emit(on_stage, "Searching the web for current info…")
+        sources = await search_web(user_message)
+
+    prompt = build_advisory_prompt(state, user_message, search_results=sources)
     await _emit(on_stage, "Answering from the current architecture…")
     try:
         raw = await provider.structured_json(prompt, user_message, AdvisoryAnswer)
@@ -195,7 +213,7 @@ async def _handle_advisory(project_id: UUID, user_message: str, state: Architect
         return ChatTurnResult(kind="error", error=_friendly_provider_error(e))
 
     await repo.add_message(project_id, "assistant", raw.answer, version_id=base_version_id)
-    return ChatTurnResult(kind="answer", summary=raw.answer, usage=getattr(provider, "last_usage", None))
+    return ChatTurnResult(kind="answer", summary=raw.answer, usage=getattr(provider, "last_usage", None), sources=sources or None)
 
 
 async def _handle_analysis(project_id: UUID, user_message: str, state: ArchitectureState, base_version_id: UUID, on_stage: OnStage | None = None) -> ChatTurnResult:

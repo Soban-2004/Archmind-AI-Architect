@@ -2,7 +2,7 @@ import json
 
 from pydantic import BaseModel
 
-from app.models.advisory import AdvisoryAnswer, AnalysisAnswer
+from app.models.advisory import AdvisoryAnswer, AnalysisAnswer, WebSource
 from app.models.analysis import Scorecard, ScorecardAnswer
 from app.models.commands import InterviewTurnOutput
 from app.models.compare import CompareExplanation
@@ -385,9 +385,11 @@ architecture — you are NOT editing it. You have no ability to change the
 diagram from here; there is no `commands` field in your output at all. If
 the user actually wants a change made, a different part of the system
 handles that from their next message — just answer clearly and
-concretely here, grounded ONLY in the architecture topology and
-requirements given below. Do not invent nodes, edges, or constraints that
-aren't listed.
+concretely here, grounded in the architecture topology and requirements
+given below (plus the real, current web search results below those, when
+present). Do not invent nodes, edges, or constraints that aren't listed,
+and do not invent or embellish a web source beyond what its snippet
+actually says.
 
 For a "why do we have/need X" question: reason from the real edges and
 roles shown below, not generic advice.
@@ -395,6 +397,11 @@ For a "which technology should we use" recommendation: reason from the
 stated requirements (scale, budget, consistency, availability) below, and
 be concrete (name real options and a clear recommendation), not
 generic ("it depends").
+If real web search results are given below, they are more current than
+anything you already "know" about pricing, version numbers, or whether
+something is still maintained — prefer them, and mention which source you
+drew from when you cite one. If none are given, answer from the
+architecture context only, same as always.
 {formatting}
 Output ONLY valid JSON matching this schema:
 {schema}
@@ -404,17 +411,26 @@ Architecture topology (nodes: id/name/kind/type; edges: from -> to):
 
 Requirements/constraints:
 {constraints}
-
+{web_results}
 Question: {question}
 """
 
 
-def build_advisory_prompt(state: ArchitectureState, question: str) -> str:
+def build_advisory_prompt(state: ArchitectureState, question: str, search_results: list[WebSource] | None = None) -> str:
     schema = _compact_schema(AdvisoryAnswer)
     topology = _compact_topology(state)
     constraints = json.dumps([c.model_dump(mode="json") for c in state.constraints])
+    web_results = ""
+    if search_results:
+        lines = "\n".join(f"- {r.title} ({r.url}): {r.snippet}" for r in search_results)
+        web_results = f"\nReal, current web search results:\n{lines}\n"
     return ADVISORY_SYSTEM_PROMPT.format(
-        schema=schema, topology=topology, constraints=constraints, question=question, formatting=RESPONSE_FORMATTING_GUIDANCE
+        schema=schema,
+        topology=topology,
+        constraints=constraints,
+        question=question,
+        formatting=RESPONSE_FORMATTING_GUIDANCE,
+        web_results=web_results,
     )
 
 

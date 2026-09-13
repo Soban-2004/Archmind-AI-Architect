@@ -27,6 +27,12 @@ class Settings:
     # 3.6-flash's larger footprint for.
     gemini_model: str = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
     cors_origins: list[str] = os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",")
+    # Scoped web-search grounding for the advisory chat lane only (see
+    # services/web_search.py + intent_router.py's needs_web_grounding) —
+    # optional, same fallback philosophy as gemini_api_key above: absent
+    # TAVILY_API_KEY, search_web() just returns no results and advisory
+    # answers fall back to today's existing (already good) behavior.
+    tavily_api_key: str = os.environ.get("TAVILY_API_KEY", "")
 
 
 settings = Settings()

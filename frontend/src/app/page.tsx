@@ -270,7 +270,12 @@ export default function Home() {
         // Non-mutating reply (a question/recommendation answer or a
         // what-if narration) — append it to the chat log only. Nothing
         // else changes: no new version, no diff, no layout recompute.
-        setMessages((prev) => [...prev, { role: "assistant", content: result.answer, animate: true, createdAt: new Date().toISOString() }]);
+        // `sources` is only ever present for a web-grounded advisory
+        // answer (see intent_router.py's needs_web_grounding).
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: result.answer, sources: result.sources, animate: true, createdAt: new Date().toISOString() },
+        ]);
       } else if (result.kind === "architecture") {
         setMessages((prev) => [...prev, { role: "assistant", content: result.summary, animate: true, createdAt: new Date().toISOString() }]);
 

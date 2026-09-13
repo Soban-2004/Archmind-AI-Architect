@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { ArrowDown, Check, Copy, MessageSquare, SendHorizontal, Sparkles, User } from "lucide-react";
+import { ArrowDown, Check, Copy, ExternalLink, MessageSquare, SendHorizontal, Sparkles, User } from "lucide-react";
 import { relativeTime } from "@/lib/format";
 import { useThinkingStatus } from "@/lib/useThinkingStatus";
 import type { ChatMessage } from "@/lib/types";
@@ -159,6 +159,27 @@ export function ChatPanel({ messages, onSend, busy, busyStage, onConsumeAnimatio
                     )}
                     {m.role === "assistant" && <CopyButton text={m.content} />}
                   </div>
+                  {m.role === "assistant" && m.sources && m.sources.length > 0 && (
+                    // Real sources services/web_search.py actually fetched
+                    // and fed to this answer — a citation trail the user
+                    // can verify, not just the model's own claim that it
+                    // checked something current.
+                    <div className="flex flex-col gap-1">
+                      {m.sources.map((s) => (
+                        <a
+                          key={s.url}
+                          href={s.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={s.snippet}
+                          className="flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10.5px] text-slate-500 transition hover:border-brand-300 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-400 dark:hover:border-indigo-500/40 dark:hover:text-indigo-300"
+                        >
+                          <ExternalLink size={10} className="shrink-0" />
+                          <span className="truncate">{s.title}</span>
+                        </a>
+                      ))}
+                    </div>
+                  )}
                   {m.role === "assistant" && i === lastAssistantIndex && !busy && m.quickReplies && m.quickReplies.length > 0 && (
                     <div className="flex flex-wrap gap-1.5">
                       {m.quickReplies.map((reply) => (

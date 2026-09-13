@@ -68,6 +68,15 @@ _ANALYSIS_RE = re.compile(
 # Unambiguous question / recommendation framing — routed to the advisory
 # lane (see services/interview.py's _handle_advisory). Also not anchored
 # to the start of the message, for the same reason as _ANALYSIS_RE above.
+#
+# The last four alternatives (price/cost/"still X"/latest-version/still-
+# exists) were added alongside needs_web_grounding below — found live
+# while testing that feature: every one of _WEB_GROUNDING_RE's own trigger
+# phrasings ("what's the current pricing", "is X still maintained") failed
+# to classify as advisory at all under the ORIGINAL list here, meaning
+# needs_web_grounding (only ever checked inside _handle_advisory) could
+# never actually run for the realistic phrasings it exists to catch — a
+# genuinely dead feature, not a working one, until this was widened.
 _ADVISORY_RE = re.compile(
     r"("
     r"\bwhy (do|does|is|are|should)\b|"
@@ -79,12 +88,41 @@ _ADVISORY_RE = re.compile(
     r"\b(recommend|suggest)\b.*\?\s*$|"
     r"\b(compare|pros and cons of)\b|"
     r"\bwhat database should\b|"
-    r"\bexplain\b"
+    r"\bexplain\b|"
+    r"\bwhat('s| is) the (current )?(price|pricing|cost)\b|"
+    r"\bhow much (does|would|will|is)\b.*\bcost\b|"
+    r"\bis\b.{0,20}\b(still\s+(maintained|supported|active|relevant|a good (choice|option)|widely used)|up[- ]to[- ]date)\b|"
+    r"\bwhat('s| is) the latest\b|"
+    r"\bstill\s+exists?\b|"
+    r"\b(is|are|has|have)\b.{0,20}\bdeprecated\b"
     r")",
     re.IGNORECASE,
 )
 
 _MULTIPLIER_RE = re.compile(r"(\d+(?:\.\d+)?)\s*x\b", re.IGNORECASE)
+
+# Genuinely time-sensitive phrasing only — "current pricing", "is X still
+# maintained", "latest version" — not every advisory question. Only
+# meaningful once classify_intent has already returned "advisory" for the
+# same message (see services/interview.py's _handle_advisory); this
+# doesn't re-check edit-shaped phrasing itself. A false negative here just
+# means a normal advisory answer with no web grounding — the same safe
+# default classify_intent's own conservatism already relies on — so this
+# stays narrow rather than trying to catch every phrasing that could
+# plausibly benefit from a current source.
+_WEB_GROUNDING_RE = re.compile(
+    r"("
+    r"\bcurrent(ly)?\b.{0,25}\b(price|pricing|cost)\b|"
+    r"\b(price|pricing|cost)\b.{0,25}\b(today|now|currently|these days)\b|"
+    r"\bstill\s+(maintained|supported|active|around|relevant|a good (choice|option)|widely used)\b|"
+    r"\b(latest|newest|current)\s+version\b|"
+    r"\bup[- ]to[- ]date\b|"
+    r"\bas of (today|now|\d{4})\b|"
+    r"\b(is|has)\b.{0,15}\bbeen\s+deprecated\b|"
+    r"\bstill\s+exists?\b"
+    r")",
+    re.IGNORECASE,
+)
 
 # A generic "meaningful spike" used when the user asks a what-if question
 # without giving a concrete multiplier ("what if traffic spikes?") — big
@@ -104,6 +142,13 @@ def classify_intent(message: str) -> RouterIntent | None:
     if _ADVISORY_RE.search(message):
         return "advisory"
     return None
+
+
+def needs_web_grounding(message: str) -> bool:
+    """Should this advisory answer be grounded in a real, current web
+    search (services/web_search.py) before the LLM answers? See
+    _WEB_GROUNDING_RE above for the narrow set of triggers."""
+    return bool(_WEB_GROUNDING_RE.search(message))
 
 
 def extract_multiplier(message: str) -> float:

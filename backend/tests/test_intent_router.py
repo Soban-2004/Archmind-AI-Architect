@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.services.intent_router import DEFAULT_ANALYSIS_MULTIPLIER, classify_intent, extract_multiplier
+from app.services.intent_router import DEFAULT_ANALYSIS_MULTIPLIER, classify_intent, extract_multiplier, needs_web_grounding
 
 
 @pytest.mark.parametrize("message", [
@@ -69,3 +69,29 @@ def test_extract_multiplier_explicit():
 
 def test_extract_multiplier_default_when_unstated():
     assert extract_multiplier("what if traffic spikes?") == DEFAULT_ANALYSIS_MULTIPLIER
+
+
+@pytest.mark.parametrize("message", [
+    "What's the current pricing for a small Postgres instance?",
+    "How much does Redis cost today?",
+    "Is CockroachDB still maintained?",
+    "Is this library still a good choice?",
+    "What's the latest version of Kafka?",
+    "Is our approach up-to-date?",
+    "As of 2026, is DynamoDB still relevant?",
+    "Has this package been deprecated?",
+    "Does that free tier still exist?",
+])
+def test_needs_web_grounding_true_for_time_sensitive_phrasing(message):
+    assert needs_web_grounding(message) is True
+
+
+@pytest.mark.parametrize("message", [
+    "Why do we need a load balancer?",
+    "Which database should we use?",
+    "What's the purpose of the queue?",
+    "Tell me about the current setup.",  # "current" present, but nothing price/cost-shaped nearby
+    "Explain the role of the CDN.",
+])
+def test_needs_web_grounding_false_for_ordinary_advisory_questions(message):
+    assert needs_web_grounding(message) is False
