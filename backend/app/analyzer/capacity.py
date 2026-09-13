@@ -39,6 +39,17 @@ different systems; `engine` was stored and shown but never actually read
 by this calculation. Composes with `size`: base * size_multiplier *
 engine_multiplier. A node whose engine doesn't match anything in the
 curated table gets a neutral 1.0x, same as today.
+
+v5 change: 6 new database/infra_node types added to the component
+library (state.py) each got their own default here rather than silently
+falling back to FALLBACK_CAPACITY_RPS — database:time_series,
+database:columnar, infra_node:dns, infra_node:firewall_waf,
+infra_node:secrets_manager, infra_node:service_mesh. New `service` and
+external_dependency subtypes (scheduler, ml_inference,
+notification_provider, analytics) need no entry here: capacity_for()
+only splits by `type` for database/infra_node/queue kinds (see below),
+so those new service/external_dependency types already shared the
+existing flat "service"/"external_dependency" defaults, unchanged.
 """
 from __future__ import annotations
 
@@ -46,7 +57,7 @@ from app.analyzer.engines import engine_spec_for
 from app.analyzer.sizing import size_spec_for
 from app.models.state import Node
 
-CAPACITY_VERSION = "v4"
+CAPACITY_VERSION = "v5"
 
 # requests/sec a single small instance of each kind is assumed to
 # saturate at, absent any other signal from the graph
@@ -61,12 +72,18 @@ _DEFAULT_CAPACITY_RPS: dict[str, float] = {
     "database:keyvalue": 30_000,
     "database:search": 500,
     "database:graph": 200,
+    "database:time_series": 3_000,  # high-write-throughput by design (metrics/events), well above relational
+    "database:columnar": 50,  # analytical/OLAP: optimized for large scans, not concurrent query throughput
     "infra_node:cdn": 100_000,
     "infra_node:load_balancer": 50_000,
     "infra_node:api_gateway": 20_000,
     "infra_node:object_storage": 10_000,
     "infra_node:container_runtime": 5_000,
     "infra_node:observability": 100_000,  # not request-serving in the traffic-path sense
+    "infra_node:dns": 100_000,  # same order of magnitude as a CDN — resolves, doesn't compute
+    "infra_node:firewall_waf": 50_000,  # sits in the request path in front of everything, same order as a load balancer
+    "infra_node:secrets_manager": 10_000,  # not typically in the hot request path; occasional reads, cached by callers
+    "infra_node:service_mesh": 50_000,  # sidecar proxies scale with the mesh; same order as a load balancer
 }
 
 FALLBACK_CAPACITY_RPS = 500.0

@@ -29,6 +29,8 @@ class ServiceType(str, Enum):
     worker = "worker"
     frontend = "frontend"
     edge_cdn = "edge_cdn"
+    scheduler = "scheduler"  # triggers jobs on a fixed schedule (cron-like), independent of a queue/event
+    ml_inference = "ml_inference"  # serves trained-model predictions over an API, often its own (GPU) scaling profile
 
 
 class ScalingMode(str, Enum):
@@ -79,6 +81,8 @@ class DatabaseType(str, Enum):
     keyvalue = "keyvalue"
     search = "search"
     graph = "graph"
+    time_series = "time_series"  # optimized for high-write, timestamped data with efficient range queries
+    columnar = "columnar"  # column-oriented, analytical/OLAP queries over large datasets (a data warehouse)
 
 
 class DatabaseRole(str, Enum):
@@ -126,6 +130,8 @@ class ExternalDependencyType(str, Enum):
     market_data = "market_data"
     auth_provider = "auth_provider"
     storage = "storage"
+    notification_provider = "notification_provider"  # sends email/SMS/push on the system's behalf
+    analytics = "analytics"  # third-party product analytics/telemetry the system sends events to
 
 
 class Criticality(str, Enum):
@@ -149,6 +155,10 @@ class InfraType(str, Enum):
     object_storage = "object_storage"
     container_runtime = "container_runtime"
     observability = "observability"  # monitoring/logging/tracing stack (e.g. Datadog, Prometheus+Grafana)
+    dns = "dns"  # resolves domain names / routes traffic at the DNS layer (latency-based, failover, ...)
+    firewall_waf = "firewall_waf"  # filters malicious traffic before it reaches the app
+    secrets_manager = "secrets_manager"  # centrally stores/rotates credentials instead of hardcoding them
+    service_mesh = "service_mesh"  # manages service-to-service traffic (mTLS, retries, circuit breaking) at the network layer
 
 
 class InfraNode(BaseModel):

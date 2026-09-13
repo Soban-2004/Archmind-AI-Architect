@@ -68,7 +68,7 @@ def test_basis_stays_unchanged_for_default_small_nodes():
     -- the basis string should read exactly as it did before this feature,
     when the multiplier is a no-op."""
     _, basis = monthly_cost_for(_service())
-    assert basis == "declared default for service (cost set v3)"
+    assert basis == "declared default for service (cost set v4)"
     assert "vCPU" not in basis
 
 
@@ -145,4 +145,4 @@ def test_keyvalue_database_capacity_raised_to_realistic_level():
     # Redis benchmarks (100k+ ops/sec unpipelined) -- just no longer off
     # by two orders of magnitude the way the old 5000 rps was.
     assert kv_capacity > 5_000 * 4
-    assert "capacity set v4" in basis
+    assert "capacity set v5" in basis

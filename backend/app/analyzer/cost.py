@@ -45,6 +45,13 @@ distributed-by-default architecture being a real, meaningfully higher
 cost even at "small". Composes with `size`: base * size_multiplier *
 engine_multiplier. A node whose engine doesn't match anything in the
 curated table gets a neutral 1.0x, same as today.
+
+v3 -> COST_VERSION follow-up: the same 6 new database/infra_node types
+added alongside capacity.py's v5 (database:time_series, :columnar,
+infra_node:dns/firewall_waf/secrets_manager/service_mesh) got their own
+per-instance default here too, for the same reason — falling back to
+FALLBACK_MONTHLY_COST_USD would silently under/over-price a real,
+named component type instead of giving it a real answer with a basis.
 """
 from __future__ import annotations
 
@@ -57,7 +64,7 @@ from app.analyzer.sizing import STORAGE_COST_PER_GB_USD, size_spec_for
 from app.models.analysis import CostLineItem
 from app.models.state import ArchitectureState, Node
 
-COST_VERSION = "v3"
+COST_VERSION = "v4"
 COST_MODEL_VERSION = "v2"  # v2: instance count derived from real load / declared capacity, not a flat 1
 
 # Rough monthly USD for one small managed instance of each kind — the same
@@ -73,12 +80,18 @@ _MONTHLY_COST_USD: dict[str, float] = {
     "database:keyvalue": 15,
     "database:search": 60,
     "database:graph": 60,
+    "database:time_series": 30,
+    "database:columnar": 80,  # data-warehouse-shaped; pricier than a general-purpose store even at "small"
     "infra_node:cdn": 15,
     "infra_node:load_balancer": 20,
     "infra_node:api_gateway": 20,
     "infra_node:object_storage": 5,
     "infra_node:container_runtime": 30,
     "infra_node:observability": 25,
+    "infra_node:dns": 10,  # managed DNS is cheap at this scale
+    "infra_node:firewall_waf": 25,
+    "infra_node:secrets_manager": 10,
+    "infra_node:service_mesh": 30,  # control plane + sidecar overhead across the mesh
 }
 
 FALLBACK_MONTHLY_COST_USD = 20.0

@@ -36,6 +36,14 @@ const INFO: Record<string, ComponentInfo> = {
       "Serves the frontend's static assets (JS, CSS, images) from edge locations physically close to users, so pages load fast anywhere without every request hitting your origin server.",
     examples: ["Cloudflare", "AWS CloudFront", "Vercel Edge Network", "Fastly"],
   },
+  "service:scheduler": {
+    description: "Triggers jobs on a fixed schedule (cron-like) — independent of a queue or an incoming event, it just runs on time.",
+    examples: ["Apache Airflow", "cron", "AWS EventBridge Scheduler", "Temporal"],
+  },
+  "service:ml_inference": {
+    description: "Serves predictions from a trained model over an API — usually its own scaling profile (often GPU-backed) separate from regular backend services.",
+    examples: ["TorchServe", "AWS SageMaker endpoint", "NVIDIA Triton", "Ray Serve"],
+  },
 
   // --- databases ---------------------------------------------------------
   "database:relational": {
@@ -58,6 +66,14 @@ const INFO: Record<string, ComponentInfo> = {
   "database:graph": {
     description: "Stores entities and the relationships between them as a graph, optimized for traversal queries like recommendations, social graphs, or fraud detection.",
     examples: ["Neo4j", "Amazon Neptune"],
+  },
+  "database:time_series": {
+    description: "Optimized for high-volume, timestamped writes and efficient range queries over time — metrics, sensor readings, application events.",
+    examples: ["InfluxDB", "TimescaleDB", "Prometheus"],
+  },
+  "database:columnar": {
+    description: "Column-oriented storage built for analytical (OLAP) queries scanning large datasets — a data warehouse, not the system's transactional store.",
+    examples: ["Snowflake", "Google BigQuery", "Amazon Redshift", "ClickHouse"],
   },
 
   // --- queues --------------------------------------------------------------
@@ -96,6 +112,14 @@ const INFO: Record<string, ComponentInfo> = {
     description: "Externally managed storage for files and blobs the system relies on but doesn't operate itself.",
     examples: ["AWS S3", "Google Cloud Storage"],
   },
+  "external_dependency:notification_provider": {
+    description: "Sends email, SMS, or push notifications on the system's behalf instead of the system operating its own delivery infrastructure.",
+    examples: ["Twilio", "SendGrid", "Postmark", "Firebase Cloud Messaging"],
+  },
+  "external_dependency:analytics": {
+    description: "A third-party product-analytics or telemetry destination the system sends user/usage events to.",
+    examples: ["Segment", "Mixpanel", "Amplitude", "PostHog"],
+  },
 
   // --- infra nodes -----------------------------------------------------------
   "infra_node:cdn": {
@@ -126,6 +150,22 @@ const INFO: Record<string, ComponentInfo> = {
     description:
       "Collects logs, metrics, and traces from every service so failures and performance regressions can be detected and diagnosed quickly instead of flying blind.",
     examples: ["Datadog", "Grafana + Prometheus", "New Relic", "Honeycomb"],
+  },
+  "infra_node:dns": {
+    description: "Resolves domain names to IP addresses and can route traffic at the DNS layer itself — latency-based routing, health-check failover, geo-routing.",
+    examples: ["Amazon Route 53", "Cloudflare DNS", "NS1"],
+  },
+  "infra_node:firewall_waf": {
+    description: "Filters malicious or malformed traffic (SQLi, XSS, known bad actors) before it ever reaches the application.",
+    examples: ["AWS WAF", "Cloudflare WAF", "ModSecurity"],
+  },
+  "infra_node:secrets_manager": {
+    description: "Centrally stores, versions, and rotates credentials and API keys, instead of hardcoding them into service config or source.",
+    examples: ["AWS Secrets Manager", "HashiCorp Vault", "Doppler"],
+  },
+  "infra_node:service_mesh": {
+    description: "Manages service-to-service traffic at the network layer — mTLS, retries, timeouts, circuit breaking — without changes to application code.",
+    examples: ["Istio", "Linkerd", "AWS App Mesh"],
   },
 };
 

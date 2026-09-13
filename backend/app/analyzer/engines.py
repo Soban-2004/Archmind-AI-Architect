@@ -30,12 +30,21 @@ with an honest basis string saying so rather than silently guessing about
 a vendor this tool doesn't actually know anything about.
 
 Bump ENGINE_VERSION if any of these numbers change.
+
+v2: added entries for the time_series/columnar database types introduced
+alongside capacity.py v5 — timescaledb, influxdb (time_series) and
+snowflake, bigquery, redshift, clickhouse (columnar). The two serverless/
+on-demand-billed warehouses (Snowflake, BigQuery) get a LOWER capacity
+multiplier than a fixed cluster (Redshift, ClickHouse) despite costing
+more per unit — they're genuinely not "one instance" the way this whole
+module otherwise assumes, so the closest honest approximation is: fewer
+effective concurrent-query "instances" for the same $, not more.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-ENGINE_VERSION = "v1"
+ENGINE_VERSION = "v2"
 
 
 @dataclass(frozen=True)
@@ -74,6 +83,14 @@ ENGINE_MULTIPLIERS: dict[str, EngineSpec] = {
     "elasticsearch": EngineSpec(1.0, 1.0),
     # --- graph
     "neo4j": EngineSpec(1.0, 1.0),
+    # --- time_series
+    "timescaledb": EngineSpec(1.0, 1.0),
+    "influxdb": EngineSpec(1.0, 1.0),
+    # --- columnar / data warehouse: managed serverless-billed variants before self-hosted
+    "snowflake": EngineSpec(0.7, 2.2),  # serverless, billed by compute-second — few "instances", high $/unit
+    "bigquery": EngineSpec(0.7, 1.8),  # same shape as Snowflake: on-demand query billing, not a fixed instance
+    "redshift": EngineSpec(1.2, 1.5),  # fixed-cluster, more "instance"-shaped than the two above
+    "clickhouse": EngineSpec(1.5, 1.0),  # self-hosted-friendly, genuinely fast at this tier, no serverless premium
     # --- queues (type="queue", point-to-point)
     "rabbitmq": EngineSpec(2.0, 1.3),  # real single-node RabbitMQ clears the base "queue" assumption by a wide margin
     "sqs": EngineSpec(1.0, 1.0),
