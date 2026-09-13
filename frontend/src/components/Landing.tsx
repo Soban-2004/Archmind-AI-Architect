@@ -1,7 +1,22 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { ArrowRight, Boxes, FolderUp, GitCompare, Layers, MessageSquare, ScanSearch, ShieldCheck, Sparkles, Wallet, Waves } from "lucide-react";
+import {
+  ArrowRight,
+  Boxes,
+  FolderUp,
+  GitCompare,
+  Hand,
+  Layers,
+  MessageSquare,
+  ScanSearch,
+  Search,
+  ShieldCheck,
+  Sparkles,
+  Wallet,
+  Waves,
+  Wrench,
+} from "lucide-react";
 import { HERO_SCENARIO, HERO_USERS_POSITION, SCENARIOS } from "@/lib/landingScenarios";
 import { MiniArchitecturePreview } from "./MiniArchitecturePreview";
 
@@ -48,6 +63,9 @@ const FEATURES = [
   { icon: ScanSearch, label: "Evidence-grounded imports", detail: "Reconstructing an existing repo cites the exact import, route, or compose file behind every proposed component." },
   { icon: Sparkles, label: "Deterministic where it counts", detail: "Scores, diffs, and capacity math are computed by rules, not the model — re-running them never changes the answer." },
   { icon: MessageSquare, label: "Grounded explanations", detail: "Ask why a score is what it is and get an answer that can only cite findings that actually fired." },
+  { icon: Search, label: "Grounded in live data", detail: "A time-sensitive question — current pricing, whether something's still maintained — triggers a real web search, cited inline, instead of a guess from stale training data." },
+  { icon: Hand, label: "Build it by hand, too", detail: "Add, edit, connect, or delete components straight on the canvas — the exact same validated command path a chat edit uses, no separate rules for a human-drawn change." },
+  { icon: Wrench, label: "Every node explains itself", detail: "Click a component and see why this project specifically needs it — the actual requirement it serves, not a generic definition of what the component type does." },
 ];
 
 /**
@@ -231,21 +249,31 @@ export function Landing({ onNewProject, onImportRepo, busy, existingProject, onC
         <div className="mt-14 border-t border-bp-line pt-10">
           <h2 className="font-plex-mono text-[11px] uppercase tracking-[0.12em] text-bp-muted">What makes this different</h2>
           <div className="mt-6 grid grid-cols-1 border-t border-bp-line sm:grid-cols-2">
-            {FEATURES.map(({ icon: Icon, label, detail }, i) => (
-              <div
-                key={label}
-                className={`flex gap-3.5 border-b border-bp-line py-5 ${i % 2 === 0 ? "sm:border-r sm:pr-7" : "sm:pl-7"}`}
-              >
-                <span className="mt-0.5 h-full w-[3px] shrink-0 rounded-full bg-bp-accent-2" />
-                <div>
-                  <div className="flex items-center gap-2">
-                    <Icon size={13} className="text-bp-muted" />
-                    <p className="text-[13.5px] font-semibold">{label}</p>
+            {FEATURES.map(({ icon: Icon, label, detail }, i) => {
+              // An odd-length list (currently 11) leaves one item stranded
+              // alone in the last row — instead of a dangling sm:border-r
+              // with nothing to its right, that one item spans both
+              // columns and drops the right border/padding it would
+              // otherwise get from the i%2 pairing below.
+              const isStrandedLast = FEATURES.length % 2 === 1 && i === FEATURES.length - 1;
+              return (
+                <div
+                  key={label}
+                  className={`flex gap-3.5 border-b border-bp-line py-5 ${
+                    isStrandedLast ? "sm:col-span-2" : i % 2 === 0 ? "sm:border-r sm:pr-7" : "sm:pl-7"
+                  }`}
+                >
+                  <span className="mt-0.5 h-full w-[3px] shrink-0 rounded-full bg-bp-accent-2" />
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Icon size={13} className="text-bp-muted" />
+                      <p className="text-[13.5px] font-semibold">{label}</p>
+                    </div>
+                    <p className="mt-1 text-[12.5px] leading-relaxed text-bp-muted">{detail}</p>
                   </div>
-                  <p className="mt-1 text-[12.5px] leading-relaxed text-bp-muted">{detail}</p>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
