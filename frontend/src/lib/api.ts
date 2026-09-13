@@ -183,4 +183,15 @@ export const api = {
     }
     return res.json();
   },
+
+  /** The same ingestion pipeline as ingestRepo above, just fed by a zip
+   * the backend fetches server-side from GitHub's own public archive
+   * endpoint — no manual download+upload round trip. Public repos only
+   * (no auth); a private one comes back as a clear 400, not a generic
+   * failure (see ingestion.py's ingest_from_github). */
+  ingestFromGithub: (url: string, name: string) =>
+    request<IngestResponse>("/ingest/github", {
+      method: "POST",
+      body: JSON.stringify({ url, name }),
+    }),
 };

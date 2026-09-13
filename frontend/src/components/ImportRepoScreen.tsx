@@ -1,10 +1,10 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { AlertTriangle, ArrowLeft, CheckCircle2, FileArchive, FolderUp, RotateCcw, Upload } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, FileArchive, FolderUp, GitBranch, RotateCcw, Upload } from "lucide-react";
 import { api } from "@/lib/api";
 import type { IngestResponse } from "@/lib/types";
-import { Button, Spinner } from "./ui";
+import { Button, Spinner, Tabs } from "./ui";
 
 interface Props {
   onSuccess: (result: IngestResponse) => void;
@@ -12,6 +12,12 @@ interface Props {
 }
 
 type Status = "form" | "uploading" | "result";
+// Two ways to hand this pipeline a real zip: pick a file, or point it at
+// a public GitHub repo and let the backend fetch the same kind of
+// archive server-side (see api.ts's ingestFromGithub / backend's
+// ingest_from_github) — same reconstruction pipeline either way, just a
+// different source for the bytes.
+type Mode = "upload" | "github";
 
 /**
  * Deliberately three distinct result treatments, not one generic error
@@ -30,9 +36,18 @@ function classify(result: IngestResponse): "success" | "out_of_scope" | "technic
   return "technical_failure";
 }
 
+// A quick client-side sanity check only — matches the shape backend/app/
+// api/routes/ingestion.py's parse_github_url actually accepts (a plain
+// github.com repo URL, optionally /tree/<ref>, or the bare "owner/repo"
+// shorthand). The backend is still the real validator; this just avoids
+// a round trip for an obviously-wrong paste.
+const GITHUB_URL_RE = /^(?:https?:\/\/)?(?:www\.)?github\.com\/[\w.-]+\/[\w.-]+(?:\.git)?(?:\/tree\/[^/]+)?\/?$|^[\w.-]+\/[\w.-]+$/;
+
 export function ImportRepoScreen({ onSuccess, onCancel }: Props) {
   const [status, setStatus] = useState<Status>("form");
+  const [mode, setMode] = useState<Mode>("upload");
   const [file, setFile] = useState<File | null>(null);
+  const [githubUrl, setGithubUrl] = useState("");
   const [name, setName] = useState("");
   const [dragActive, setDragActive] = useState(false);
   const [result, setResult] = useState<IngestResponse | null>(null);
@@ -50,12 +65,36 @@ export function ImportRepoScreen({ onSuccess, onCancel }: Props) {
     if (!name) setName(f.name.replace(/\.zip$/i, ""));
   }
 
-  async function handleSubmit() {
-    if (!file) return;
-    setStatus("uploading");
+  function switchMode(next: Mode) {
+    setMode(next);
     setUploadError(null);
+  }
+
+  async function handleSubmit() {
+    setUploadError(null);
+    if (mode === "upload") {
+      if (!file) return;
+      setStatus("uploading");
+      try {
+        const r = await api.ingestRepo(file, name.trim() || "Imported Project");
+        setResult(r);
+        setStatus("result");
+      } catch (e) {
+        setResult({ ok: false, error: e instanceof Error ? e.message : String(e), unsupported_notes: [] });
+        setStatus("result");
+      }
+      return;
+    }
+
+    const trimmedUrl = githubUrl.trim();
+    if (!trimmedUrl) return;
+    if (!GITHUB_URL_RE.test(trimmedUrl)) {
+      setUploadError("That doesn't look like a GitHub repo URL (expected e.g. github.com/owner/repo).");
+      return;
+    }
+    setStatus("uploading");
     try {
-      const r = await api.ingestRepo(file, name.trim() || "Imported Project");
+      const r = await api.ingestFromGithub(trimmedUrl, name.trim() || "Imported Project");
       setResult(r);
       setStatus("result");
     } catch (e) {
@@ -67,6 +106,7 @@ export function ImportRepoScreen({ onSuccess, onCancel }: Props) {
   function reset() {
     setStatus("form");
     setFile(null);
+    setGithubUrl("");
     setResult(null);
     setUploadError(null);
   }
@@ -89,50 +129,83 @@ export function ImportRepoScreen({ onSuccess, onCancel }: Props) {
           <div className="animate-fade-in">
             <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Import an existing repo</h1>
             <p className="mt-1.5 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-              Upload a .zip of the project. Supported today: Python and JavaScript/TypeScript source, and Docker
-              Compose files — every component is reconstructed from real evidence (imports, routes, compose
-              services), never guessed.
+              {mode === "upload"
+                ? "Upload a .zip of the project."
+                : "Point at a public GitHub repo — fetched server-side, no manual download needed."}{" "}
+              Supported today: Python and JavaScript/TypeScript source, and Docker Compose files — every component
+              is reconstructed from real evidence (imports, routes, compose services), never guessed.
             </p>
 
-            <div
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDragActive(true);
-              }}
-              onDragLeave={() => setDragActive(false)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setDragActive(false);
-                pickFile(e.dataTransfer.files?.[0] ?? null);
-              }}
-              onClick={() => inputRef.current?.click()}
-              className={`mt-5 flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-6 py-10 text-center transition ${
-                dragActive
-                  ? "border-brand-400 bg-brand-50/60 dark:border-indigo-500/50 dark:bg-indigo-500/5"
-                  : "border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-slate-600"
-              }`}
-            >
-              <input
-                ref={inputRef}
-                type="file"
-                accept=".zip"
-                className="hidden"
-                onChange={(e) => pickFile(e.target.files?.[0] ?? null)}
+            <div className="mt-4">
+              <Tabs
+                active={mode}
+                onChange={switchMode}
+                tabs={[
+                  { id: "upload", label: "Upload .zip", icon: <Upload size={13} /> },
+                  { id: "github", label: "GitHub URL", icon: <GitBranch size={13} /> },
+                ]}
               />
-              {file ? (
-                <>
-                  <FileArchive size={22} className="text-brand-500 dark:text-indigo-400" />
-                  <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{file.name}</p>
-                  <p className="text-[11px] text-slate-400 dark:text-slate-500">{(file.size / 1024).toFixed(0)} KB — click to choose a different file</p>
-                </>
-              ) : (
-                <>
-                  <Upload size={22} className="text-slate-300 dark:text-slate-600" />
-                  <p className="text-sm font-medium text-slate-600 dark:text-slate-300">Drop a .zip here, or click to browse</p>
-                  <p className="text-[11px] text-slate-400 dark:text-slate-500">Up to 25MB</p>
-                </>
-              )}
             </div>
+
+            {mode === "upload" ? (
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragActive(true);
+                }}
+                onDragLeave={() => setDragActive(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragActive(false);
+                  pickFile(e.dataTransfer.files?.[0] ?? null);
+                }}
+                onClick={() => inputRef.current?.click()}
+                className={`mt-3 flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-6 py-10 text-center transition ${
+                  dragActive
+                    ? "border-brand-400 bg-brand-50/60 dark:border-indigo-500/50 dark:bg-indigo-500/5"
+                    : "border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-slate-600"
+                }`}
+              >
+                <input
+                  ref={inputRef}
+                  type="file"
+                  accept=".zip"
+                  className="hidden"
+                  onChange={(e) => pickFile(e.target.files?.[0] ?? null)}
+                />
+                {file ? (
+                  <>
+                    <FileArchive size={22} className="text-brand-500 dark:text-indigo-400" />
+                    <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{file.name}</p>
+                    <p className="text-[11px] text-slate-400 dark:text-slate-500">{(file.size / 1024).toFixed(0)} KB — click to choose a different file</p>
+                  </>
+                ) : (
+                  <>
+                    <Upload size={22} className="text-slate-300 dark:text-slate-600" />
+                    <p className="text-sm font-medium text-slate-600 dark:text-slate-300">Drop a .zip here, or click to browse</p>
+                    <p className="text-[11px] text-slate-400 dark:text-slate-500">Up to 25MB</p>
+                  </>
+                )}
+              </div>
+            ) : (
+              <div className="mt-3">
+                <label className="block text-[11px] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                  Repo URL
+                </label>
+                <div className="mt-1 flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 focus-within:border-brand-400 focus-within:ring-2 focus-within:ring-brand-100 dark:border-slate-700 dark:bg-slate-800 dark:focus-within:ring-indigo-500/20">
+                  <GitBranch size={14} className="shrink-0 text-slate-300 dark:text-slate-600" />
+                  <input
+                    value={githubUrl}
+                    onChange={(e) => setGithubUrl(e.target.value)}
+                    placeholder="github.com/owner/repo"
+                    className="w-full bg-transparent text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none dark:text-slate-100"
+                  />
+                </div>
+                <p className="mt-1.5 text-[11px] text-slate-400 dark:text-slate-500">
+                  Public repos only — fetched anonymously, up to 25MB, same size limit as a direct upload.
+                </p>
+              </div>
+            )}
             {uploadError && <p className="mt-2 text-xs text-red-600 dark:text-red-400">⚠️ {uploadError}</p>}
 
             <label className="mt-4 block text-[11px] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
@@ -145,7 +218,7 @@ export function ImportRepoScreen({ onSuccess, onCancel }: Props) {
               className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-indigo-500/20"
             />
 
-            <Button className="mt-5 w-full" disabled={!file} onClick={handleSubmit}>
+            <Button className="mt-5 w-full" disabled={mode === "upload" ? !file : !githubUrl.trim()} onClick={handleSubmit}>
               <FolderUp size={14} /> Import and reconstruct
             </Button>
           </div>
