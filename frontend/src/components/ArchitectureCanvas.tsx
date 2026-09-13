@@ -16,7 +16,7 @@ import {
   type NodeTypes,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Map, Network, Trash2, X } from "lucide-react";
+import { Map, Network, Redo2, Trash2, Undo2, X } from "lucide-react";
 import { toFlowElements } from "@/lib/diffView";
 import type { LayoutMap } from "@/lib/layout";
 import { applySimulation } from "@/lib/simView";
@@ -80,6 +80,15 @@ interface Props {
    * already uses (see page.tsx's handleApplyCommands). Omit alongside
    * onNodeSave for a read-only canvas. */
   onApplyCommands?: (commands: MutationCommand[]) => Promise<void>;
+  /** Quick undo/redo for the last edit (chat, manual, or node-detail save)
+   * — a client-side jump to the neighboring version, not a separate
+   * mutation (see page.tsx's undoStack). Omit either to hide/disable the
+   * corresponding button; both omitted alongside onApplyCommands for a
+   * fully read-only canvas (e.g. the compare view). */
+  onUndo?: () => void;
+  onRedo?: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
   /** Present exactly when the Simulate tab is active on a live (non-
    * compare) canvas — renders the playback dock and enables click-a-node
    * Kill/Revive from NodeDetailCard. Omit to render a plain canvas with
@@ -103,6 +112,10 @@ export function ArchitectureCanvas({
   busy = false,
   onNodeSave,
   onApplyCommands,
+  onUndo,
+  onRedo,
+  canUndo = false,
+  canRedo = false,
   simDock,
   projectName,
   onShare,
@@ -133,6 +146,35 @@ export function ArchitectureCanvas({
       else svg.pauseAnimations?.();
     });
   }, [dockActive, dockPlaying]);
+
+  // Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z (or Ctrl+Y) for undo/redo — the
+  // standard shortcut everywhere else already trains for. Skipped while
+  // focus is in a text input/textarea/contenteditable so it doesn't fight
+  // a user's actual text-editing undo (e.g. mid-edit in NodeDetailCard's
+  // rationale textarea) — undo/redo here targets the CANVAS's history,
+  // not whatever field currently has focus.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "z" && e.key.toLowerCase() !== "y") return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable) return;
+      if (e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey)) {
+        if (onRedo && canRedo) {
+          e.preventDefault();
+          onRedo();
+        }
+      } else if (e.key.toLowerCase() === "z") {
+        if (onUndo && canUndo) {
+          e.preventDefault();
+          onUndo();
+        }
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onUndo, onRedo, canUndo, canRedo]);
+
   // A drag needs to move a node the instant the pointer moves, well before
   // any position update could round-trip up to the parent's `layout` state
   // and back down as a prop. So dragged positions live here as a small
@@ -364,6 +406,27 @@ export function ArchitectureCanvas({
         {simDock && <SimulationDock {...simDock} result={simulation ?? null} />}
         <CanvasLoadingOverlay active={busy} />
         <div className={`absolute right-3.5 z-10 flex items-center gap-2 ${nodes.length > 5 ? "top-14" : "top-3.5"}`}>
+          {(onUndo || onRedo) && (
+            <div className="flex items-center overflow-hidden rounded-lg border border-slate-200 bg-white/90 shadow-sm backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/90">
+              <IconButton
+                onClick={onUndo}
+                disabled={busy || !canUndo}
+                className="rounded-none"
+                title="Undo last change (Ctrl+Z)"
+              >
+                <Undo2 size={14} />
+              </IconButton>
+              <div className="h-4 w-px bg-slate-200 dark:bg-slate-700" />
+              <IconButton
+                onClick={onRedo}
+                disabled={busy || !canRedo}
+                className="rounded-none"
+                title="Redo (Ctrl+Shift+Z)"
+              >
+                <Redo2 size={14} />
+              </IconButton>
+            </div>
+          )}
           {onApplyCommands && <AddNodeMenu onAdd={handleAddNode} disabled={busy} />}
           <ExportMenu flowElementRef={flowWrapperRef} projectName={projectName ?? "architecture"} onShare={onShare} />
         </div>

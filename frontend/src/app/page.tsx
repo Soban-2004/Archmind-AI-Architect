@@ -62,6 +62,19 @@ export default function Home() {
   const [activeVersionId, setActiveVersionId] = useState<string | null>(null);
   const [latestVersionId, setLatestVersionId] = useState<string | null>(null);
   const [versionsRefreshKey, setVersionsRefreshKey] = useState(0);
+  // Quick undo/redo for edits made from THIS browser tab (chat edits,
+  // manual canvas edits, node-detail saves) — not a separate mutation, just
+  // a client-side stack of version ids to jump back/forward through via
+  // the same loadVersion() the version-history panel already uses. Every
+  // edit is already a real, persisted version (see _finalize choke point
+  // server-side), so "undo" never destroys anything — it's exactly the
+  // same as clicking the parent version in history, just one keystroke.
+  // Manually browsing history (clicking an arbitrary version there)
+  // clears both stacks rather than trying to splice into them — jumping
+  // to an arbitrary point breaks the "one step back/forward" assumption
+  // this pair only makes sense under.
+  const [undoStack, setUndoStack] = useState<string[]>([]);
+  const [redoStack, setRedoStack] = useState<string[]>([]);
 
   const [compareResult, setCompareResult] = useState<{ result: CompareResult; state: ArchitectureState; layout: LayoutMap } | null>(null);
   const [simulationResult, setSimulationResult] = useState<SimulationResult | null>(null);
@@ -163,6 +176,8 @@ export default function Home() {
     setRawLayout({});
     setGhostLayoutHint({});
     setDiff(null);
+    setUndoStack([]);
+    setRedoStack([]);
 
     if (project.latest_version) {
       setLatestVersionId(project.latest_version.id);
@@ -210,6 +225,46 @@ export default function Home() {
     if (!result.project || !result.version) return;
     await openProject({ id: result.project.id, name: result.project.name, created_at: result.project.created_at, latest_version: result.version });
     setView("app");
+  }
+
+  /** Call right before switching to a newly-created version as the result
+   * of a real edit (chat, manual canvas, node-detail save) — pushes the
+   * version being left onto the undo stack and clears redo (a fresh edit
+   * always invalidates whatever "forward" history existed, same as any
+   * editor's undo/redo). Not called when just browsing version history,
+   * which resets both stacks instead (see undoStack's declaration). */
+  function recordEdit() {
+    if (activeVersionId) setUndoStack((prev) => [...prev, activeVersionId]);
+    setRedoStack([]);
+  }
+
+  /** Jump to an arbitrary version from the history panel — distinct from
+   * handleUndo/handleRedo below even though both end up calling
+   * loadVersion, because this one resets the undo/redo stacks instead of
+   * consuming them (see undoStack's declaration for why). */
+  function handleSelectVersionFromHistory(versionId: string) {
+    if (!projectId) return;
+    setUndoStack([]);
+    setRedoStack([]);
+    void loadVersion(projectId, versionId);
+  }
+
+  async function handleUndo() {
+    if (!projectId || undoStack.length === 0) return;
+    const targetId = undoStack[undoStack.length - 1];
+    const leavingId = activeVersionId;
+    setUndoStack((prev) => prev.slice(0, -1));
+    if (leavingId) setRedoStack((prev) => [...prev, leavingId]);
+    await loadVersion(projectId, targetId);
+  }
+
+  async function handleRedo() {
+    if (!projectId || redoStack.length === 0) return;
+    const targetId = redoStack[redoStack.length - 1];
+    const leavingId = activeVersionId;
+    setRedoStack((prev) => prev.slice(0, -1));
+    if (leavingId) setUndoStack((prev) => [...prev, leavingId]);
+    await loadVersion(projectId, targetId);
   }
 
   async function loadVersion(pid: string, versionId: string, preloaded?: VersionRow) {
@@ -294,6 +349,7 @@ export default function Home() {
         setRawLayout(newLayout);
         setDiff(result.diff);
         setSimulationResult(null); // stale now that the graph changed
+        recordEdit();
         setActiveVersionId(result.version.id);
         setLatestVersionId(result.version.id);
         setVersionsRefreshKey((k) => k + 1);
@@ -329,6 +385,7 @@ export default function Home() {
     setRawLayout(newLayout);
     setDiff(result.diff);
     setSimulationResult(null); // stale now that the graph changed
+    recordEdit();
     setActiveVersionId(result.version.id);
     setLatestVersionId(result.version.id);
     setVersionsRefreshKey((k) => k + 1);
@@ -358,6 +415,7 @@ export default function Home() {
     setRawLayout(newLayout);
     setDiff(result.diff);
     setSimulationResult(null); // stale now that the graph changed
+    recordEdit();
     setActiveVersionId(result.version.id);
     setLatestVersionId(result.version.id);
     setVersionsRefreshKey((k) => k + 1);
@@ -619,7 +677,7 @@ export default function Home() {
                 <div className="flex items-center justify-between border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-400">
                   <span>Viewing an earlier version. New edits will branch off from here.</span>
                   {latestVersionId && projectId && (
-                    <button className="flex items-center gap-1 font-medium underline" onClick={() => loadVersion(projectId, latestVersionId)}>
+                    <button className="flex items-center gap-1 font-medium underline" onClick={() => handleSelectVersionFromHistory(latestVersionId)}>
                       <ArrowLeft size={12} /> Back to latest
                     </button>
                   )}
@@ -634,6 +692,10 @@ export default function Home() {
                   onNodePositionsChange={compareResult ? undefined : handleNodePositionsChange}
                   onNodeSave={compareResult ? undefined : handleNodeSave}
                   onApplyCommands={compareResult ? undefined : handleApplyCommands}
+                  onUndo={compareResult ? undefined : handleUndo}
+                  onRedo={compareResult ? undefined : handleRedo}
+                  canUndo={!compareResult && undoStack.length > 0}
+                  canRedo={!compareResult && redoStack.length > 0}
                   busy={!compareResult && busy}
                   projectName={projectName}
                   onShare={!compareResult && activeVersionId ? handleCopyShareLink : undefined}
@@ -676,7 +738,7 @@ export default function Home() {
                     projectId={projectId}
                     activeVersionId={activeVersionId}
                     refreshKey={versionsRefreshKey}
-                    onSelect={(vid) => loadVersion(projectId, vid)}
+                    onSelect={handleSelectVersionFromHistory}
                     onCompare={handleCompare}
                   />
                 )}
