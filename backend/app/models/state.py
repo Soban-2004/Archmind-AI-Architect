@@ -31,6 +31,7 @@ class ServiceType(str, Enum):
     edge_cdn = "edge_cdn"
     scheduler = "scheduler"  # triggers jobs on a fixed schedule (cron-like), independent of a queue/event
     ml_inference = "ml_inference"  # serves trained-model predictions over an API, often its own (GPU) scaling profile
+    realtime = "realtime"  # persistent WebSocket/live-connection server — a distinct scaling profile from request/response (connection count, not just req/s)
 
 
 class ScalingMode(str, Enum):
@@ -83,6 +84,7 @@ class DatabaseType(str, Enum):
     graph = "graph"
     time_series = "time_series"  # optimized for high-write, timestamped data with efficient range queries
     columnar = "columnar"  # column-oriented, analytical/OLAP queries over large datasets (a data warehouse)
+    vector = "vector"  # embedding similarity search — the real gap for anything RAG/AI-app-shaped (Pinecone, Weaviate, Qdrant, pgvector)
 
 
 class DatabaseRole(str, Enum):
@@ -132,6 +134,7 @@ class ExternalDependencyType(str, Enum):
     storage = "storage"
     notification_provider = "notification_provider"  # sends email/SMS/push on the system's behalf
     analytics = "analytics"  # third-party product analytics/telemetry the system sends events to
+    feature_flags = "feature_flags"  # remote config / gradual rollout provider (LaunchDarkly, Flagsmith, Unleash)
 
 
 class Criticality(str, Enum):

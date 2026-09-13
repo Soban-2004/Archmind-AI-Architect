@@ -50,6 +50,11 @@ notification_provider, analytics) need no entry here: capacity_for()
 only splits by `type` for database/infra_node/queue kinds (see below),
 so those new service/external_dependency types already shared the
 existing flat "service"/"external_dependency" defaults, unchanged.
+
+v6 change: database:vector added (embedding similarity search —
+Pinecone/Weaviate/Qdrant/pgvector). New `service:realtime` and
+external_dependency:feature_flags need no entry here for the same
+reason the v5 service/external_dependency additions didn't.
 """
 from __future__ import annotations
 
@@ -57,7 +62,7 @@ from app.analyzer.engines import engine_spec_for
 from app.analyzer.sizing import size_spec_for
 from app.models.state import Node
 
-CAPACITY_VERSION = "v5"
+CAPACITY_VERSION = "v6"
 
 # requests/sec a single small instance of each kind is assumed to
 # saturate at, absent any other signal from the graph
@@ -74,6 +79,7 @@ _DEFAULT_CAPACITY_RPS: dict[str, float] = {
     "database:graph": 200,
     "database:time_series": 3_000,  # high-write-throughput by design (metrics/events), well above relational
     "database:columnar": 50,  # analytical/OLAP: optimized for large scans, not concurrent query throughput
+    "database:vector": 1_000,  # approximate-nearest-neighbor search on a single node — real, but heavier per-query than a keyvalue lookup
     "infra_node:cdn": 100_000,
     "infra_node:load_balancer": 50_000,
     "infra_node:api_gateway": 20_000,

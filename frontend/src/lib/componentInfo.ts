@@ -44,6 +44,10 @@ const INFO: Record<string, ComponentInfo> = {
     description: "Serves predictions from a trained model over an API — usually its own scaling profile (often GPU-backed) separate from regular backend services.",
     examples: ["TorchServe", "AWS SageMaker endpoint", "NVIDIA Triton", "Ray Serve"],
   },
+  "service:realtime": {
+    description: "Holds persistent connections open to push live updates to clients — chat, notifications, multiplayer/collab state — a distinct scaling profile (concurrent connections, not just req/s) from a normal request/response service.",
+    examples: ["Socket.IO", "Pusher", "Ably", "AWS API Gateway WebSockets"],
+  },
 
   // --- databases ---------------------------------------------------------
   "database:relational": {
@@ -74,6 +78,10 @@ const INFO: Record<string, ComponentInfo> = {
   "database:columnar": {
     description: "Column-oriented storage built for analytical (OLAP) queries scanning large datasets — a data warehouse, not the system's transactional store.",
     examples: ["Snowflake", "Google BigQuery", "Amazon Redshift", "ClickHouse"],
+  },
+  "database:vector": {
+    description: "Indexes embeddings for similarity search — the retrieval half of RAG, semantic search, and recommendation systems, where a lookup means \"find the nearest meaning\" instead of an exact match.",
+    examples: ["Pinecone", "Weaviate", "Qdrant", "Chroma", "pgvector"],
   },
 
   // --- queues --------------------------------------------------------------
@@ -119,6 +127,10 @@ const INFO: Record<string, ComponentInfo> = {
   "external_dependency:analytics": {
     description: "A third-party product-analytics or telemetry destination the system sends user/usage events to.",
     examples: ["Segment", "Mixpanel", "Amplitude", "PostHog"],
+  },
+  "external_dependency:feature_flags": {
+    description: "Controls which users see which features at runtime — gradual rollouts, A/B tests, and instant kill-switches without a redeploy.",
+    examples: ["LaunchDarkly", "Flagsmith", "Unleash", "GrowthBook"],
   },
 
   // --- infra nodes -----------------------------------------------------------

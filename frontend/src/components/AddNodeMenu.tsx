@@ -12,10 +12,10 @@ import { IconButton } from "./ui";
 // validation add_node always goes through server-side, same as every
 // other manually- or chat-constructed command.
 const NODE_TYPE_OPTIONS: Record<NodeKind, string[]> = {
-  service: ["gateway", "service", "worker", "frontend", "edge_cdn", "scheduler", "ml_inference"],
-  database: ["relational", "document", "keyvalue", "search", "graph", "time_series", "columnar"],
+  service: ["gateway", "service", "worker", "frontend", "edge_cdn", "scheduler", "ml_inference", "realtime"],
+  database: ["relational", "document", "keyvalue", "search", "graph", "time_series", "columnar", "vector"],
   queue: ["queue", "pubsub", "stream"],
-  external_dependency: ["third_party_api", "payment", "market_data", "auth_provider", "storage", "notification_provider", "analytics"],
+  external_dependency: ["third_party_api", "payment", "market_data", "auth_provider", "storage", "notification_provider", "analytics", "feature_flags"],
   infra_node: [
     "cdn",
     "load_balancer",

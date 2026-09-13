@@ -39,12 +39,18 @@ multiplier than a fixed cluster (Redshift, ClickHouse) despite costing
 more per unit — they're genuinely not "one instance" the way this whole
 module otherwise assumes, so the closest honest approximation is: fewer
 effective concurrent-query "instances" for the same $, not more.
+
+v3: added entries for database:vector (capacity.py v6) — pinecone,
+weaviate, milvus, qdrant, chroma, and pgvector (which MUST be matched
+before the plain "postgres" entry above — see its own comment). Same
+managed-serverless-costs-more-per-unit pattern as v2's Snowflake/BigQuery
+applies to Pinecone here.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-ENGINE_VERSION = "v2"
+ENGINE_VERSION = "v3"
 
 
 @dataclass(frozen=True)
@@ -62,6 +68,12 @@ NEUTRAL_ENGINE_SPEC = EngineSpec(1.0, 1.0)
 # stops at the first hit in this order, so this ordering is load-bearing,
 # not cosmetic.
 ENGINE_MULTIPLIERS: dict[str, EngineSpec] = {
+    # "pgvector" MUST come before "postgres" below — free text like
+    # "postgres with pgvector" contains both substrings, and matching
+    # stops at the first hit in iteration order; pgvector is the more
+    # specific, more informative match (a vector-search workload profile,
+    # not a plain relational one) so it has to win.
+    "pgvector": EngineSpec(1.1, 0.9),  # rides on existing Postgres infra — cheaper incremental cost than a dedicated vector DB
     # --- relational: managed/distributed variants before the base engines
     "aurora": EngineSpec(1.5, 1.4),  # managed, auto-scaling storage, real premium over vanilla RDS
     "cockroachdb": EngineSpec(1.2, 1.8),  # distributed-by-default; the multi-node overhead is real cost even at "small"
@@ -83,6 +95,12 @@ ENGINE_MULTIPLIERS: dict[str, EngineSpec] = {
     "elasticsearch": EngineSpec(1.0, 1.0),
     # --- graph
     "neo4j": EngineSpec(1.0, 1.0),
+    # --- vector (embedding similarity search) — managed/serverless before self-hosted, same pattern as columnar above
+    "pinecone": EngineSpec(0.7, 2.0),  # managed serverless SaaS, billed per-unit not per-instance — same shape as Snowflake/BigQuery above
+    "weaviate": EngineSpec(0.9, 1.1),  # self-hostable but a heavier resource footprint than a bare index
+    "milvus": EngineSpec(0.8, 1.3),  # distributed architecture (even standalone mode carries real overhead), more moving parts than the others here
+    "qdrant": EngineSpec(1.0, 1.0),  # self-hosted baseline this table's vector default (docker_images.py) is built around
+    "chroma": EngineSpec(1.1, 0.8),  # lightweight, embedded-friendly, cheapest of this group at "small"
     # --- time_series
     "timescaledb": EngineSpec(1.0, 1.0),
     "influxdb": EngineSpec(1.0, 1.0),

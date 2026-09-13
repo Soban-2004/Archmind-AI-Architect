@@ -30,12 +30,21 @@ actually run locally for that role and is worth being explicit about:
   metrics/log sources is left to the person building this out)
 
 Bump DOCKER_IMAGES_VERSION if any of these change.
+
+v2: added entries for database:vector (state.py's newest database type) —
+pgvector (must be matched before "postgres"/"postgresql", same reason as
+engines.py's own pgvector entry), qdrant (also this type's TYPE_FALLBACK
+default — self-hosted, single-container, genuinely simple to run),
+weaviate, chroma, and two matched-but-deliberately-no-image cases:
+pinecone (managed SaaS, no local image at all — Qdrant stands in) and
+milvus (a real open-source engine, but its standalone mode needs etcd +
+MinIO alongside it, too much for a single-service stand-in here).
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-DOCKER_IMAGES_VERSION = "v1"
+DOCKER_IMAGES_VERSION = "v2"
 
 
 @dataclass(frozen=True)
@@ -60,6 +69,9 @@ class DockerImageSpec:
 # discipline as engines.py's ENGINE_MULTIPLIERS, for the same reason (free
 # text like "Amazon Aurora PostgreSQL" contains "postgres" too).
 _ENGINE_IMAGES: dict[str, DockerImageSpec] = {
+    # "pgvector" MUST come before "postgres"/"postgresql" below — same
+    # substring-ordering reason as engines.py's own pgvector entry.
+    "pgvector": DockerImageSpec("pgvector/pgvector:pg16", 5432, {"POSTGRES_PASSWORD": "changeme"}, "Postgres with the pgvector extension pre-installed", data_dir="/var/lib/postgresql/data"),
     "cockroachdb": DockerImageSpec("cockroachdb/cockroach:latest-v23.2", 26257, note="single-node --insecure dev mode, not how you'd run it in production", data_dir="/cockroach/cockroach-data"),
     "timescaledb": DockerImageSpec("timescale/timescaledb:latest-pg16", 5432, {"POSTGRES_PASSWORD": "changeme"}, data_dir="/var/lib/postgresql/data"),
     "aurora": DockerImageSpec("postgres:16-alpine", 5432, {"POSTGRES_PASSWORD": "changeme"}, "Aurora is AWS-managed and Postgres/MySQL-compatible; plain postgres stands in for local dev", data_dir="/var/lib/postgresql/data"),
@@ -77,6 +89,10 @@ _ENGINE_IMAGES: dict[str, DockerImageSpec] = {
     "algolia": DockerImageSpec("opensearchproject/opensearch:2.17.0", 9200, {"discovery.type": "single-node", "DISABLE_SECURITY_PLUGIN": "true"}, "Algolia is a managed SaaS search API with no local image; a self-hosted OpenSearch stands in for local dev, indexing behavior will differ", data_dir="/usr/share/opensearch/data"),
     "elasticsearch": DockerImageSpec("docker.elastic.co/elasticsearch/elasticsearch:8.15.0", 9200, {"discovery.type": "single-node", "xpack.security.enabled": "false"}, data_dir="/usr/share/elasticsearch/data"),
     "neo4j": DockerImageSpec("neo4j:5", 7474, {"NEO4J_AUTH": "neo4j/changeme"}, data_dir="/data"),
+    "pinecone": DockerImageSpec("qdrant/qdrant:latest", 6333, note="Pinecone is a managed serverless SaaS vector DB with no local image; self-hosted Qdrant stands in for local dev, indexing/query behavior will differ", data_dir="/qdrant/storage"),
+    "weaviate": DockerImageSpec("semitechnologies/weaviate:1.26.1", 8080, {"QUERY_DEFAULTS_LIMIT": "25", "AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED": "true"}, data_dir="/var/lib/weaviate"),
+    "qdrant": DockerImageSpec("qdrant/qdrant:latest", 6333, data_dir="/qdrant/storage"),
+    "chroma": DockerImageSpec("chromadb/chroma:latest", 8000, data_dir="/chroma/chroma"),
     "influxdb": DockerImageSpec("influxdb:2", 8086, data_dir="/var/lib/influxdb2"),
     "clickhouse": DockerImageSpec("clickhouse/clickhouse-server:24", 8123, data_dir="/var/lib/clickhouse"),
     "snowflake": DockerImageSpec("clickhouse/clickhouse-server:24", 8123, note="Snowflake is a managed SaaS warehouse with no local image; self-hosted ClickHouse stands in for local dev, query behavior will differ", data_dir="/var/lib/clickhouse"),
@@ -89,6 +105,16 @@ _ENGINE_IMAGES: dict[str, DockerImageSpec] = {
     "pubsub": DockerImageSpec("gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators", 8085, note="Google's own Pub/Sub emulator, not real Pub/Sub"),
 }
 
+# A handful of engine names that ARE recognized but deliberately have NO
+# entry in _ENGINE_IMAGES — checked after it (see docker_image_for), so a
+# genuine match here still falls through to the node's TYPE-level default
+# below, with an honest, specific note explaining why THIS engine
+# specifically didn't get one, rather than the generic "not recognized"
+# message an actually-unmatched engine gets.
+_ENGINE_NO_IMAGE_NOTES: dict[str, str] = {
+    "milvus": "Milvus standalone needs etcd + MinIO running alongside it — too much for a single-service stand-in here; see Milvus's own docker-compose reference for a real local setup",
+}
+
 # Fallback when `engine` is unset/unmatched — keyed by the node's `type`
 # instead, so there's still a real default rather than a bare comment.
 _TYPE_FALLBACK_IMAGES: dict[str, DockerImageSpec] = {
@@ -99,6 +125,7 @@ _TYPE_FALLBACK_IMAGES: dict[str, DockerImageSpec] = {
     "database:graph": _ENGINE_IMAGES["neo4j"],
     "database:time_series": _ENGINE_IMAGES["influxdb"],
     "database:columnar": _ENGINE_IMAGES["clickhouse"],
+    "database:vector": _ENGINE_IMAGES["qdrant"],
     "queue:queue": _ENGINE_IMAGES["rabbitmq"],
     "queue:pubsub": _ENGINE_IMAGES["kafka"],
     "queue:stream": _ENGINE_IMAGES["kafka"],
@@ -139,16 +166,23 @@ def docker_image_for(node: object) -> tuple[DockerImageSpec | None, str | None]:
     node_type = getattr(node_type, "value", node_type)  # unwrap an Enum if that's what was passed
 
     engine = getattr(node, "engine", None)
+    no_image_reason: str | None = None
     if engine:
         normalized = engine.strip().lower()
         for name, spec in _ENGINE_IMAGES.items():
             if name in normalized:
                 return spec, spec.note or None
+        for name, reason in _ENGINE_NO_IMAGE_NOTES.items():
+            if name in normalized:
+                no_image_reason = reason  # a RECOGNIZED engine with deliberately no image — falls through to the type default below with an honest, specific reason, not a generic "not recognized"
+                break
 
     if node_kind in ("database", "queue") and node_type:
         spec = _TYPE_FALLBACK_IMAGES.get(f"{node_kind}:{node_type}")
         if spec is not None:
-            if spec.note:
+            if no_image_reason:
+                note = f"{no_image_reason} — {spec.image} used as the default for {node_kind}:{node_type} instead"
+            elif spec.note:
                 note = spec.note
             elif engine:
                 note = f"engine '{engine}' not recognized — {spec.image} used as the default for {node_kind}:{node_type}"

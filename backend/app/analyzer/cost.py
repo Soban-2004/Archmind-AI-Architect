@@ -52,6 +52,9 @@ infra_node:dns/firewall_waf/secrets_manager/service_mesh) got their own
 per-instance default here too, for the same reason — falling back to
 FALLBACK_MONTHLY_COST_USD would silently under/over-price a real,
 named component type instead of giving it a real answer with a basis.
+
+v4 -> COST_VERSION follow-up: database:vector added alongside
+capacity.py's v6, same reasoning.
 """
 from __future__ import annotations
 
@@ -64,7 +67,7 @@ from app.analyzer.sizing import STORAGE_COST_PER_GB_USD, size_spec_for
 from app.models.analysis import CostLineItem
 from app.models.state import ArchitectureState, Node
 
-COST_VERSION = "v4"
+COST_VERSION = "v5"
 COST_MODEL_VERSION = "v2"  # v2: instance count derived from real load / declared capacity, not a flat 1
 
 # Rough monthly USD for one small managed instance of each kind — the same
@@ -82,6 +85,7 @@ _MONTHLY_COST_USD: dict[str, float] = {
     "database:graph": 60,
     "database:time_series": 30,
     "database:columnar": 80,  # data-warehouse-shaped; pricier than a general-purpose store even at "small"
+    "database:vector": 40,  # embedding storage + index memory footprint runs heavier than a plain document store
     "infra_node:cdn": 15,
     "infra_node:load_balancer": 20,
     "infra_node:api_gateway": 20,
