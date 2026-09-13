@@ -229,3 +229,81 @@ serve(async (req) => {
     assert "third_party_api_call" in facts  # was completely missing before (real fetch(), not just an env var name)
     assert "web_framework" in facts  # the Deno serve() import -- without it the SendGrid dependency has nothing to be wired from
     assert "rest_route" not in facts  # Deno.env.get(...) must NOT be misreported as a route anymore
+
+
+# --- auth_usage / database_table_usage / CREATE POLICY -- a third, deeper
+# pass, prompted by "what about authentication, and the actual tables?" ---
+
+def test_supabase_auth_call_produces_auth_usage_evidence(tmp_path: Path):
+    _write(tmp_path, "src/login.ts", "await supabase.auth.signInWithOtp({ email });\n")
+    files = discover_files(tmp_path)
+    evidence, _ = extract_evidence(files)
+    matches = [e for e in evidence if e.fact == "auth_usage"]
+    assert len(matches) == 1
+    assert "signInWithOtp" in matches[0].detail
+
+
+def test_unrelated_dot_auth_property_is_not_misreported_as_auth_usage(tmp_path: Path):
+    """Curated method names, not a bare `.auth.` match -- some unrelated
+    object's .auth property/method must not produce fabricated evidence."""
+    _write(tmp_path, "src/config.ts", "const level = settings.auth.level;\n")
+    files = discover_files(tmp_path)
+    evidence, _ = extract_evidence(files)
+    assert not any(e.fact == "auth_usage" for e in evidence)
+
+
+def test_supabase_from_call_produces_table_usage_evidence(tmp_path: Path):
+    """The real bug found live: a repo's only real evidence of its
+    `voters` table was this kind of call -- no CREATE TABLE existed
+    anywhere in its one migration file."""
+    _write(tmp_path, "src/lib/supabase.ts", "import { createClient } from '@supabase/supabase-js';\n")
+    _write(tmp_path, "src/voting.ts", "const { data } = await supabase.from('voters').select('voted, email');\n")
+    files = discover_files(tmp_path)
+    evidence, _ = extract_evidence(files)
+    matches = [e for e in evidence if e.fact == "database_table_usage"]
+    assert len(matches) == 1
+    assert "voters" in matches[0].detail
+
+
+def test_array_from_and_buffer_from_do_not_misfire_as_table_usage(tmp_path: Path):
+    """The real false-positive risk this pattern has to avoid: `.from(`
+    is also Array.from(...) and Buffer.from(...), both common. Gated on
+    the file mentioning "supabase" at all -- a file with neither must
+    produce nothing, even with a string-literal-shaped call."""
+    _write(tmp_path, "src/utils.ts", "const buf = Buffer.from('hello world');\n")
+    files = discover_files(tmp_path)
+    evidence, _ = extract_evidence(files)
+    assert not any(e.fact == "database_table_usage" for e in evidence)
+
+
+def test_create_policy_names_a_referenced_table_when_no_create_table_exists(tmp_path: Path):
+    """Reproduces the exact real migration file found live: a Supabase
+    project's table was created through its dashboard, never a
+    migration -- the one committed .sql file has only RLS policies, zero
+    CREATE TABLE statements, for a table that definitely exists."""
+    _write(tmp_path, "supabase/migrations/policy_fix.sql", """\
+CREATE POLICY "Allow public to check voter status"
+ON public.voters
+FOR SELECT
+USING (true);
+""")
+    files = discover_files(tmp_path)
+    evidence, _ = extract_evidence(files)
+    matches = [e for e in evidence if e.fact == "database_schema"]
+    assert len(matches) == 1
+    assert "voters" in matches[0].detail
+    assert "referenced" in matches[0].detail
+    assert "defined (CREATE TABLE)" not in matches[0].detail  # honest -- this migration never DEFINED the table
+
+
+def test_create_table_and_create_policy_for_the_same_table_are_not_double_counted(tmp_path: Path):
+    _write(tmp_path, "schema.sql", """\
+create table candidates (id uuid primary key);
+CREATE POLICY "p" ON candidates FOR SELECT USING (true);
+""")
+    files = discover_files(tmp_path)
+    evidence, _ = extract_evidence(files)
+    matches = [e for e in evidence if e.fact == "database_schema"]
+    assert len(matches) == 2  # one "defined", one "referenced" -- real, distinct pieces of evidence, not a dedupe collapse
+    kinds = {("defined (CREATE TABLE)" in e.detail, "referenced (RLS policy" in e.detail) for e in matches}
+    assert kinds == {(True, False), (False, True)}

@@ -625,14 +625,37 @@ GROUNDING RULES (the whole point of this pass):
   the more likely fit unless other evidence says otherwise) with a real
   `engine` value ("supabase"/"firebase"), not left vague. The service
   file that imports it calls TO that database node.
-- `database_schema` evidence (a `CREATE TABLE` found in a .sql migration)
-  names a real table in a real database — use it to justify a database
-  node's existence (cite it alongside whatever `*_dependency`/BaaS
-  evidence identifies which engine it actually is) and let the table
-  name(s) inform that node's name/rationale, e.g. a `candidates` and
-  `votes` table found via migrations plus a `supabase_dependency` import
-  elsewhere in the repo together describe ONE Postgres database, not two
-  separate nodes.
+- `database_schema` evidence names a real table in a real database — use
+  it to justify a database node's existence (cite it alongside whatever
+  `*_dependency`/BaaS evidence identifies which engine it actually is)
+  and let the table name(s) inform that node's name/rationale, e.g. a
+  `candidates` and `votes` table found via migrations plus a
+  `supabase_dependency` import elsewhere in the repo together describe
+  ONE Postgres database, not two separate nodes. Its detail text says
+  whether the table was actually DEFINED here (a real `CREATE TABLE`) or
+  only REFERENCED (an RLS `CREATE POLICY`/`ALTER TABLE` with no CREATE
+  TABLE in this repo — common for a Supabase project whose tables were
+  created through its dashboard, not a migration) — both are real
+  evidence the table exists, "referenced" is just not evidence it was
+  defined in this codebase.
+- `database_table_usage` evidence (a real `.from('table_name')` query
+  builder call, e.g. Supabase/PostgREST-style) names a table actually
+  being read/written from application code — combine with `database_schema`
+  evidence for the same table name as the same table, not two; when
+  `database_schema` evidence doesn't exist at all for a project (schema
+  managed outside the repo), this may be the ONLY evidence a given table
+  exists, and is still real enough to name it in the database node's
+  rationale.
+- `auth_usage` evidence (a real `supabase.auth.<method>()` call — signIn/
+  signUp/signOut/onAuthStateChange/etc.) means the project genuinely uses
+  its BaaS platform's built-in authentication, not just its database —
+  note this distinction in the database node's rationale (e.g. "used for
+  both data storage and Supabase Auth") when present. Its ABSENCE is
+  meaningful too: a project with a `supabase_dependency` but NO
+  `auth_usage` evidence, and instead its own custom auth flow (rest_route/
+  web_framework evidence for a login/OTP endpoint), genuinely rolled its
+  own authentication instead of using the platform's — don't assume
+  Supabase Auth is in play just because Supabase is.
 - `third_party_api_call` evidence (a real `fetch`/`axios` call to a known
   API hostname, e.g. api.sendgrid.com) is STRONGER evidence than an
   import or an env-var-name guess — it's the literal request URL, not an

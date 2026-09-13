@@ -159,6 +159,35 @@ _JS_FRONTEND_FRAMEWORK_IMPORTS = {
     "solid-js": "SolidJS",
 }
 
+# Supabase Auth method calls — real, specific evidence that a project
+# uses Supabase's built-in auth (not just its database), which
+# `supabase_dependency` alone (an import) can't distinguish: a project
+# importing @supabase/supabase-js might use Auth, might use only the
+# database, or (found live, testing a real repo) might implement its own
+# fully custom auth flow and use Supabase purely as a data store —
+# supabase.auth calls are the one thing that actually tells the two apart.
+# Curated method names, not a bare `.auth.` match, to avoid matching an
+# unrelated `.auth` property on some other object.
+_SUPABASE_AUTH_METHODS = (
+    "signInWithOtp", "signInWithPassword", "signInWithOAuth", "signUp",
+    "signOut", "onAuthStateChange", "getSession", "getUser", "verifyOtp",
+    "resetPasswordForEmail", "updateUser",
+)
+_SUPABASE_AUTH_RE = re.compile(r"""\.auth\.(""" + "|".join(_SUPABASE_AUTH_METHODS) + r""")\s*\(""")
+
+# `.from('table_name')` — a Supabase/PostgREST-style query builder call,
+# real evidence of a specific table actually being read/written, often
+# the ONLY such evidence that exists: found live, a real repo's one SQL
+# migration had no CREATE TABLE at all (the table was created through
+# Supabase's dashboard, never committed as a migration) — only
+# `supabase.from('voters')` calls in the actual application code named
+# the real table. Gated on the file already showing supabase usage
+# (`_mentions_supabase` in _extract_js) rather than matched bare: `.from(`
+# alone is also `Array.from(...)`/`Buffer.from(...)`, both common and
+# both would otherwise misfire as "table usage" for any string-literal
+# first argument.
+_SUPABASE_TABLE_RE = re.compile(r"""\.from\(\s*['"]([\w.]+)['"]""")
+
 # A real external API call — `fetch('https://api.sendgrid.com/...')` — is
 # STRONGER evidence than any import-based signal above: it's not "this
 # project depends on a library that could talk to X", it's the literal
@@ -297,6 +326,14 @@ def _extract_js(file: DiscoveredFile, ids: _IdGen) -> Iterator[Evidence]:
     if text is None:
         return
 
+    # Whole-file check (not per-line — the import establishing this is
+    # usually near the top, table/auth usage anywhere below it), used to
+    # gate _SUPABASE_TABLE_RE below against Array.from/Buffer.from false
+    # positives (see that regex's own comment) — a crude substring check
+    # on purpose, cheap and it only needs to rule OUT files that have
+    # nothing to do with Supabase at all, not be a precise parse.
+    mentions_supabase = "supabase" in text.lower()
+
     seen_imports: set[str] = set()
     for lineno, line in enumerate(text.splitlines(), start=1):
         for m in _JS_IMPORT_RE.finditer(line):
@@ -346,6 +383,22 @@ def _extract_js(file: DiscoveredFile, ids: _IdGen) -> Iterator[Evidence]:
                     )
                     break
 
+        for m in _SUPABASE_AUTH_RE.finditer(line):
+            yield Evidence(
+                id=ids.next(), fact="auth_usage",
+                detail=f"Supabase Auth — `.auth.{m.group(1)}()` call, real authentication flow in use",
+                source=f"{file.rel_path}:{lineno}",
+            )
+
+        if mentions_supabase:
+            for m in _SUPABASE_TABLE_RE.finditer(line):
+                table = m.group(1)
+                yield Evidence(
+                    id=ids.next(), fact="database_table_usage",
+                    detail=f"queries table `{table}` — `.from('{table}')`",
+                    source=f"{file.rel_path}:{lineno}",
+                )
+
 
 def _extract_docker_compose(file: DiscoveredFile, ids: _IdGen) -> Iterator[Evidence]:
     text = _read_text(file.path)
@@ -388,35 +441,70 @@ def _extract_docker_compose(file: DiscoveredFile, ids: _IdGen) -> Iterator[Evide
 
 
 _SQL_CREATE_TABLE_RE = re.compile(r"""create\s+table\s+(?:if\s+not\s+exists\s+)?["'`\[]?([\w.]+)["'`\]]?""", re.IGNORECASE)
+# A Supabase-managed table is very often never CREATE TABLE'd in a
+# migration at all — created once through the dashboard UI instead, with
+# only its RLS policies and later ALTERs ever committed to the repo.
+# Found live: a real repo's one migration file had zero CREATE TABLE
+# statements, only `CREATE POLICY "..." ON public.voters ...` — real,
+# unambiguous evidence the table exists, just not evidence it was
+# DEFINED here, hence the separate, lower-confidence detail wording below
+# ("referenced" vs. CREATE TABLE's "defined").
+# DOTALL: a real formatted migration commonly wraps "CREATE POLICY ...
+# ON <table>" across two lines (policy name on one line, ON <table> on
+# the next — found live, in the exact real migration this whole feature
+# is testing against) — a per-line regex would never see across that
+# break at all. `.*?` stays non-greedy so it still stops at the first
+# real `on`, not some later one.
+_SQL_TABLE_REFERENCE_RE = re.compile(r"""(?:create\s+policy\s+.*?\bon\s+|alter\s+table\s+(?:if\s+exists\s+)?)["'`\[]?([\w.]+)["'`\]]?""", re.IGNORECASE | re.DOTALL)
+
+
+def _line_number_at(text: str, offset: int) -> int:
+    return text.count("\n", 0, offset) + 1
 
 
 def _extract_sql(file: DiscoveredFile, ids: _IdGen) -> Iterator[Evidence]:
     """Real schema evidence a Supabase/other-migration-based project's
     actual database structure lives in — before this, a .sql file wasn't
     even in discovery's extension allowlist, so this was completely
-    invisible regardless of what it said. Deliberately just `CREATE
-    TABLE` via regex (this pipeline's established "pattern-based, not a
-    real parser" discipline — see the module docstring), not an attempt
-    to understand full DDL: a table NAME is real, citable evidence a
-    database exists and roughly what it's for; anything past that (column
-    types, foreign keys) would risk more guessing than this pass is meant
-    to do. Engine-agnostic on purpose — this alone doesn't say Postgres
-    vs. something else; the LLM reconstruction step combines it with
-    whichever *_dependency evidence exists elsewhere in the repo (e.g.
-    supabase_dependency) to conclude which one."""
+    invisible regardless of what it said. Deliberately just regex over a
+    handful of DDL shapes (this pipeline's established "pattern-based,
+    not a real parser" discipline — see the module docstring), not an
+    attempt to understand full DDL: a table NAME is real, citable
+    evidence a database exists and roughly what it's for; anything past
+    that (column types, foreign keys) would risk more guessing than this
+    pass is meant to do. Engine-agnostic on purpose — this alone doesn't
+    say Postgres vs. something else; the LLM reconstruction step combines
+    it with whichever *_dependency evidence exists elsewhere in the repo
+    (e.g. supabase_dependency) to conclude which one.
+
+    Whole-text regex (not per-line, like every other extractor in this
+    module) specifically because SQL statements routinely wrap across
+    lines — CREATE TABLE's column list always does, and a formatted
+    CREATE POLICY's `ON <table>` clause often lands on its own line."""
     text = _read_text(file.path)
     if text is None:
         return
-    seen_tables: set[str] = set()
-    for lineno, line in enumerate(text.splitlines(), start=1):
-        m = _SQL_CREATE_TABLE_RE.search(line)
-        if not m:
-            continue
+    seen: set[tuple[str, str]] = set()
+
+    for m in _SQL_CREATE_TABLE_RE.finditer(text):
         table = m.group(1)
-        if table in seen_tables:
+        key = ("defined", table)
+        if key in seen:
             continue
-        seen_tables.add(table)
-        yield Evidence(id=ids.next(), fact="database_schema", detail=f"table `{table}` defined (CREATE TABLE)", source=f"{file.rel_path}:{lineno}")
+        seen.add(key)
+        yield Evidence(id=ids.next(), fact="database_schema", detail=f"table `{table}` defined (CREATE TABLE)", source=f"{file.rel_path}:{_line_number_at(text, m.start())}")
+
+    for m in _SQL_TABLE_REFERENCE_RE.finditer(text):
+        table = m.group(1)
+        key = ("referenced", table)
+        if key in seen:
+            continue
+        seen.add(key)
+        yield Evidence(
+            id=ids.next(), fact="database_schema",
+            detail=f"table `{table}` referenced (RLS policy / ALTER TABLE — not necessarily defined in this migration)",
+            source=f"{file.rel_path}:{_line_number_at(text, m.start())}",
+        )
 
 
 def is_docker_compose_file(file: DiscoveredFile) -> bool:
