@@ -36,18 +36,28 @@ Every estimate is shown with its basis so it's never presented as more
 precise than it actually is. Bump COST_VERSION if the per-instance/
 per-GB numbers change; bump COST_MODEL_VERSION if the instance-counting
 logic itself changes.
+
+v3 change: a node's real, declared `engine` (analyzer/engines.py) now also
+scales the per-instance number — before this, `engine` was stored and
+shown to the user but never actually read by this calculation, so
+"postgres" and "cockroachdb" cost identically despite CockroachDB's
+distributed-by-default architecture being a real, meaningfully higher
+cost even at "small". Composes with `size`: base * size_multiplier *
+engine_multiplier. A node whose engine doesn't match anything in the
+curated table gets a neutral 1.0x, same as today.
 """
 from __future__ import annotations
 
 import math
 
 from app.analyzer.capacity import capacity_for
+from app.analyzer.engines import engine_spec_for
 from app.analyzer.numeric import parse_upper_bound
 from app.analyzer.sizing import STORAGE_COST_PER_GB_USD, size_spec_for
 from app.models.analysis import CostLineItem
 from app.models.state import ArchitectureState, Node
 
-COST_VERSION = "v2"
+COST_VERSION = "v3"
 COST_MODEL_VERSION = "v2"  # v2: instance count derived from real load / declared capacity, not a flat 1
 
 # Rough monthly USD for one small managed instance of each kind — the same
@@ -84,15 +94,18 @@ def monthly_cost_for(node: Node) -> tuple[float, str]:
         key = node.node_kind
 
     base_cost = _MONTHLY_COST_USD.get(key, FALLBACK_MONTHLY_COST_USD)
-    spec = size_spec_for(node)
-    cost = base_cost * spec.cost_multiplier
+    size = size_spec_for(node)
+    engine, engine_name = engine_spec_for(node)
+    cost = base_cost * size.cost_multiplier * engine.cost_multiplier
 
     if key not in _MONTHLY_COST_USD:
-        basis = f"no declared default for {key}; using fallback"
-    elif spec.cost_multiplier == 1.0:
-        basis = f"declared default for {key} (cost set {COST_VERSION})"
-    else:
-        basis = f"declared default for {key} (cost set {COST_VERSION}); {spec.label} instance ({spec.vcpu} vCPU / {spec.ram_gb}GB) -> {spec.cost_multiplier:g}x"
+        return float(cost), f"no declared default for {key}; using fallback"
+
+    basis = f"declared default for {key} (cost set {COST_VERSION})"
+    if size.cost_multiplier != 1.0:
+        basis += f"; {size.label} instance ({size.vcpu} vCPU / {size.ram_gb}GB) -> {size.cost_multiplier:g}x"
+    if engine_name is not None and engine.cost_multiplier != 1.0:
+        basis += f"; {engine_name} engine -> {engine.cost_multiplier:g}x"
 
     return float(cost), basis
 

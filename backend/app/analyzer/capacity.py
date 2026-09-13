@@ -31,13 +31,22 @@ computes the same or lower it (never raise it, since it's the divisor) —
 so this correction never makes an existing project's cost estimate go up,
 only removes over-provisioning the old, too-low numbers were causing for
 any project busy enough to actually approach them.
+
+v4 change: a node's real, declared `engine` (analyzer/engines.py) now also
+scales the number — before this, "postgres" and "cockroachdb", or "redis"
+and "dynamodb", produced identical capacity despite being genuinely
+different systems; `engine` was stored and shown but never actually read
+by this calculation. Composes with `size`: base * size_multiplier *
+engine_multiplier. A node whose engine doesn't match anything in the
+curated table gets a neutral 1.0x, same as today.
 """
 from __future__ import annotations
 
+from app.analyzer.engines import engine_spec_for
 from app.analyzer.sizing import size_spec_for
 from app.models.state import Node
 
-CAPACITY_VERSION = "v3"
+CAPACITY_VERSION = "v4"
 
 # requests/sec a single small instance of each kind is assumed to
 # saturate at, absent any other signal from the graph
@@ -72,14 +81,17 @@ def capacity_for(node: Node) -> tuple[float, str]:
         key = node.node_kind
 
     base_capacity = _DEFAULT_CAPACITY_RPS.get(key, FALLBACK_CAPACITY_RPS)
-    spec = size_spec_for(node)
-    capacity = base_capacity * spec.capacity_multiplier
+    size = size_spec_for(node)
+    engine, engine_name = engine_spec_for(node)
+    capacity = base_capacity * size.capacity_multiplier * engine.capacity_multiplier
 
     if key not in _DEFAULT_CAPACITY_RPS:
-        basis = f"no declared default for {key}; using fallback"
-    elif spec.capacity_multiplier == 1.0:
-        basis = f"declared default for {key} (capacity set {CAPACITY_VERSION})"
-    else:
-        basis = f"declared default for {key} (capacity set {CAPACITY_VERSION}); {spec.label} instance ({spec.vcpu} vCPU / {spec.ram_gb}GB) -> {spec.capacity_multiplier:g}x"
+        return float(capacity), f"no declared default for {key}; using fallback"
+
+    basis = f"declared default for {key} (capacity set {CAPACITY_VERSION})"
+    if size.capacity_multiplier != 1.0:
+        basis += f"; {size.label} instance ({size.vcpu} vCPU / {size.ram_gb}GB) -> {size.capacity_multiplier:g}x"
+    if engine_name is not None and engine.capacity_multiplier != 1.0:
+        basis += f"; {engine_name} engine -> {engine.capacity_multiplier:g}x"
 
     return float(capacity), basis
