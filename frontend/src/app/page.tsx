@@ -699,6 +699,8 @@ export default function Home() {
                   busy={!compareResult && busy}
                   projectName={projectName}
                   onShare={!compareResult && activeVersionId ? handleCopyShareLink : undefined}
+                  projectId={!compareResult && projectId ? projectId : undefined}
+                  versionId={!compareResult && activeVersionId ? activeVersionId : undefined}
                   simDock={
                     // Permanently on the canvas, not gated behind opening
                     // the Simulate tab — the sidebar tab is now only for

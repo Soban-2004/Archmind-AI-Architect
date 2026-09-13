@@ -153,6 +153,21 @@ export const api = {
       body: JSON.stringify({ multiplier, kill_node_ids: killNodeIds }),
     }),
 
+  /** A small, real bundle to hand to a coding agent (or a person) as the
+   * actual starting point for building this architecture — ARCHITECTURE.md,
+   * AI_BRIEF.md, docker-compose.yml, .env.example, all generated purely
+   * from this version's already-validated state (see backend's
+   * services/starter_kit.py). Not built on the shared `request` helper:
+   * the response is a real zip file, not JSON. */
+  downloadStarterKit: async (projectId: string, versionId: string): Promise<Blob> => {
+    const res = await fetch(`${API_URL}/projects/${projectId}/versions/${versionId}/export/starter-kit`);
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`${res.status} ${res.statusText}: ${body}`);
+    }
+    return res.blob();
+  },
+
   /** Multipart upload — deliberately NOT built on the shared `request`
    * helper above, since that always sets Content-Type: application/json.
    * A browser-built multipart boundary has to come from the browser

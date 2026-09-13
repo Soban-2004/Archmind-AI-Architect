@@ -2,12 +2,14 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import Response
 
 from app.db import repository as repo
 from app.models.commands import ApplyCommandsRequest
 from app.models.state import ArchitectureState, empty_state
 from app.services.diff import diff_states
 from app.services.interview import direct_apply_commands, direct_update_node
+from app.services.starter_kit import build_starter_kit_zip, slugify
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -144,3 +146,26 @@ async def get_version_diff(project_id: UUID, version_id: UUID, against: Optional
         before_state = _state_of(against_version)
 
     return diff_states(before_state, _state_of(version))
+
+
+@router.get("/{project_id}/versions/{version_id}/export/starter-kit")
+async def export_starter_kit(project_id: UUID, version_id: UUID):
+    """A small, real bundle meant to be handed to a coding agent (or a
+    person) as the actual starting point for building this architecture —
+    not just a picture of it (see services/starter_kit.py for what's in
+    it and why). Every file is generated purely from data already
+    validated and stored on this version; nothing invented per download."""
+    version = await repo.get_version(version_id)
+    if version is None or version["project_id"] != project_id:
+        raise HTTPException(404, "version not found")
+    project = await repo.get_project(project_id)
+    if project is None:
+        raise HTTPException(404, "project not found")
+
+    zip_bytes = build_starter_kit_zip(_state_of(version), project["name"])
+    filename = f"{slugify(project['name'])}-starter-kit.zip"
+    return Response(
+        content=zip_bytes,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

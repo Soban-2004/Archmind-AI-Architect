@@ -10,7 +10,7 @@ const EXPORT_PADDING = 0.12;
 const MIN_DIMENSION = 800;
 const MAX_DIMENSION = 4000; // safety cap so a huge diagram doesn't produce an unreasonably large image
 
-function slugify(name: string): string {
+export function slugify(name: string): string {
   return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "architecture";
 }
 

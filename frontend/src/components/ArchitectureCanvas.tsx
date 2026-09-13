@@ -101,6 +101,11 @@ interface Props {
    * not already on the read-only shared view itself) — enables "Copy
    * read-only link" in the export menu. */
   onShare?: () => void;
+  /** Same "real project+version, not the read-only shared/compare view"
+   * gate as onShare — passed straight through to ExportMenu to enable
+   * "Download starter kit". */
+  projectId?: string;
+  versionId?: string;
 }
 
 export function ArchitectureCanvas({
@@ -119,6 +124,8 @@ export function ArchitectureCanvas({
   simDock,
   projectName,
   onShare,
+  projectId,
+  versionId,
 }: Props) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
@@ -428,7 +435,7 @@ export function ArchitectureCanvas({
             </div>
           )}
           {onApplyCommands && <AddNodeMenu onAdd={handleAddNode} disabled={busy} />}
-          <ExportMenu flowElementRef={flowWrapperRef} projectName={projectName ?? "architecture"} onShare={onShare} />
+          <ExportMenu flowElementRef={flowWrapperRef} projectName={projectName ?? "architecture"} onShare={onShare} projectId={projectId} versionId={versionId} />
         </div>
       </div>
     </ReactFlowProvider>
