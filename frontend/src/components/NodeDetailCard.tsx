@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, Check, Cloud, Database, Globe, Heart, Layers, Pencil, Server, Skull, X } from "lucide-react";
+import { AlertTriangle, Check, Cloud, Database, Globe, Heart, Layers, Pencil, Server, Skull, Trash2, X } from "lucide-react";
 import { getComponentInfo } from "@/lib/componentInfo";
 import type { ArchNode, NodeKind, NodeLoad, SimulationFinding } from "@/lib/types";
 import { IconButton, ProgressBar, Spinner } from "./ui";
@@ -56,6 +56,11 @@ interface Props {
   /** Omit to render read-only (e.g. the compare view's snapshot, which
    * has no single active version to edit onto). */
   onSave?: (nodeId: string, attributes: Record<string, unknown>) => Promise<void>;
+  /** Removes this node manually — a real remove_node command through the
+   * exact same validated path a chat "remove the queue" already uses
+   * (see ArchitectureCanvas's onApplyCommands). Omit alongside onSave for
+   * a read-only canvas. */
+  onDelete?: (nodeId: string) => Promise<void>;
   /** Present exactly when the simulation dock is active — renders a Kill/
    * Revive toggle so failure scenarios can be built by clicking nodes
    * directly instead of hunting through a checkbox list. */
@@ -63,7 +68,7 @@ interface Props {
   onToggleKill?: () => void;
 }
 
-export function NodeDetailCard({ node, load, finding, onClose, onSave, killed, onToggleKill }: Props) {
+export function NodeDetailCard({ node, load, finding, onClose, onSave, onDelete, killed, onToggleKill }: Props) {
   const meta = KIND_META[node.node_kind];
   const Icon = meta.Icon;
   const info = getComponentInfo(node);
@@ -73,6 +78,25 @@ export function NodeDetailCard({ node, load, finding, onClose, onSave, killed, o
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
+  const [deleting, setDeleting] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  async function handleDelete() {
+    if (!onDelete) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      await onDelete(node.id);
+      // No setDeleting(false)/onClose() on success — the node this card is
+      // showing no longer exists once the parent's state updates, so the
+      // parent unmounts this card itself (matches how a successful save
+      // doesn't need to manage its own dismissal beyond editing=false).
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setDeleting(false);
+      setConfirmingDelete(false);
+    }
+  }
 
   const fields = Object.entries(FIELD_LABEL)
     .filter(([key]) => node[key] !== undefined && node[key] !== null && node[key] !== "")
@@ -152,9 +176,14 @@ export function NodeDetailCard({ node, load, finding, onClose, onSave, killed, o
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-0.5">
-          {onSave && !editing && (
+          {onSave && !editing && !confirmingDelete && (
             <IconButton onClick={startEditing} className="h-6 w-6" title="Edit">
               <Pencil size={12} />
+            </IconButton>
+          )}
+          {onDelete && !editing && !confirmingDelete && (
+            <IconButton onClick={() => setConfirmingDelete(true)} className="h-6 w-6" title="Delete">
+              <Trash2 size={12} />
             </IconButton>
           )}
           <IconButton onClick={onClose} className="h-6 w-6">
@@ -163,7 +192,36 @@ export function NodeDetailCard({ node, load, finding, onClose, onSave, killed, o
         </div>
       </div>
 
-      {onToggleKill && !editing && (
+      {confirmingDelete && (
+        <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-2.5 dark:border-red-500/20 dark:bg-red-500/10">
+          <p className="flex items-start gap-1.5 text-[11px] leading-snug text-red-700 dark:text-red-400">
+            <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+            Remove &ldquo;{node.name}&rdquo; and every connection to it? This creates a new version — the current one stays in history.
+          </p>
+          {error && <p className="mt-1.5 text-[11px] text-red-600 dark:text-red-400">⚠️ {error}</p>}
+          <div className="mt-2 flex gap-1.5">
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-red-600 py-1.5 text-xs font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+            >
+              {deleting ? <Spinner className="h-3 w-3" /> : <Trash2 size={12} />} Remove
+            </button>
+            <button
+              onClick={() => {
+                setConfirmingDelete(false);
+                setError(null);
+              }}
+              disabled={deleting}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {onToggleKill && !editing && !confirmingDelete && (
         <button
           onClick={onToggleKill}
           className={`mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-medium transition active:scale-[0.98] ${

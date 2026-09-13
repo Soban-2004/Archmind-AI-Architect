@@ -21,6 +21,40 @@ export interface ArchEdge {
   notes?: string | null;
 }
 
+// Mirrors backend/app/models/commands.py — only the shapes the frontend
+// itself constructs directly (manual canvas edits: the palette, drag-to-
+// connect, delete). The LLM emits the full command vocabulary server-side
+// through the exact same discriminated union; this is the client's own
+// subset of the identical wire format, not a separate command language.
+export interface AddNodeCommand {
+  op: "add_node";
+  ref: string;
+  node_type: NodeKind;
+  name: string;
+  attributes: Record<string, unknown>;
+}
+
+export interface RemoveNodeCommand {
+  op: "remove_node";
+  id: string;
+}
+
+export interface AddEdgeCommand {
+  op: "add_edge";
+  from_id: string;
+  to_id: string;
+  protocol: ArchEdge["protocol"];
+  sync_async: ArchEdge["sync_async"];
+  notes?: string | null;
+}
+
+export interface RemoveEdgeCommand {
+  op: "remove_edge";
+  id: string;
+}
+
+export type MutationCommand = AddNodeCommand | RemoveNodeCommand | AddEdgeCommand | RemoveEdgeCommand;
+
 export interface Constraint {
   type: string;
   value: string;

@@ -4,9 +4,10 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException
 
 from app.db import repository as repo
+from app.models.commands import ApplyCommandsRequest
 from app.models.state import ArchitectureState, empty_state
 from app.services.diff import diff_states
-from app.services.interview import direct_update_node
+from app.services.interview import direct_apply_commands, direct_update_node
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -91,6 +92,33 @@ async def update_node_direct(project_id: UUID, version_id: UUID, node_id: str, b
         raise HTTPException(400, "body must be {'attributes': {...}}")
 
     result = await direct_update_node(project_id, version_id, node_id, attributes)
+    if result.kind == "error":
+        raise HTTPException(400, result.error)
+    return {"summary": result.summary, "version": result.version, "diff": result.diff}
+
+
+@router.post("/{project_id}/versions/{version_id}/commands")
+async def apply_commands_direct(project_id: UUID, version_id: UUID, body: ApplyCommandsRequest):
+    """Manual canvas edits — add a node via the palette, drag-connect two
+    nodes, delete something — land here as real MutationCommands, the
+    same shape and the same validation (see services/interview.py's
+    direct_apply_commands) a chat edit already goes through. No LLM call."""
+    result = await direct_apply_commands(project_id, version_id, body.commands)
+    if result.kind == "error":
+        raise HTTPException(400, result.error)
+    return {"summary": result.summary, "version": result.version, "diff": result.diff}
+
+
+@router.post("/{project_id}/commands")
+async def apply_commands_to_new_project(project_id: UUID, body: ApplyCommandsRequest):
+    """The one case the route above can't cover: a genuinely brand-new
+    project has no version at all yet (handleCreateProject deliberately
+    doesn't auto-create a blank one — see its own comment in page.tsx), so
+    the very first manual add_node has no version_id to branch off. Same
+    direct_apply_commands, just with base_version_id=None — starts from
+    empty_state(), matching how a project's first chat-proposed
+    architecture already does."""
+    result = await direct_apply_commands(project_id, None, body.commands)
     if result.kind == "error":
         raise HTTPException(400, result.error)
     return {"summary": result.summary, "version": result.version, "diff": result.diff}

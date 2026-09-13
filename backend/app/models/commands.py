@@ -79,6 +79,19 @@ MutationCommand = Annotated[
 ]
 
 
+class ApplyCommandsRequest(BaseModel):
+    """Body for POST .../commands — a manual edit from the canvas (add a
+    node via the palette, drag-connect two nodes, delete something)
+    constructing the exact same MutationCommand shapes the LLM already
+    produces, validated by the exact same discriminated union and the
+    exact same code path (services/mutation_engine.py's apply_commands) —
+    the "AI never draws the diagram directly" guarantee applies equally
+    to a human drawing it directly, because both origins produce
+    identical, identically-validated commands."""
+
+    commands: list[MutationCommand]
+
+
 class CommandValidationError(BaseModel):
     """Structured error handed back to the LLM so it can retry (spec §3.3:
     'never silently drop an invalid command')."""

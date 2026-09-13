@@ -10,7 +10,7 @@ from app.llm.factory import get_judge_provider, get_llm_provider
 from app.llm.prompts import build_advisory_prompt, build_analysis_prompt, build_judge_prompt, build_system_prompt, state_for_edit_prompt
 from app.llm.tokens import estimate_messages_tokens, estimate_tokens
 from app.models.advisory import AdvisoryAnswer, AnalysisAnswer
-from app.models.commands import AnnotateDecisionCommand, UpdateNodeCommand
+from app.models.commands import AnnotateDecisionCommand, MutationCommand, UpdateNodeCommand
 from app.models.diff import VersionDiff
 from app.models.judge import JudgeVerdict
 from app.models.state import ADR, ArchitectureState, TriggeredBy, empty_state, gen_id
@@ -539,3 +539,57 @@ async def direct_update_node(project_id: UUID, base_version_id: UUID, node_id: s
     node = result.state.get_node(node_id)
     summary = f"Updated {node.name if node else node_id}."
     return await _finalize(project_id, current_state, result.state, base_version["id"], "edit", summary, model_provided_decision=False)
+
+
+async def direct_apply_commands(project_id: UUID, base_version_id: UUID | None, commands: list[MutationCommand]) -> ChatTurnResult:
+    """A manual edit from the canvas UI — add a node via the palette,
+    drag-connect two nodes, delete a node or edge — one or several
+    commands in a single batch (e.g. add_node + add_edge to wire the new
+    node in immediately, using `ref` exactly like the LLM's own batches
+    do). Same Tier 1 philosophy as direct_update_node just above: no LLM
+    call, the exact same apply_commands validation (including the
+    connectivity registry every chat edit already goes through — a
+    manually-drawn edge into the wrong side of a load balancer is
+    rejected exactly like an LLM-proposed one would be) and the exact
+    same _finalize path, so a manual edit produces a real versioned,
+    diffed, ADR'd change indistinguishable in the history from a chat
+    edit — just a different origin for the same validated commands. This
+    is what makes "the LLM never draws the diagram directly" apply
+    equally to a human drawing it directly.
+
+    `base_version_id=None` is "build from a genuinely blank project" — a
+    brand-new project has no version at all until something creates the
+    first one (page.tsx's handleCreateProject deliberately doesn't
+    auto-create a blank one — see its own comment), so the very first
+    manual add_node needs to originate from empty_state() with no parent,
+    the same starting point a project's first chat-proposed architecture
+    already uses."""
+    if not commands:
+        return ChatTurnResult(kind="error", error="no commands to apply")
+
+    if base_version_id is None:
+        current_state = empty_state()
+        parent_id: UUID | None = None
+    else:
+        base_version = await repo.get_version(base_version_id)
+        if base_version is None or base_version["project_id"] != project_id:
+            return ChatTurnResult(kind="error", error="base_version_id not found")
+        current_state = _state_from_row(base_version)
+        parent_id = base_version["id"]
+
+    result = apply_commands(current_state, commands)
+    if not result.ok:
+        return ChatTurnResult(kind="error", error="; ".join(e.error for e in result.errors))
+
+    assert result.state is not None
+    # No diff against an empty_state() starting point -- everything in
+    # the very first manual add_node is "added", not a meaningful
+    # comparison, so this matches build_templated_decision's own "kind of
+    # change" framing rather than reporting deltas against nothing.
+    if parent_id is None:
+        summary = "Started the architecture manually."
+    else:
+        diff = diff_states(current_state, result.state)
+        templated = build_templated_decision(diff)
+        summary = templated[0] if templated else "No changes."
+    return await _finalize(project_id, current_state, result.state, parent_id, "initial" if parent_id is None else "edit", summary, model_provided_decision=False)

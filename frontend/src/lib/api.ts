@@ -1,4 +1,4 @@
-import type { ChatResponse, ChatStreamEvent, CompareResult, IngestResponse, Scorecard, ScorecardAnswer, SimulationResult, VersionDiff, VersionRow, VersionSummary } from "./types";
+import type { ChatResponse, ChatStreamEvent, CompareResult, IngestResponse, MutationCommand, Scorecard, ScorecardAnswer, SimulationResult, VersionDiff, VersionRow, VersionSummary } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -73,6 +73,26 @@ export const api = {
       `/projects/${projectId}/versions/${versionId}/nodes/${nodeId}`,
       { method: "PATCH", body: JSON.stringify({ attributes }) }
     ),
+
+  /** Manual canvas edits — add a node via the palette, drag-connect two
+   * nodes, delete something — as real MutationCommands, going through the
+   * exact same validation (including the connectivity registry) and
+   * versioning/diff/ADR path a chat edit already does. No LLM call. */
+  applyCommands: (projectId: string, versionId: string, commands: MutationCommand[]) =>
+    request<{ summary: string; version: VersionRow; diff: VersionDiff | null }>(
+      `/projects/${projectId}/versions/${versionId}/commands`,
+      { method: "POST", body: JSON.stringify({ commands }) }
+    ),
+
+  /** The one case applyCommands above can't cover: a genuinely brand-new
+   * project has no version at all yet, so the very first manual add_node
+   * has no versionId to branch off. Starts from an empty architecture,
+   * same as a project's first chat-proposed one would. */
+  applyCommandsToNewProject: (projectId: string, commands: MutationCommand[]) =>
+    request<{ summary: string; version: VersionRow; diff: VersionDiff | null }>(`/projects/${projectId}/commands`, {
+      method: "POST",
+      body: JSON.stringify({ commands }),
+    }),
 
   sendChatMessage: (projectId: string, message: string, baseVersionId?: string | null) =>
     request<ChatResponse>(`/projects/${projectId}/chat`, {

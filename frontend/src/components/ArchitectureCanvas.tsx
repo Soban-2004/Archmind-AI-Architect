@@ -8,6 +8,7 @@ import {
   MiniMap,
   ReactFlow,
   ReactFlowProvider,
+  type Connection,
   type Edge,
   type EdgeTypes,
   type Node,
@@ -15,11 +16,12 @@ import {
   type NodeTypes,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Map, Network } from "lucide-react";
+import { Map, Network, Trash2, X } from "lucide-react";
 import { toFlowElements } from "@/lib/diffView";
 import type { LayoutMap } from "@/lib/layout";
 import { applySimulation } from "@/lib/simView";
-import type { ArchitectureState, ArchNode, SimulationResult, VersionDiff } from "@/lib/types";
+import type { ArchEdge, ArchitectureState, ArchNode, MutationCommand, SimulationResult, VersionDiff } from "@/lib/types";
+import { AddNodeMenu } from "./AddNodeMenu";
 import { ArchNodeCard } from "./ArchNodeCard";
 import { CanvasLoadingOverlay } from "./CanvasLoadingOverlay";
 import { ExportMenu } from "./ExportMenu";
@@ -27,7 +29,7 @@ import { FlowEdge } from "./FlowEdge";
 import { NodeDetailCard } from "./NodeDetailCard";
 import { SimulationDock, type SimDockProps } from "./SimulationDock";
 import { TrafficSourceNode } from "./TrafficSourceNode";
-import { EmptyState, IconButton } from "./ui";
+import { EmptyState, IconButton, Spinner } from "./ui";
 
 const nodeTypes: NodeTypes = { archNode: ArchNodeCard, trafficSource: TrafficSourceNode };
 const edgeTypes: EdgeTypes = { flow: FlowEdge };
@@ -39,6 +41,18 @@ const MINIMAP_KIND_COLOR: Record<string, string> = {
   external_dependency: "#f97316",
   infra_node: "#64748b",
 };
+
+/** What a manually-drawn edge should default to, based on what it's
+ * pointing at — a reasonable guess, not a claim of certainty; the
+ * connectivity registry (check_edge_validity, server-side) is what
+ * actually rejects a structurally bad connection, protocol/sync_async
+ * aren't validated the same way, so getting this guess slightly wrong
+ * never produces an invalid edge, just a label worth refining later. */
+function defaultProtocolFor(target: ArchNode): { protocol: ArchEdge["protocol"]; sync_async: ArchEdge["sync_async"] } {
+  if (target.node_kind === "database") return { protocol: target.type === "keyvalue" ? "cache" : "sql", sync_async: "sync" };
+  if (target.node_kind === "queue") return { protocol: "queue", sync_async: "async_" };
+  return { protocol: "http", sync_async: "sync" };
+}
 
 interface Props {
   state: ArchitectureState | null;
@@ -60,6 +74,12 @@ interface Props {
    * a field -> save, no chat round-trip). Omit for a read-only canvas
    * (the compare view has no single active version to edit onto). */
   onNodeSave?: (nodeId: string, attributes: Record<string, unknown>) => Promise<void>;
+  /** Enables manual building/editing — the add-component palette,
+   * drag-to-connect, and delete (node or edge) — by sending real
+   * MutationCommands through the exact same validated path a chat edit
+   * already uses (see page.tsx's handleApplyCommands). Omit alongside
+   * onNodeSave for a read-only canvas. */
+  onApplyCommands?: (commands: MutationCommand[]) => Promise<void>;
   /** Present exactly when the Simulate tab is active on a live (non-
    * compare) canvas — renders the playback dock and enables click-a-node
    * Kill/Revive from NodeDetailCard. Omit to render a plain canvas with
@@ -74,8 +94,23 @@ interface Props {
   onShare?: () => void;
 }
 
-export function ArchitectureCanvas({ state, layout, diff, simulation, onNodePositionsChange, busy = false, onNodeSave, simDock, projectName, onShare }: Props) {
+export function ArchitectureCanvas({
+  state,
+  layout,
+  diff,
+  simulation,
+  onNodePositionsChange,
+  busy = false,
+  onNodeSave,
+  onApplyCommands,
+  simDock,
+  projectName,
+  onShare,
+}: Props) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  const [deletingEdge, setDeletingEdge] = useState(false);
+  const [edgeError, setEdgeError] = useState<string | null>(null);
   const [minimapVisible, setMinimapVisible] = useState(true);
   const flowWrapperRef = useRef<HTMLDivElement>(null);
 
@@ -139,6 +174,46 @@ export function ArchitectureCanvas({ state, layout, diff, simulation, onNodePosi
   const selectedNode = selectedNodeId ? (state?.nodes.find((n) => n.id === selectedNodeId) ?? null) : null;
   const selectedLoad = selectedNodeId ? simulation?.loads.find((l) => l.node_id === selectedNodeId) : undefined;
   const selectedFinding = selectedNodeId ? simulation?.findings.find((f) => f.node_id === selectedNodeId) : undefined;
+  const selectedEdge = selectedEdgeId ? (state?.edges.find((e) => e.id === selectedEdgeId) ?? null) : null;
+
+  const onConnect = useCallback(
+    async (connection: Connection) => {
+      if (!onApplyCommands || !state || !connection.source || !connection.target) return;
+      const targetNode = state.nodes.find((n) => n.id === connection.target);
+      if (!targetNode) return;
+      const { protocol, sync_async } = defaultProtocolFor(targetNode);
+      try {
+        await onApplyCommands([{ op: "add_edge", from_id: connection.source, to_id: connection.target, protocol, sync_async }]);
+      } catch (e) {
+        setEdgeError(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [onApplyCommands, state]
+  );
+
+  async function handleAddNode(command: MutationCommand) {
+    await onApplyCommands?.([command]);
+  }
+
+  async function handleDeleteNode(nodeId: string) {
+    if (!onApplyCommands) return;
+    await onApplyCommands([{ op: "remove_node", id: nodeId }]);
+    setSelectedNodeId(null);
+  }
+
+  async function handleDeleteEdge() {
+    if (!onApplyCommands || !selectedEdgeId) return;
+    setDeletingEdge(true);
+    setEdgeError(null);
+    try {
+      await onApplyCommands([{ op: "remove_edge", id: selectedEdgeId }]);
+      setSelectedEdgeId(null);
+    } catch (e) {
+      setEdgeError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDeletingEdge(false);
+    }
+  }
 
   if (!state || state.nodes.length === 0) {
     if (busy) {
@@ -149,11 +224,18 @@ export function ArchitectureCanvas({ state, layout, diff, simulation, onNodePosi
       );
     }
     return (
-      <EmptyState
-        icon={<Network size={22} />}
-        title="No architecture yet"
-        description="Answer a few questions in the chat to generate one."
-      />
+      <div className="relative flex h-full flex-col">
+        <EmptyState
+          icon={<Network size={22} />}
+          title="No architecture yet"
+          description={onApplyCommands ? "Answer a few questions in the chat, or add the first component yourself." : "Answer a few questions in the chat to generate one."}
+        />
+        {onApplyCommands && (
+          <div className="absolute bottom-6 left-1/2 -translate-x-1/2">
+            <AddNodeMenu onAdd={handleAddNode} />
+          </div>
+        )}
+      </div>
     );
   }
 
@@ -171,6 +253,8 @@ export function ArchitectureCanvas({ state, layout, diff, simulation, onNodePosi
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           onNodesChange={onNodesChange}
+          onConnect={onApplyCommands ? onConnect : undefined}
+          nodesConnectable={!!onApplyCommands}
           fitView
           // Compact-to-fit, not flow-bigger: the whole diagram always scales
           // to the available space rather than requiring a scrollbar, so
@@ -179,8 +263,22 @@ export function ArchitectureCanvas({ state, layout, diff, simulation, onNodePosi
           // when the dock is showing so it never sits over a node.
           fitViewOptions={simDock ? { padding: { top: "40px", left: "40px", right: "40px", bottom: "110px" } } : undefined}
           proOptions={{ hideAttribution: true }}
-          onNodeClick={(_, node) => setSelectedNodeId(node.id)}
-          onPaneClick={() => setSelectedNodeId(null)}
+          onNodeClick={(_, node) => {
+            setSelectedNodeId(node.id);
+            setSelectedEdgeId(null);
+            setEdgeError(null);
+          }}
+          onEdgeClick={(_, edge) => {
+            if (!onApplyCommands) return;
+            setSelectedEdgeId(edge.id);
+            setSelectedNodeId(null);
+            setEdgeError(null);
+          }}
+          onPaneClick={() => {
+            setSelectedNodeId(null);
+            setSelectedEdgeId(null);
+            setEdgeError(null);
+          }}
         >
           <Background variant={BackgroundVariant.Dots} gap={20} size={1.5} color="var(--rf-dot-color)" />
           <Controls showInteractive={false} />
@@ -216,13 +314,57 @@ export function ArchitectureCanvas({ state, layout, diff, simulation, onNodePosi
             finding={selectedFinding}
             onClose={() => setSelectedNodeId(null)}
             onSave={onNodeSave}
+            onDelete={onApplyCommands ? handleDeleteNode : undefined}
             killed={simDock?.killIds.includes(selectedNode.id)}
             onToggleKill={simDock ? () => simDock.onToggleKill(selectedNode.id) : undefined}
           />
         )}
+        {selectedEdge && onApplyCommands && (
+          // Same top-left slot NodeDetailCard uses — mutually exclusive
+          // with it (selecting an edge clears the node selection and vice
+          // versa), so there's never a collision.
+          <div className="animate-fade-in absolute left-4 top-4 z-10 w-72 rounded-xl border border-slate-200 bg-white/95 p-4 shadow-lg backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+                Remove the connection from{" "}
+                <span className="font-semibold text-slate-800 dark:text-slate-100">
+                  {state.nodes.find((n) => n.id === selectedEdge.from_id)?.name ?? selectedEdge.from_id}
+                </span>{" "}
+                to{" "}
+                <span className="font-semibold text-slate-800 dark:text-slate-100">
+                  {state.nodes.find((n) => n.id === selectedEdge.to_id)?.name ?? selectedEdge.to_id}
+                </span>
+                ?
+              </p>
+              <IconButton onClick={() => setSelectedEdgeId(null)} className="h-6 w-6 shrink-0">
+                <X size={13} />
+              </IconButton>
+            </div>
+            {edgeError && <p className="mt-2 text-[11px] text-red-600 dark:text-red-400">⚠️ {edgeError}</p>}
+            <button
+              onClick={handleDeleteEdge}
+              disabled={deletingEdge}
+              className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg bg-red-600 py-1.5 text-xs font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+            >
+              {deletingEdge ? <Spinner className="h-3 w-3" /> : <Trash2 size={12} />} Remove connection
+            </button>
+          </div>
+        )}
+        {edgeError && !selectedEdge && (
+          // onConnect's own failures (e.g. the connectivity registry
+          // rejecting a manually-drawn edge) have no selected-edge card to
+          // live in -- a small dismissible banner instead.
+          <div className="animate-fade-in absolute left-1/2 top-4 z-20 flex max-w-md -translate-x-1/2 items-start gap-2 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs text-red-700 shadow-lg dark:border-red-500/20 dark:bg-slate-900 dark:text-red-400">
+            <span className="flex-1">⚠️ {edgeError}</span>
+            <button onClick={() => setEdgeError(null)} className="shrink-0 text-red-400 hover:text-red-600 dark:hover:text-red-300">
+              <X size={13} />
+            </button>
+          </div>
+        )}
         {simDock && <SimulationDock {...simDock} result={simulation ?? null} />}
         <CanvasLoadingOverlay active={busy} />
-        <div className={`absolute right-3.5 z-10 ${nodes.length > 5 ? "top-14" : "top-3.5"}`}>
+        <div className={`absolute right-3.5 z-10 flex items-center gap-2 ${nodes.length > 5 ? "top-14" : "top-3.5"}`}>
+          {onApplyCommands && <AddNodeMenu onAdd={handleAddNode} disabled={busy} />}
           <ExportMenu flowElementRef={flowWrapperRef} projectName={projectName ?? "architecture"} onShare={onShare} />
         </div>
       </div>

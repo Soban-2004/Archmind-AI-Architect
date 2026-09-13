@@ -18,7 +18,7 @@ import { api } from "@/lib/api";
 import { buildDiffDisplayState } from "@/lib/diffView";
 import { computeIncrementalLayout } from "@/lib/incrementalLayout";
 import { computeDagreLayout, type LayoutMap } from "@/lib/layout";
-import type { ArchitectureState, ChatMessage, ChatResponse, CompareResult, IngestResponse, SimulationResult, VersionDiff, VersionRow } from "@/lib/types";
+import type { ArchitectureState, ChatMessage, ChatResponse, CompareResult, IngestResponse, MutationCommand, SimulationResult, VersionDiff, VersionRow } from "@/lib/types";
 
 const STORAGE_KEY = "ai-architect-project-id";
 const MIN_PANEL_WIDTH = 300;
@@ -330,6 +330,35 @@ export default function Home() {
     setMessages((prev) => [...prev, { role: "assistant", content: result.summary, animate: true }]);
   }
 
+  /** Manual canvas edits — the add-component palette, drag-to-connect,
+   * delete node/edge — one or several MutationCommands from a single user
+   * action, going through the exact same apply/finalize path as
+   * handleNodeSave/handleSend, just a different origin for the commands.
+   * Errors are re-thrown so the calling UI (AddNodeMenu, the edge-delete
+   * confirm card, NodeDetailCard's delete confirm) can show them inline.
+   * No activeVersionId is a real, valid state here (not "nothing to do
+   * yet") — a genuinely brand-new project has no version at all until the
+   * first one exists, so the very first manual add_node has to start the
+   * project from scratch via the dedicated new-project endpoint. */
+  async function handleApplyCommands(commands: MutationCommand[]) {
+    if (!projectId) return;
+    const result = activeVersionId
+      ? await api.applyCommands(projectId, activeVersionId, commands)
+      : await api.applyCommandsToNewProject(projectId, commands);
+    const newLayout = computeIncrementalLayout(rawState, rawLayout, result.version.state);
+    api.updateLayout(projectId, result.version.id, newLayout).catch(() => {});
+
+    setGhostLayoutHint(rawLayout);
+    setRawState(result.version.state);
+    setRawLayout(newLayout);
+    setDiff(result.diff);
+    setSimulationResult(null); // stale now that the graph changed
+    setActiveVersionId(result.version.id);
+    setLatestVersionId(result.version.id);
+    setVersionsRefreshKey((k) => k + 1);
+    setMessages((prev) => [...prev, { role: "assistant", content: result.summary, animate: true }]);
+  }
+
   function handleNodePositionsChange(updates: LayoutMap) {
     // Only the live editable graph persists drags — a compare snapshot has
     // no single version id of its own to write a layout onto here.
@@ -599,6 +628,7 @@ export default function Home() {
                   simulation={displaySimulation}
                   onNodePositionsChange={compareResult ? undefined : handleNodePositionsChange}
                   onNodeSave={compareResult ? undefined : handleNodeSave}
+                  onApplyCommands={compareResult ? undefined : handleApplyCommands}
                   busy={!compareResult && busy}
                   projectName={projectName}
                   onShare={!compareResult && activeVersionId ? handleCopyShareLink : undefined}
