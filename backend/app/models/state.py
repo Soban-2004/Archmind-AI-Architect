@@ -59,6 +59,18 @@ class Service(BaseModel):
     responsibilities: Optional[str] = None
     scaling_mode: ScalingMode = ScalingMode.stateless
     size: InstanceSize = InstanceSize.small
+    # Why THIS project specifically has this node — not a generic
+    # definition of what a "service" is (that's componentInfo.ts on the
+    # frontend, static reference text with no idea what project it's
+    # showing up in). Set by the LLM when it proposes/edits a node
+    # (llm/prompts.py's ATTRIBUTE_SHAPE_RULES instructs it to reference
+    # the actual requirement/constraint that justifies the node, the same
+    # grounded-not-generic standard ADR.rationale already holds decisions
+    # to, just at node granularity). None for a manually-added node (see
+    # ArchitectureCanvas's AddNodeMenu) unless the person adding it chose
+    # to write one themselves — never auto-backfilled, since that would
+    # need an LLM call direct/manual edits are deliberately free of.
+    rationale: Optional[str] = None
 
 
 class DatabaseType(str, Enum):
@@ -89,6 +101,7 @@ class Database(BaseModel):
     # declared" — no storage cost line is added, matching every
     # database's behavior before this field existed.
     storage_gb: Optional[int] = None
+    rationale: Optional[str] = None  # see Service.rationale above
 
 
 class QueueType(str, Enum):
@@ -104,6 +117,7 @@ class Queue(BaseModel):
     type: QueueType
     engine: str
     size: InstanceSize = InstanceSize.small
+    rationale: Optional[str] = None  # see Service.rationale above
 
 
 class ExternalDependencyType(str, Enum):
@@ -125,6 +139,7 @@ class ExternalDependency(BaseModel):
     name: str
     type: ExternalDependencyType
     criticality: Criticality = Criticality.soft
+    rationale: Optional[str] = None  # see Service.rationale above
 
 
 class InfraType(str, Enum):
@@ -141,6 +156,7 @@ class InfraNode(BaseModel):
     node_kind: Literal["infra_node"] = "infra_node"
     name: str
     type: InfraType
+    rationale: Optional[str] = None  # see Service.rationale above
 
 
 Node = Annotated[

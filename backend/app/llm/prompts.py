@@ -67,11 +67,24 @@ ATTRIBUTE_SHAPE_RULES = """Every add_node's `attributes` MUST match the shape fo
 EXACTLY — the JSON Schema shows `attributes` as a generic object, so
 these are not visible there; use ONLY the values listed here, never a
 synonym:
-- node_type="service": {"type": one of "gateway" | "service" | "worker" | "frontend" | "edge_cdn" (use "service" for a generic backend service — NOT "backend"), "language"?: string, "responsibilities"?: string, "scaling_mode"?: "stateless" | "stateful", "size"?: "small" | "medium" | "large" | "xlarge" (a compute tier, defaults to "small" — set this deliberately for a production/high-scale tier instead of leaving every node at the default)}
-- node_type="database": {"type": one of "relational" | "document" | "keyvalue" | "search" | "graph", "engine": string (e.g. "postgres", "redis" — a real, specific engine name now genuinely changes the cost/capacity estimate, e.g. "cockroachdb" or "dynamodb" cost more than "postgres"/"redis" for the same tier; use the real engine you actually mean, not a vague placeholder), "role"?: "primary" | "replica" | "cache", "size"?: "small" | "medium" | "large" | "xlarge" (same compute tier as service, defaults to "small"), "storage_gb"?: integer (provisioned storage; only set this when the user's stated data volume or scale genuinely calls for declaring it — omit rather than guess a number with no basis)}
-- node_type="queue": {"type": one of "queue" | "pubsub" | "stream", "engine": string (e.g. "sqs", "kafka", "rabbitmq" — same as database above, the specific engine now genuinely changes the estimate), "size"?: "small" | "medium" | "large" | "xlarge" (defaults to "small")}
-- node_type="external_dependency": {"type": one of "third_party_api" | "payment" | "market_data" | "auth_provider" | "storage" (use "third_party_api" for a generic external API — NOT "api"), "criticality"?: "hard" | "soft"}
-- node_type="infra_node": {"type": one of "cdn" | "load_balancer" | "api_gateway" | "object_storage" | "container_runtime" | "observability"}"""
+- node_type="service": {"type": one of "gateway" | "service" | "worker" | "frontend" | "edge_cdn" (use "service" for a generic backend service — NOT "backend"), "language"?: string, "responsibilities"?: string, "scaling_mode"?: "stateless" | "stateful", "size"?: "small" | "medium" | "large" | "xlarge" (a compute tier, defaults to "small" — set this deliberately for a production/high-scale tier instead of leaving every node at the default), "rationale"?: string (see below)}
+- node_type="database": {"type": one of "relational" | "document" | "keyvalue" | "search" | "graph", "engine": string (e.g. "postgres", "redis" — a real, specific engine name now genuinely changes the cost/capacity estimate, e.g. "cockroachdb" or "dynamodb" cost more than "postgres"/"redis" for the same tier; use the real engine you actually mean, not a vague placeholder), "role"?: "primary" | "replica" | "cache", "size"?: "small" | "medium" | "large" | "xlarge" (same compute tier as service, defaults to "small"), "storage_gb"?: integer (provisioned storage; only set this when the user's stated data volume or scale genuinely calls for declaring it — omit rather than guess a number with no basis), "rationale"?: string (see below)}
+- node_type="queue": {"type": one of "queue" | "pubsub" | "stream", "engine": string (e.g. "sqs", "kafka", "rabbitmq" — same as database above, the specific engine now genuinely changes the estimate), "size"?: "small" | "medium" | "large" | "xlarge" (defaults to "small"), "rationale"?: string (see below)}
+- node_type="external_dependency": {"type": one of "third_party_api" | "payment" | "market_data" | "auth_provider" | "storage" (use "third_party_api" for a generic external API — NOT "api"), "criticality"?: "hard" | "soft", "rationale"?: string (see below)}
+- node_type="infra_node": {"type": one of "cdn" | "load_balancer" | "api_gateway" | "object_storage" | "container_runtime" | "observability", "rationale"?: string (see below)}
+
+`rationale` (every node_type above) — ALWAYS set this on add_node, it's
+not optional in practice even though the schema allows omitting it: one
+or two sentences on why THIS project specifically needs this component,
+citing the actual stated requirement/constraint it serves (scale, budget,
+availability, a specific user-described need) or the specific other node
+it exists to support. Never a generic definition of what the component
+type does in general — "a cache speeds up reads" is wrong; "caches
+product listings here because the 500-1000 req/s browse traffic would
+otherwise hit Postgres directly, which the stated $50/mo budget can't
+scale to handle alone" is right. When editing/updating an existing node
+in a way that changes why it's there, update its rationale to match —
+don't leave a stale one that no longer reflects the current design."""
 
 
 RESPONSE_FORMATTING_GUIDANCE = """

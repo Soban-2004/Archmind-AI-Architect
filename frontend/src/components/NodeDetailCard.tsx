@@ -21,6 +21,7 @@ const FIELD_LABEL: Record<string, string> = {
   criticality: "Criticality",
   size: "Size",
   storage_gb: "Storage",
+  rationale: "Why this exists here",
 };
 
 const SIZE_OPTIONS = ["small", "medium", "large", "xlarge"];
@@ -32,13 +33,23 @@ const SIZE_OPTIONS = ["small", "medium", "large", "xlarge"];
 // actually accepts; an invalid value would just be rejected by the same
 // validation a chat edit goes through, but there's no reason to let the
 // UI offer one). `size` was the first field every kind here shares, so
-// it's listed once and spread in rather than repeated per kind.
+// it's listed once and spread in rather than repeated per kind. `rationale`
+// (`multiline`, a <textarea>) is the last field on every kind — see
+// state.py's Service.rationale for what it holds.
 const SIZE_FIELD = { key: "size", select: SIZE_OPTIONS };
-const EDITABLE_FIELDS: Partial<Record<NodeKind, { key: string; select?: string[]; numeric?: boolean }[]>> = {
-  service: [{ key: "language" }, { key: "responsibilities" }, { key: "scaling_mode", select: ["stateless", "stateful"] }, SIZE_FIELD],
-  database: [{ key: "engine" }, { key: "role", select: ["primary", "replica", "cache"] }, SIZE_FIELD, { key: "storage_gb", numeric: true }],
-  queue: [{ key: "engine" }, SIZE_FIELD],
-  external_dependency: [{ key: "criticality", select: ["hard", "soft"] }],
+const RATIONALE_FIELD = { key: "rationale", multiline: true };
+const EDITABLE_FIELDS: Partial<Record<NodeKind, { key: string; select?: string[]; numeric?: boolean; multiline?: boolean }[]>> = {
+  service: [{ key: "language" }, { key: "responsibilities" }, { key: "scaling_mode", select: ["stateless", "stateful"] }, SIZE_FIELD, RATIONALE_FIELD],
+  database: [
+    { key: "engine" },
+    { key: "role", select: ["primary", "replica", "cache"] },
+    SIZE_FIELD,
+    { key: "storage_gb", numeric: true },
+    RATIONALE_FIELD,
+  ],
+  queue: [{ key: "engine" }, SIZE_FIELD, RATIONALE_FIELD],
+  external_dependency: [{ key: "criticality", select: ["hard", "soft"] }, RATIONALE_FIELD],
+  infra_node: [RATIONALE_FIELD],
 };
 
 const STATUS_COLOR: Record<string, string> = {
@@ -98,9 +109,15 @@ export function NodeDetailCard({ node, load, finding, onClose, onSave, onDelete,
     }
   }
 
+  // `rationale` gets its own prominent, non-truncated block below (project-
+  // specific prose, not a short tag/value pair) rather than sitting in this
+  // truncated key/value grid alongside "Size" and "Engine".
   const fields = Object.entries(FIELD_LABEL)
+    .filter(([key]) => key !== "rationale")
     .filter(([key]) => node[key] !== undefined && node[key] !== null && node[key] !== "")
     .map(([key, label]) => ({ key, label, value: key === "storage_gb" ? `${node[key]} GB` : String(node[key]).replace(/_/g, " ") }));
+
+  const rationale = typeof node.rationale === "string" && node.rationale.trim() ? node.rationale : null;
 
   // A field can be a string (language, engine, ...) or a number
   // (storage_gb) on the real node — both need to round-trip through the
@@ -242,6 +259,17 @@ export function NodeDetailCard({ node, load, finding, onClose, onSave, onDelete,
         </button>
       )}
 
+      {rationale && !editing && (
+        // Project-specific — why THIS node, in THIS architecture (see
+        // state.py's Service.rationale) — shown ahead of the generic
+        // componentInfo.ts reference text below, and never truncated: it's
+        // usually one or two sentences, short enough to just show in full.
+        <div className="mt-3 rounded-lg border border-brand-100 bg-brand-50/60 p-2.5 dark:border-indigo-500/20 dark:bg-indigo-500/10">
+          <p className="text-[10px] font-medium uppercase tracking-wide text-brand-600 dark:text-indigo-300">Why this is here</p>
+          <p className="mt-1 text-xs leading-relaxed text-slate-700 dark:text-slate-200">{rationale}</p>
+        </div>
+      )}
+
       {info && !editing && (
         <div className="mt-3 border-t border-slate-100 pt-3 dark:border-slate-800">
           <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">{info.description}</p>
@@ -278,6 +306,13 @@ export function NodeDetailCard({ node, load, finding, onClose, onSave, onDelete,
                     </option>
                   ))}
                 </select>
+              ) : f.multiline ? (
+                <textarea
+                  rows={3}
+                  value={draft[f.key] ?? ""}
+                  onChange={(e) => setDraft((d) => ({ ...d, [f.key]: e.target.value }))}
+                  className="mt-0.5 w-full resize-none rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                />
               ) : (
                 <input
                   type={f.numeric ? "number" : "text"}

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from app.models.commands import AddEdgeCommand, AddNodeCommand, RemoveEdgeCommand, RemoveNodeCommand
+from app.models.commands import AddEdgeCommand, AddNodeCommand, RemoveEdgeCommand, RemoveNodeCommand, UpdateNodeCommand
 from app.services.interview import direct_apply_commands
 
 
@@ -97,3 +97,46 @@ async def test_none_base_version_starts_a_genuinely_new_project_from_scratch(fak
     assert result.version["parent_version_id"] is None
     assert result.version["kind"] == "initial"
     assert [n["name"] for n in result.version["state"]["nodes"]] == ["Frontend"]
+
+
+async def test_rationale_round_trips_through_add_node(fake_repo, base_version, state):
+    """A manually-added node can carry its own rationale (AddNodeMenu's
+    optional "Why" textarea) through the exact same attributes dict the
+    LLM's add_node already uses -- no separate field, no separate code path."""
+    commands = [
+        AddNodeCommand(
+            ref="cache",
+            node_type="database",
+            name="Redis Cache",
+            attributes={"type": "keyvalue", "engine": "redis", "rationale": "Caches session lookups to keep p95 under the 50ms latency target."},
+        )
+    ]
+    result = await direct_apply_commands(base_version["project_id"], base_version["id"], commands)
+
+    assert result.kind == "architecture"
+    cache_node = next(n for n in result.version["state"]["nodes"] if n["name"] == "Redis Cache")
+    assert cache_node["rationale"] == "Caches session lookups to keep p95 under the 50ms latency target."
+
+
+async def test_rationale_is_none_when_omitted_never_auto_backfilled(fake_repo, base_version, state):
+    """A manually-added node with no "Why" text stays rationale=None --
+    this path is deliberately LLM-free, so there's nothing that could fill
+    it in on the person's behalf."""
+    commands = [AddNodeCommand(ref="worker", node_type="service", name="Email Worker", attributes={"type": "worker"})]
+    result = await direct_apply_commands(base_version["project_id"], base_version["id"], commands)
+
+    assert result.kind == "architecture"
+    worker_node = next(n for n in result.version["state"]["nodes"] if n["name"] == "Email Worker")
+    assert worker_node["rationale"] is None
+
+
+async def test_rationale_round_trips_through_update_node(fake_repo, base_version, state):
+    """Editing an existing node's rationale (NodeDetailCard's multiline
+    field) goes through the same update_node attributes dict as every
+    other editable field."""
+    commands = [UpdateNodeCommand(id="svc_be", attributes={"rationale": "Owns order placement; split from the monolith once checkout traffic needed independent scaling."})]
+    result = await direct_apply_commands(base_version["project_id"], base_version["id"], commands)
+
+    assert result.kind == "architecture"
+    be_node = next(n for n in result.version["state"]["nodes"] if n["id"] == "svc_be")
+    assert be_node["rationale"] == "Owns order placement; split from the monolith once checkout traffic needed independent scaling."

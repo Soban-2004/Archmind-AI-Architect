@@ -8,6 +8,11 @@ export interface ArchNode {
   node_kind: NodeKind;
   name: string;
   type: string;
+  // Project-specific "why this node exists here" — see
+  // backend/app/models/state.py's Service.rationale for the full
+  // explanation. Set by the LLM on add_node/update_node; absent for a
+  // manually-added node unless the person who added it wrote one.
+  rationale?: string | null;
   // the rest of the fields vary by node_kind (language, engine, role, criticality, ...)
   [key: string]: unknown;
 }

@@ -53,6 +53,7 @@ export function AddNodeMenu({ onAdd, disabled }: Props) {
   const [type, setType] = useState(NODE_TYPE_OPTIONS.service[0]);
   const [name, setName] = useState("");
   const [engine, setEngine] = useState("");
+  const [rationale, setRationale] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -67,6 +68,7 @@ export function AddNodeMenu({ onAdd, disabled }: Props) {
     setType(NODE_TYPE_OPTIONS.service[0]);
     setName("");
     setEngine("");
+    setRationale("");
     setError(null);
   }
 
@@ -85,6 +87,7 @@ export function AddNodeMenu({ onAdd, disabled }: Props) {
     try {
       const attributes: Record<string, unknown> = { type };
       if (REQUIRES_ENGINE[kind]) attributes.engine = engine.trim();
+      if (rationale.trim()) attributes.rationale = rationale.trim();
       await onAdd({ op: "add_node", ref: "new_node", node_type: kind, name: trimmedName, attributes });
       reset();
       setOpen(false);
@@ -156,6 +159,15 @@ export function AddNodeMenu({ onAdd, disabled }: Props) {
               />
             </>
           )}
+
+          <label className="mt-2 block text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500">Why (optional)</label>
+          <textarea
+            rows={2}
+            value={rationale}
+            onChange={(e) => setRationale(e.target.value)}
+            placeholder="Why this project needs it — left blank if you'd rather not say"
+            className="mt-0.5 w-full resize-none rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+          />
 
           {error && <p className="mt-2 text-[11px] text-red-600 dark:text-red-400">⚠️ {error}</p>}
 
