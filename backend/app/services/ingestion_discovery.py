@@ -38,6 +38,7 @@ _ALWAYS_SKIP_FILES = {
 _RELEVANT_EXTENSIONS = {
     ".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs",
     ".yml", ".yaml",  # docker-compose and similar
+    ".sql",  # migrations — real schema evidence (CREATE TABLE), see ingestion_extract.py's _extract_sql
     ".env", ".env.example",
     "Dockerfile",
 }

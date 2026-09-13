@@ -2,10 +2,10 @@
 Static extraction (spec §6 Phase 5, pipeline step 2): per-file, per-
 language extraction of discrete facts, feeding step 3's Evidence Graph.
 MVP language/infra coverage only (spec): Python, JavaScript/TypeScript,
-Docker Compose. Every extractor returns Evidence directly (models/
-evidence.py) — never prose, never a summary, always a fact + its exact
-source location, so a reconstructed node can always be traced back to a
-real line in the real repo.
+Docker Compose, SQL migrations. Every extractor returns Evidence directly
+(models/evidence.py) — never prose, never a summary, always a fact + its
+exact source location, so a reconstructed node can always be traced back
+to a real line in the real repo.
 
 Deliberately pattern-based, not full static analysis: Python uses the
 stdlib `ast` module (a real parser, not regex, so it doesn't get fooled
@@ -13,7 +13,20 @@ by a comment or a string that happens to look like an import) for
 imports/routes/env-vars; JS/TS uses regex over source text (spec's own
 framing is "communication detectable via CODE PATTERNS" — patterns, not
 a full parser, and pulling in a JS parser is real dependency weight this
-MVP doesn't need yet). Docker Compose is real YAML, parsed as such.
+MVP doesn't need yet). Docker Compose is real YAML, parsed as such. SQL
+migration files use a regex for `CREATE TABLE` only (see _extract_sql).
+
+Coverage gaps found and fixed live, testing against a real repo (a
+plain Vite+React frontend talking to Supabase): JS/TS import scanning
+originally only recognized BACKEND web frameworks (Express, Next.js, ...)
+as "this is a service" evidence and backend-run DB drivers (pg, mongoose,
+...) as "this has a database" evidence — a backend-as-a-service SDK
+(@supabase/supabase-js, firebase) produced neither, and neither did a
+plain frontend framework import (react, vue, svelte, @angular) with no
+Next.js-style server capability. Both now have their own recognized
+import tables and fact types (see _JS_BAAS_IMPORTS,
+_JS_FRONTEND_FRAMEWORK_IMPORTS below) instead of being invisible to this
+pipeline.
 """
 from __future__ import annotations
 
@@ -77,6 +90,43 @@ _JS_WEB_FRAMEWORK_IMPORTS = {
     "fastify": "Fastify",
     "next": "Next.js",
     "koa": "Koa",
+}
+
+# Backend-as-a-service SDKs — genuinely common (arguably THE most common
+# backend for a vibe-coded app) and, before this, entirely invisible to
+# this pipeline: none of these are a "driver" for a database this project
+# runs itself, they're a client for a real, specific managed platform, so
+# they get their own dict/fact rather than being folded into
+# _JS_DB_IMPORTS above. Found live: a real test repo using
+# @supabase/supabase-js produced a citable OTP/SendGrid edge but nothing
+# at all for its actual database, because nothing recognized the import
+# that's the entire reason the app has a database. Matched on the scoped
+# package's first segment ("@supabase") or the bare module name
+# ("firebase"), the same top-level-match granularity every other table
+# here already uses — a specific submodule (`@supabase/auth-js`,
+# `firebase/firestore`) still resolves to the platform as a whole, which
+# is honest: this pipeline can see "this project depends on Supabase", not
+# reliably WHICH of Supabase's services a given file uses.
+_JS_BAAS_IMPORTS = {
+    "@supabase": ("supabase_dependency", "Supabase — managed backend platform (Postgres database + Auth + Realtime + Storage)"),
+    "firebase": ("firebase_dependency", "Firebase — managed backend platform (Firestore/Realtime Database + Auth), specific service not determined from this import alone"),
+}
+
+# Frontend UI framework imports — before this, ONLY Next.js (via
+# _JS_WEB_FRAMEWORK_IMPORTS above, because it can also run a server) said
+# "this is a frontend" at all; a plain Vite/CRA React, Vue, or Svelte app
+# produced zero frontend evidence, full stop. Distinct fact name
+# ("frontend_framework", not "web_framework") so the ingestion prompt's
+# grounding rules can point the LLM at node_type=service/type=frontend
+# specifically, not leave it to guess from a generic "web_framework" label
+# that today only ever means a backend server.
+_JS_FRONTEND_FRAMEWORK_IMPORTS = {
+    "react": "React",
+    "react-dom": "React DOM",
+    "vue": "Vue",
+    "svelte": "Svelte",
+    "@angular": "Angular",  # scope-level match, same reasoning as "@supabase" above (@angular/core, @angular/router, ...)
+    "solid-js": "SolidJS",
 }
 
 # Docker Compose image name -> (fact, human label), matched as a prefix
@@ -200,6 +250,15 @@ def _extract_js(file: DiscoveredFile, ids: _IdGen) -> Iterator[Evidence]:
                 yield Evidence(id=ids.next(), fact="queue_dependency", detail=f"{_JS_QUEUE_IMPORTS[top]} — `import ... from '{module}'`", source=source)
             elif top in _JS_WEB_FRAMEWORK_IMPORTS:
                 yield Evidence(id=ids.next(), fact="web_framework", detail=f"{_JS_WEB_FRAMEWORK_IMPORTS[top]} — `import ... from '{module}'`", source=source)
+            elif top in _JS_BAAS_IMPORTS:
+                fact, detail = _JS_BAAS_IMPORTS[top]
+                yield Evidence(id=ids.next(), fact=fact, detail=f"{detail} — `import ... from '{module}'`", source=source)
+            elif top in _JS_FRONTEND_FRAMEWORK_IMPORTS:
+                yield Evidence(
+                    id=ids.next(), fact="frontend_framework",
+                    detail=f"{_JS_FRONTEND_FRAMEWORK_IMPORTS[top]} (frontend UI framework) — `import ... from '{module}'`",
+                    source=source,
+                )
 
         for m in _JS_ROUTE_RE.finditer(line):
             method, route_path = m.group(1), m.group(2)
@@ -246,6 +305,38 @@ def _extract_docker_compose(file: DiscoveredFile, ids: _IdGen) -> Iterator[Evide
                 yield Evidence(id=ids.next(), fact="docker_depends_on", detail=f"service `{service_name}` depends_on {deps}", source=file.rel_path)
 
 
+_SQL_CREATE_TABLE_RE = re.compile(r"""create\s+table\s+(?:if\s+not\s+exists\s+)?["'`\[]?([\w.]+)["'`\]]?""", re.IGNORECASE)
+
+
+def _extract_sql(file: DiscoveredFile, ids: _IdGen) -> Iterator[Evidence]:
+    """Real schema evidence a Supabase/other-migration-based project's
+    actual database structure lives in — before this, a .sql file wasn't
+    even in discovery's extension allowlist, so this was completely
+    invisible regardless of what it said. Deliberately just `CREATE
+    TABLE` via regex (this pipeline's established "pattern-based, not a
+    real parser" discipline — see the module docstring), not an attempt
+    to understand full DDL: a table NAME is real, citable evidence a
+    database exists and roughly what it's for; anything past that (column
+    types, foreign keys) would risk more guessing than this pass is meant
+    to do. Engine-agnostic on purpose — this alone doesn't say Postgres
+    vs. something else; the LLM reconstruction step combines it with
+    whichever *_dependency evidence exists elsewhere in the repo (e.g.
+    supabase_dependency) to conclude which one."""
+    text = _read_text(file.path)
+    if text is None:
+        return
+    seen_tables: set[str] = set()
+    for lineno, line in enumerate(text.splitlines(), start=1):
+        m = _SQL_CREATE_TABLE_RE.search(line)
+        if not m:
+            continue
+        table = m.group(1)
+        if table in seen_tables:
+            continue
+        seen_tables.add(table)
+        yield Evidence(id=ids.next(), fact="database_schema", detail=f"table `{table}` defined (CREATE TABLE)", source=f"{file.rel_path}:{lineno}")
+
+
 def is_docker_compose_file(file: DiscoveredFile) -> bool:
     name = file.path.name.lower()
     return name in ("docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml")
@@ -268,6 +359,8 @@ def extract_evidence(files: list[DiscoveredFile]) -> tuple[list[Evidence], list[
             evidence.extend(_extract_python(file, ids))
         elif file.extension in (".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"):
             evidence.extend(_extract_js(file, ids))
+        elif file.extension == ".sql":
+            evidence.extend(_extract_sql(file, ids))
         elif file.extension in (".yml", ".yaml"):
             continue  # a non-compose YAML file (CI config, k8s manifest, ...) carries no MVP-scoped signal today
         elif file.path.name == "Dockerfile" or file.path.name.startswith("Dockerfile."):

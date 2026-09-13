@@ -132,7 +132,8 @@ export function ImportRepoScreen({ onSuccess, onCancel }: Props) {
               {mode === "upload"
                 ? "Upload a .zip of the project."
                 : "Point at a public GitHub repo — fetched server-side, no manual download needed."}{" "}
-              Supported today: Python and JavaScript/TypeScript source, and Docker Compose files — every component
+              Supported today: Python and JavaScript/TypeScript source (React/Vue/Svelte frontends and
+              Supabase/Firebase included), Docker Compose files, and SQL migrations — every component
               is reconstructed from real evidence (imports, routes, compose services), never guessed.
             </p>
 
@@ -309,7 +310,7 @@ function ResultView({ result, onSuccess, onRetry }: { result: IngestResponse; on
           <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Nothing to reconstruct from this repo yet</p>
         </div>
         <p className="mt-3 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-          This pipeline currently understands Python, JavaScript/TypeScript, and Docker Compose — it didn&apos;t find
+          This pipeline currently understands Python, JavaScript/TypeScript, Docker Compose, and SQL migrations — it didn&apos;t find
           any of those in what was uploaded, so there was no real evidence to reconstruct an architecture from. That&apos;s
           a scope gap, not something retrying will fix.
         </p>

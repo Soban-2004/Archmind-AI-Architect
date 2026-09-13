@@ -45,7 +45,7 @@ def build_evidence_graph(root: Path) -> EvidenceGraph:
     files = discover_files(root)
     evidence, unsupported = extract_evidence(files)
     if not files:
-        unsupported.append("No files matched this pipeline's MVP language/infra coverage (Python, JS/TS, Docker Compose) — nothing to reconstruct from.")
+        unsupported.append("No files matched this pipeline's MVP language/infra coverage (Python, JS/TS, Docker Compose, SQL migrations) — nothing to reconstruct from.")
     return EvidenceGraph(evidence=evidence, unsupported_notes=unsupported)
 
 

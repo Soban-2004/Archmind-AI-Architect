@@ -614,6 +614,25 @@ GROUNDING RULES (the whole point of this pass):
   file the evidence came from — a route handler and a database import
   found in the SAME file/service strongly suggest that service calls
   that database.
+- `frontend_framework` evidence (React/Vue/Svelte/Angular/SolidJS) means
+  node_type="service" with attributes.type="frontend" specifically —
+  distinct from plain `web_framework` evidence, which today only ever
+  means a BACKEND-capable server (Express, Next.js, ...).
+- `supabase_dependency`/`firebase_dependency` evidence means a real,
+  specific managed backend-as-a-service platform, not a generic
+  "sql_orm_dependency"-style unknown — reconstruct it as a
+  node_type="database" (Supabase is Postgres; for Firebase, "document" is
+  the more likely fit unless other evidence says otherwise) with a real
+  `engine` value ("supabase"/"firebase"), not left vague. The service
+  file that imports it calls TO that database node.
+- `database_schema` evidence (a `CREATE TABLE` found in a .sql migration)
+  names a real table in a real database — use it to justify a database
+  node's existence (cite it alongside whatever `*_dependency`/BaaS
+  evidence identifies which engine it actually is) and let the table
+  name(s) inform that node's name/rationale, e.g. a `candidates` and
+  `votes` table found via migrations plus a `supabase_dependency` import
+  elsewhere in the repo together describe ONE Postgres database, not two
+  separate nodes.
 - If the evidence is too thin or ambiguous to confidently place an edge's
   direction, omit the edge rather than guess — an incomplete diagram
   that's entirely trustworthy beats a complete one with an invented edge.
