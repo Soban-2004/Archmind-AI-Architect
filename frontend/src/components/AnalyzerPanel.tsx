@@ -1,15 +1,29 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { AlertTriangle, DollarSign, SendHorizontal, X } from "lucide-react";
+import { AlertTriangle, DollarSign, SendHorizontal, Wrench, X } from "lucide-react";
 import { api } from "@/lib/api";
-import type { Category, Scorecard, Severity } from "@/lib/types";
+import type { Category, Finding, Scorecard, Severity } from "@/lib/types";
 import { ChatMarkdown, IconButton, ProgressBar, ScoreRing, Spinner } from "./ui";
 
 interface Props {
   projectId: string;
   versionId: string;
   onExit: () => void;
+  /** Hands a specific finding to the chat's architect agent and switches to
+   * it — same handoff SimulationPanel's "Ask the architect to fix this"
+   * already uses (see page.tsx's handleFixInChat): the agent proposes
+   * real MutationCommands through the same validated pipeline any chat
+   * edit goes through, it doesn't just narrate advice. Closes the loop
+   * between "here's what's wrong" and "here's the fix applied", one click. */
+  onFixInChat: (message: string) => void;
+}
+
+/** Built from the real, already-computed Finding — never hand-authored per
+ * click — so the architect agent reasons from the same deterministic fact
+ * the scorecard itself is showing, not a paraphrase of it. */
+function buildFixRequest(f: Finding): string {
+  return `Fix this ${f.severity} ${f.category} finding: "${f.message}" (rule ${f.rule_id}). Propose the specific architecture change(s) needed to resolve it, within the project's existing constraints.`;
 }
 
 interface QAEntry {
@@ -46,7 +60,7 @@ function scoreBarColor(score: number): string {
   return "bg-red-500";
 }
 
-export function AnalyzerPanel({ projectId, versionId, onExit }: Props) {
+export function AnalyzerPanel({ projectId, versionId, onExit, onFixInChat }: Props) {
   const [scorecard, setScorecard] = useState<Scorecard | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [qa, setQa] = useState<QAEntry[]>([]);
@@ -182,11 +196,18 @@ export function AnalyzerPanel({ projectId, versionId, onExit }: Props) {
               {cat.findings.length > 0 && (
                 <ul className="mt-1.5 space-y-1.5">
                   {cat.findings.map((f, i) => (
-                    <li key={`${f.rule_id}-${i}`} className="flex gap-1.5 text-[11px] leading-snug text-slate-600 dark:text-slate-400">
+                    <li key={`${f.rule_id}-${i}`} className="group flex items-start gap-1.5 text-[11px] leading-snug text-slate-600 dark:text-slate-400">
                       <span className={`mt-0.5 h-fit shrink-0 rounded px-1 py-0.5 text-[9px] font-bold uppercase ${SEVERITY_STYLE[f.severity]}`}>
                         {f.severity}
                       </span>
-                      {f.message}
+                      <span className="flex-1">{f.message}</span>
+                      <IconButton
+                        onClick={() => onFixInChat(buildFixRequest(f))}
+                        className="h-5 w-5 shrink-0 opacity-0 group-hover:opacity-100"
+                        title="Ask the architect to fix this"
+                      >
+                        <Wrench size={11} />
+                      </IconButton>
                     </li>
                   ))}
                 </ul>

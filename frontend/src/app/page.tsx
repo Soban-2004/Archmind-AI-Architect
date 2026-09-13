@@ -645,7 +645,7 @@ export default function Home() {
                   )}
                   <div key={mode} className="min-h-0 flex-1 animate-fade-in">
                     {mode === "analyze" && projectId && activeVersionId ? (
-                      <AnalyzerPanel projectId={projectId} versionId={activeVersionId} onExit={() => setMode("chat")} />
+                      <AnalyzerPanel projectId={projectId} versionId={activeVersionId} onExit={() => setMode("chat")} onFixInChat={handleFixInChat} />
                     ) : mode === "simulate" && projectId && activeVersionId && rawState ? (
                       <SimulationPanel
                         state={rawState}
