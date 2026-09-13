@@ -646,16 +646,23 @@ GROUNDING RULES (the whole point of this pass):
   managed outside the repo), this may be the ONLY evidence a given table
   exists, and is still real enough to name it in the database node's
   rationale.
-- `auth_usage` evidence (a real `supabase.auth.<method>()` call — signIn/
-  signUp/signOut/onAuthStateChange/etc.) means the project genuinely uses
-  its BaaS platform's built-in authentication, not just its database —
-  note this distinction in the database node's rationale (e.g. "used for
-  both data storage and Supabase Auth") when present. Its ABSENCE is
-  meaningful too: a project with a `supabase_dependency` but NO
-  `auth_usage` evidence, and instead its own custom auth flow (rest_route/
-  web_framework evidence for a login/OTP endpoint), genuinely rolled its
-  own authentication instead of using the platform's — don't assume
-  Supabase Auth is in play just because Supabase is.
+- `auth_usage` evidence (a real `supabase.auth.<method>()`/`firebase/auth`/
+  Flask-Login/django.contrib.auth/etc. call or import) means the project
+  genuinely uses its BaaS platform's or framework's built-in
+  authentication, not just its database — note this distinction in the
+  relevant node's rationale (e.g. "used for both data storage and
+  Supabase Auth") when present. Its ABSENCE is meaningful too: a project
+  with a `supabase_dependency`/`firebase_dependency` but NO `auth_usage`
+  evidence, and instead its own custom auth flow (rest_route/web_framework
+  evidence for a login/OTP endpoint), genuinely rolled its own
+  authentication instead of using the platform's — don't assume managed
+  auth is in play just because a BaaS import is.
+- `auth_provider_dependency` evidence (NextAuth.js, Auth0, Passport.js,
+  Clerk) is a DIFFERENT thing from `auth_usage` above — these are
+  dedicated, standalone auth-as-a-service/library dependencies, not a
+  capability bundled into a database platform. Reconstruct as
+  node_type="external_dependency" with attributes.type="auth_provider",
+  never as part of a database node.
 - `third_party_api_call` evidence (a real `fetch`/`axios` call to a known
   API hostname, e.g. api.sendgrid.com) is STRONGER evidence than an
   import or an env-var-name guess — it's the literal request URL, not an

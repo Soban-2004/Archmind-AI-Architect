@@ -42,6 +42,31 @@ start size). While digging into that call site, also found and fixed a
 related false-positive: `Deno.env.get('SOME_KEY')` matches the exact same
 shape as a REST route handler (`router.get(path, ...)`) and was being
 misreported as one — see _ROUTE_FALSE_POSITIVE_RECEIVERS.
+
+A third pass, prompted by "what about authentication, and the actual
+tables" for that same repo, found: no `supabase.auth.*` usage was
+recognized at all (see _SUPABASE_AUTH_RE), and the repo's real table name
+existed nowhere but a `.from('voters')` query builder call (see
+_SUPABASE_TABLE_RE) — its one SQL migration had zero CREATE TABLE
+statements, only RLS policies (`_SQL_TABLE_REFERENCE_RE`, added to
+_extract_sql alongside CREATE TABLE).
+
+A fourth pass generalized all of the above PAST that one Supabase-shaped
+repo, to any stack: Python gained its own auth-library table
+(_PY_AUTH_IMPORTS + a django.contrib.auth special case, since Django's
+own auth doesn't fit the top-level-import-segment dict shape every other
+table here uses), its own third-party-API-call detection
+(`requests`/`httpx` module-level calls, same _KNOWN_API_HOSTS table the
+JS/TS fetch/axios check already used), and its own ORM-model-to-table
+detection (_classify_python_orm_model — SQLAlchemy's `__tablename__`,
+Django's `models.Model`) — this last one matters more than the SQL-
+migration path for most real apps, which define schema in code, not
+hand-written DDL. JS/TS gained dedicated auth-PROVIDER recognition
+(_JS_AUTH_PROVIDER_IMPORTS: NextAuth, Auth0, Passport, Clerk — external
+dependencies, not a database, unlike Supabase/Firebase), a `firebase/
+auth` submodule-specific check (distinct from the generic
+firebase_dependency the bare `firebase` import already produces), and
+Mongoose model detection (_MONGOOSE_MODEL_RE).
 """
 from __future__ import annotations
 
@@ -85,6 +110,34 @@ _PY_WEB_FRAMEWORK_IMPORTS = {
     "flask": "Flask",
     "django": "Django",
 }
+# Auth libraries — the Python-side twin of _JS_AUTH_PROVIDER_IMPORTS/
+# _SUPABASE_AUTH_RE below: real, specific evidence a project has actual
+# authentication in place (or, by its absence, genuinely might not),
+# generalized past this session's one Supabase-shaped test repo. Django's
+# own contrib.auth doesn't fit this top-level-segment dict (an import
+# like `from django.contrib.auth import authenticate` has top="django",
+# already claimed by the web-framework entry above) — handled as its own
+# substring check in _extract_python instead, same pattern
+# _DENO_EDGE_FUNCTION_MARKER uses for a URL import that can't be a dict
+# key either.
+_PY_AUTH_IMPORTS = {
+    "flask_login": "Flask-Login",
+    "flask_jwt_extended": "Flask-JWT-Extended",
+    "jwt": "PyJWT",
+    "authlib": "Authlib",
+    "django_allauth": "django-allauth",
+}
+_DJANGO_AUTH_MARKER = "django.contrib.auth"
+
+# Real third-party API calls — the Python-side twin of
+# _FETCH_OR_AXIOS_URL_RE below, same _KNOWN_API_HOSTS table (defined
+# further down, shared by both extractors since it's language-agnostic).
+# `requests`/`httpx` module-level calls only (`requests.get(url)`,
+# `httpx.post(url)`) — a call through a pre-built client instance
+# (`session.get(...)`) would need real data-flow tracking to attribute
+# correctly, which this pattern-based pass deliberately doesn't attempt.
+_PY_HTTP_CLIENT_MODULES = {"requests", "httpx"}
+_PY_HTTP_METHODS = {"get", "post", "put", "delete", "patch"}
 
 _JS_DB_IMPORTS = {
     "redis": ("redis_dependency", "keyvalue store (Redis)"),
@@ -159,6 +212,19 @@ _JS_FRONTEND_FRAMEWORK_IMPORTS = {
     "solid-js": "SolidJS",
 }
 
+# Dedicated auth-as-a-service / auth-library imports — generalizes past
+# this session's one Supabase-shaped test repo. Distinct from
+# _JS_BAAS_IMPORTS above: these aren't also a database, they're PURELY an
+# auth provider, so they map to node_type="external_dependency"/
+# type="auth_provider" (see prompts.py's ATTRIBUTE_SHAPE_RULES), not a
+# database node the way Supabase/Firebase do.
+_JS_AUTH_PROVIDER_IMPORTS = {
+    "next-auth": "NextAuth.js",
+    "@auth0": "Auth0",
+    "passport": "Passport.js",
+    "@clerk": "Clerk",
+}
+
 # Supabase Auth method calls — real, specific evidence that a project
 # uses Supabase's built-in auth (not just its database), which
 # `supabase_dependency` alone (an import) can't distinguish: a project
@@ -187,6 +253,14 @@ _SUPABASE_AUTH_RE = re.compile(r"""\.auth\.(""" + "|".join(_SUPABASE_AUTH_METHOD
 # both would otherwise misfire as "table usage" for any string-literal
 # first argument.
 _SUPABASE_TABLE_RE = re.compile(r"""\.from\(\s*['"]([\w.]+)['"]""")
+
+# `mongoose.model('Name', schema)` — Mongoose's own real, unambiguous
+# collection-naming call (unlike Supabase's, this one needs no gating
+# against a false-positive-prone bare pattern: `mongoose.model(` is
+# specific enough on its own). Not scoped to files "mentioning mongoose"
+# the way the Supabase table check is, since there's no Array.from/
+# Buffer.from-shaped collision to guard against here.
+_MONGOOSE_MODEL_RE = re.compile(r"""\bmongoose\.model\(\s*['"]([^'"]+)['"]""")
 
 # A real external API call — `fetch('https://api.sendgrid.com/...')` — is
 # STRONGER evidence than any import-based signal above: it's not "this
@@ -248,6 +322,58 @@ def _read_text(path: Path) -> str | None:
         return None
 
 
+def _classify_python_orm_model(node: ast.ClassDef, file: DiscoveredFile, ids: _IdGen) -> Iterator[Evidence]:
+    """Real table/collection evidence from an ORM MODEL definition, not a
+    raw SQL migration — the biggest remaining stack-coverage gap this
+    pipeline had: most real apps declare their schema in code (a
+    SQLAlchemy/Django model class), not hand-written CREATE TABLE
+    statements, so `_extract_sql` alone was blind to the common case.
+    Two conventions recognized by base-class shape, not an exhaustive
+    parse of either ORM's real inheritance chains:
+    - SQLAlchemy: any base literally named (or ending in) "Base" — the
+      near-universal `Base = declarative_base()` / `class Base(DeclarativeBase)`
+      convention — or `db.Model` (Flask-SQLAlchemy's own convention). The
+      real table name comes from a `__tablename__ = "..."` class
+      attribute when present (SQLAlchemy's actual mechanism for it);
+      falls back to the class name, honestly labeled as inferred, when
+      that attribute is absent.
+    - Django: `models.Model` (or a subclass of it) as a base — Django
+      auto-derives the table name (`appname_modelname`), so there's no
+      real name to extract beyond the class name itself.
+    """
+    def base_name(base: ast.expr) -> str | None:
+        if isinstance(base, ast.Name):
+            return base.id
+        if isinstance(base, ast.Attribute):
+            return f"{base_name(base.value)}.{base.attr}" if isinstance(base.value, (ast.Name, ast.Attribute)) else base.attr
+        return None
+
+    bases = [base_name(b) for b in node.bases]
+    is_sqlalchemy = any(b and (b == "Base" or b.endswith(".Base") or b.endswith("Base") or b == "db.Model") for b in bases if b)
+    is_django = any(b and (b == "models.Model" or b.endswith(".Model")) for b in bases if b)
+
+    if not is_sqlalchemy and not is_django:
+        return
+
+    if is_sqlalchemy:
+        table_name = None
+        for item in node.body:
+            if (
+                isinstance(item, ast.Assign)
+                and any(isinstance(t, ast.Name) and t.id == "__tablename__" for t in item.targets)
+                and isinstance(item.value, ast.Constant)
+                and isinstance(item.value.value, str)
+            ):
+                table_name = item.value.value
+                break
+        if table_name:
+            yield Evidence(id=ids.next(), fact="database_schema", detail=f"table `{table_name}` defined (SQLAlchemy model `{node.name}`, __tablename__)", source=f"{file.rel_path}:{node.lineno}")
+        else:
+            yield Evidence(id=ids.next(), fact="database_schema", detail=f"SQLAlchemy model `{node.name}` — no __tablename__ declared, real table name not determined from this alone", source=f"{file.rel_path}:{node.lineno}")
+    else:
+        yield Evidence(id=ids.next(), fact="database_schema", detail=f"Django model `{node.name}` — table name auto-derived by Django, not explicit in code", source=f"{file.rel_path}:{node.lineno}")
+
+
 def _extract_python(file: DiscoveredFile, ids: _IdGen) -> Iterator[Evidence]:
     text = _read_text(file.path)
     if text is None:
@@ -259,6 +385,7 @@ def _extract_python(file: DiscoveredFile, ids: _IdGen) -> Iterator[Evidence]:
         return
 
     seen_top_level_imports: set[str] = set()
+    seen_django_auth = False
     for node in ast.walk(tree):
         if isinstance(node, (ast.Import, ast.ImportFrom)):
             module = node.module if isinstance(node, ast.ImportFrom) else None
@@ -266,6 +393,13 @@ def _extract_python(file: DiscoveredFile, ids: _IdGen) -> Iterator[Evidence]:
             for name in names:
                 if not name:
                     continue
+                if _DJANGO_AUTH_MARKER in name and not seen_django_auth:
+                    seen_django_auth = True
+                    yield Evidence(
+                        id=ids.next(), fact="auth_usage",
+                        detail=f"Django's built-in auth (django.contrib.auth) — `import {name}`",
+                        source=f"{file.rel_path}:{node.lineno}",
+                    )
                 top = name.split(".")[0]
                 if top in seen_top_level_imports:
                     continue
@@ -278,6 +412,11 @@ def _extract_python(file: DiscoveredFile, ids: _IdGen) -> Iterator[Evidence]:
                     yield Evidence(id=ids.next(), fact="queue_dependency", detail=f"{_PY_QUEUE_IMPORTS[top]} — `import {top}`", source=source)
                 elif top in _PY_WEB_FRAMEWORK_IMPORTS:
                     yield Evidence(id=ids.next(), fact="web_framework", detail=f"{_PY_WEB_FRAMEWORK_IMPORTS[top]} — `import {top}`", source=source)
+                elif top in _PY_AUTH_IMPORTS:
+                    yield Evidence(id=ids.next(), fact="auth_usage", detail=f"{_PY_AUTH_IMPORTS[top]} — `import {top}`", source=source)
+
+        elif isinstance(node, ast.ClassDef):
+            yield from _classify_python_orm_model(node, file, ids)
 
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             for dec in node.decorator_list:
@@ -309,6 +448,29 @@ def _extract_python(file: DiscoveredFile, ids: _IdGen) -> Iterator[Evidence]:
                             source=f"{file.rel_path}:{node.lineno}",
                         )
 
+            # requests.get(url)/httpx.post(url)/... to a known third-party
+            # API host — the Python-side twin of _FETCH_OR_AXIOS_URL_RE.
+            # Module-level calls only (see _PY_HTTP_CLIENT_MODULES's own
+            # comment for why a pre-built client instance isn't attempted).
+            if (
+                isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id in _PY_HTTP_CLIENT_MODULES
+                and node.func.attr in _PY_HTTP_METHODS
+                and node.args
+                and isinstance(node.args[0], ast.Constant)
+                and isinstance(node.args[0].value, str)
+            ):
+                url = node.args[0].value
+                for host, label in _KNOWN_API_HOSTS.items():
+                    if host in url:
+                        yield Evidence(
+                            id=ids.next(), fact="third_party_api_call",
+                            detail=f"{label} — real API call to `{url}`",
+                            source=f"{file.rel_path}:{node.lineno}",
+                        )
+                        break
+
 
 _JS_IMPORT_RE = re.compile(r"""(?:import\s+.*?\s+from\s+|require\()\s*['"]([^'"]+)['"]""")
 _JS_ROUTE_RE = re.compile(r"""\b(\w+)\.(get|post|put|delete|patch)\s*\(\s*['"]([^'"]+)['"]""")
@@ -335,9 +497,19 @@ def _extract_js(file: DiscoveredFile, ids: _IdGen) -> Iterator[Evidence]:
     mentions_supabase = "supabase" in text.lower()
 
     seen_imports: set[str] = set()
+    seen_firebase_auth = False
     for lineno, line in enumerate(text.splitlines(), start=1):
         for m in _JS_IMPORT_RE.finditer(line):
             module = m.group(1)
+
+            # `firebase/auth` specifically (not just "firebase" generally)
+            # — checked before the top-based dedup below so it still fires
+            # even when a `firebase/firestore` (or similar) import already
+            # claimed the "firebase" top-level slot in this file.
+            if "firebase/auth" in module and not seen_firebase_auth:
+                seen_firebase_auth = True
+                yield Evidence(id=ids.next(), fact="auth_usage", detail=f"Firebase Auth — `import ... from '{module}'`", source=f"{file.rel_path}:{lineno}")
+
             top = module.split("/")[0] if not module.startswith(".") else None
             if not top or top in seen_imports:
                 continue
@@ -353,6 +525,12 @@ def _extract_js(file: DiscoveredFile, ids: _IdGen) -> Iterator[Evidence]:
             elif top in _JS_BAAS_IMPORTS:
                 fact, detail = _JS_BAAS_IMPORTS[top]
                 yield Evidence(id=ids.next(), fact=fact, detail=f"{detail} — `import ... from '{module}'`", source=source)
+            elif top in _JS_AUTH_PROVIDER_IMPORTS:
+                yield Evidence(
+                    id=ids.next(), fact="auth_provider_dependency",
+                    detail=f"{_JS_AUTH_PROVIDER_IMPORTS[top]} — managed authentication provider — `import ... from '{module}'`",
+                    source=source,
+                )
             elif top in _JS_FRONTEND_FRAMEWORK_IMPORTS:
                 yield Evidence(
                     id=ids.next(), fact="frontend_framework",
@@ -398,6 +576,14 @@ def _extract_js(file: DiscoveredFile, ids: _IdGen) -> Iterator[Evidence]:
                     detail=f"queries table `{table}` — `.from('{table}')`",
                     source=f"{file.rel_path}:{lineno}",
                 )
+
+        for m in _MONGOOSE_MODEL_RE.finditer(line):
+            model_name = m.group(1)
+            yield Evidence(
+                id=ids.next(), fact="database_schema",
+                detail=f"collection `{model_name}` defined (Mongoose model)",
+                source=f"{file.rel_path}:{lineno}",
+            )
 
 
 def _extract_docker_compose(file: DiscoveredFile, ids: _IdGen) -> Iterator[Evidence]:
