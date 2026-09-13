@@ -633,6 +633,15 @@ GROUNDING RULES (the whole point of this pass):
   `votes` table found via migrations plus a `supabase_dependency` import
   elsewhere in the repo together describe ONE Postgres database, not two
   separate nodes.
+- `third_party_api_call` evidence (a real `fetch`/`axios` call to a known
+  API hostname, e.g. api.sendgrid.com) is STRONGER evidence than an
+  import or an env-var-name guess — it's the literal request URL, not an
+  inference. Reconstruct it as a node_type="external_dependency" with a
+  real, specific `type` (payment for Stripe, notification_provider for
+  SendGrid/Mailgun/Resend/Twilio, third_party_api otherwise) and prefer
+  it over a weaker env-var-only signal for the same apparent service
+  when both exist in the evidence — don't cite the weak one once the
+  strong one is available.
 - If the evidence is too thin or ambiguous to confidently place an edge's
   direction, omit the edge rather than guess — an incomplete diagram
   that's entirely trustworthy beats a complete one with an invented edge.

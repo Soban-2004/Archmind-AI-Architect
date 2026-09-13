@@ -27,6 +27,21 @@ Next.js-style server capability. Both now have their own recognized
 import tables and fact types (see _JS_BAAS_IMPORTS,
 _JS_FRONTEND_FRAMEWORK_IMPORTS below) instead of being invisible to this
 pipeline.
+
+A second pass, digging into the SAME real repo's one already-reconstructed
+node, found a call-site-level gap too: its Edge Function called SendGrid
+via a raw `fetch('https://api.sendgrid.com/...')` — a real, unambiguous
+API call, STRONGER evidence than any import ever is — but nothing here
+looked at fetch/axios call arguments at all, only import statements. Now
+does, against a curated list of well-known API hostnames (see
+_KNOWN_API_HOSTS/_FETCH_OR_AXIOS_URL_RE) — same real gap the earlier
+pass would have hit for any repo that calls a third-party API by URL
+instead of through its SDK, which is common in serverless/edge functions
+specifically (no npm install available, or deliberately avoided for cold-
+start size). While digging into that call site, also found and fixed a
+related false-positive: `Deno.env.get('SOME_KEY')` matches the exact same
+shape as a REST route handler (`router.get(path, ...)`) and was being
+misreported as one — see _ROUTE_FALSE_POSITIVE_RECEIVERS.
 """
 from __future__ import annotations
 
@@ -92,6 +107,21 @@ _JS_WEB_FRAMEWORK_IMPORTS = {
     "koa": "Koa",
 }
 
+# Deno's std HTTP server — imported by URL, not an npm package name, so
+# it can't go through the top-level-segment dicts above (`top` for
+# "https://deno.land/std@0.190.0/http/server.ts" is just "https:"). This
+# is THE boilerplate import every Supabase/Deno Deploy Edge Function
+# starts with (`import { serve } from "https://deno.land/std.../http/
+# server.ts"`) — without recognizing it, a file that's a real, deployed
+# service has nothing marking it as one (no npm web-framework import to
+# match), which starves the LLM reconstruction step of the one signal
+# that would tell it "this IS a service", not just a file that happens to
+# make an API call. Found live: exactly this shape (a SendGrid fetch()
+# call inside a Deno Edge Function) reconstructed as a correctly-cited
+# but completely UNWIRED SendGrid node — a real dependency with nothing
+# pointing at it, because nothing said which service calls it.
+_DENO_EDGE_FUNCTION_MARKER = "deno.land/std"
+
 # Backend-as-a-service SDKs — genuinely common (arguably THE most common
 # backend for a vibe-coded app) and, before this, entirely invisible to
 # this pipeline: none of these are a "driver" for a database this project
@@ -128,6 +158,32 @@ _JS_FRONTEND_FRAMEWORK_IMPORTS = {
     "@angular": "Angular",  # scope-level match, same reasoning as "@supabase" above (@angular/core, @angular/router, ...)
     "solid-js": "SolidJS",
 }
+
+# A real external API call — `fetch('https://api.sendgrid.com/...')` — is
+# STRONGER evidence than any import-based signal above: it's not "this
+# project depends on a library that could talk to X", it's the literal
+# request URL. Found live: a real repo's OTP function called SendGrid
+# through a raw `fetch()` (no SDK import at all, as many Deno/edge
+# functions do) — completely invisible to every table above, which only
+# ever look at import statements. Curated, not exhaustive (same
+# discipline as engines.py/docker_images.py) — an unrecognized host
+# produces no evidence rather than a guessed vendor name; recognizing a
+# handful of the most common production SaaS APIs is far more valuable
+# than trying to be exhaustive here.
+_KNOWN_API_HOSTS: dict[str, str] = {
+    "api.sendgrid.com": "SendGrid (email delivery)",
+    "api.mailgun.net": "Mailgun (email delivery)",
+    "api.resend.com": "Resend (email delivery)",
+    "api.stripe.com": "Stripe (payments)",
+    "api.twilio.com": "Twilio (SMS/voice)",
+    "api.openai.com": "OpenAI API",
+    "api.anthropic.com": "Anthropic API",
+    "api.cloudinary.com": "Cloudinary (media storage)",
+    "api.algolia.com": "Algolia (search)",
+    "maps.googleapis.com": "Google Maps API",
+}
+
+_FETCH_OR_AXIOS_URL_RE = re.compile(r"""\b(?:fetch|axios(?:\.\w+)?)\s*\(\s*['"]([^'"]+)['"]""")
 
 # Docker Compose image name -> (fact, human label), matched as a prefix
 # against the image string before any tag (postgres:16 -> postgres).
@@ -226,7 +282,14 @@ def _extract_python(file: DiscoveredFile, ids: _IdGen) -> Iterator[Evidence]:
 
 
 _JS_IMPORT_RE = re.compile(r"""(?:import\s+.*?\s+from\s+|require\()\s*['"]([^'"]+)['"]""")
-_JS_ROUTE_RE = re.compile(r"""\b\w+\.(get|post|put|delete|patch)\s*\(\s*['"]([^'"]+)['"]""")
+_JS_ROUTE_RE = re.compile(r"""\b(\w+)\.(get|post|put|delete|patch)\s*\(\s*['"]([^'"]+)['"]""")
+# `env.get('SOME_KEY')` (Deno's `Deno.env.get(...)`, or any `something.env.get(...)`)
+# matches the route pattern's shape exactly but isn't a route at all — found
+# live: a real repo's `Deno.env.get('SENDGRID_API_KEY')` was misreported as
+# a "GET SENDGRID_API_KEY" REST route. Env var reads already have their own,
+# correct fact (env_var_usage, Python-only today) — this is purely a false-
+# positive guard, not an attempt to extend env-var detection to JS.
+_ROUTE_FALSE_POSITIVE_RECEIVERS = {"env"}
 
 
 def _extract_js(file: DiscoveredFile, ids: _IdGen) -> Iterator[Evidence]:
@@ -259,10 +322,29 @@ def _extract_js(file: DiscoveredFile, ids: _IdGen) -> Iterator[Evidence]:
                     detail=f"{_JS_FRONTEND_FRAMEWORK_IMPORTS[top]} (frontend UI framework) — `import ... from '{module}'`",
                     source=source,
                 )
+            elif _DENO_EDGE_FUNCTION_MARKER in module:
+                yield Evidence(
+                    id=ids.next(), fact="web_framework",
+                    detail=f"Deno/Supabase Edge Function runtime (serve() from deno.land/std) — `import ... from '{module}'`",
+                    source=source,
+                )
 
         for m in _JS_ROUTE_RE.finditer(line):
-            method, route_path = m.group(1), m.group(2)
+            receiver, method, route_path = m.group(1), m.group(2), m.group(3)
+            if receiver.lower() in _ROUTE_FALSE_POSITIVE_RECEIVERS:
+                continue
             yield Evidence(id=ids.next(), fact="rest_route", detail=f"{method.upper()} {route_path}", source=f"{file.rel_path}:{lineno}")
+
+        for m in _FETCH_OR_AXIOS_URL_RE.finditer(line):
+            url = m.group(1)
+            for host, label in _KNOWN_API_HOSTS.items():
+                if host in url:
+                    yield Evidence(
+                        id=ids.next(), fact="third_party_api_call",
+                        detail=f"{label} — real API call to `{url}`",
+                        source=f"{file.rel_path}:{lineno}",
+                    )
+                    break
 
 
 def _extract_docker_compose(file: DiscoveredFile, ids: _IdGen) -> Iterator[Evidence]:
