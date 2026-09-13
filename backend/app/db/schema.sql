@@ -20,6 +20,15 @@ create table if not exists versions (
     kind               text not null default 'edit', -- initial | edit | tier | reconstruction
     state              jsonb not null,                -- ArchitectureState
     layout             jsonb not null default '{}',   -- {node_id: {x, y}} — presentation only, never LLM-owned
+    -- {"evidence": [Evidence, ...], "citations": {node_id: [evidence_id, ...]}}
+    -- from services/ingestion.py's IngestionResult — populated ONLY for
+    -- kind='reconstruction' versions, '{}' for every chat/manual edit
+    -- (those were never evidence-grounded from a real repo, so there's
+    -- honestly nothing to store). Lets a node's real source citations
+    -- (which file/line justified it) survive past the one-time ingest
+    -- response, so the canvas can show them any time the version is
+    -- reopened, not just in the moment right after import.
+    evidence           jsonb not null default '{}',
     created_at         timestamptz not null default now()
 );
 
@@ -68,3 +77,7 @@ create index if not exists idx_messages_version on messages(version_id);
 -- before `version_id` existed — `create table if not exists` above is a
 -- no-op there, so this picks up the column separately, idempotently.
 alter table messages add column if not exists version_id uuid references versions(id) on delete set null;
+
+-- Same idempotent-add pattern, for a database that already had `versions`
+-- from before the `evidence` column existed.
+alter table versions add column if not exists evidence jsonb not null default '{}';

@@ -18,7 +18,7 @@ import { api } from "@/lib/api";
 import { buildDiffDisplayState } from "@/lib/diffView";
 import { computeIncrementalLayout } from "@/lib/incrementalLayout";
 import { computeDagreLayout, type LayoutMap } from "@/lib/layout";
-import type { ArchitectureState, ChatMessage, ChatResponse, CompareResult, IngestResponse, MutationCommand, SimulationResult, VersionDiff, VersionRow } from "@/lib/types";
+import type { ArchitectureState, ChatMessage, ChatResponse, CompareResult, IngestResponse, MutationCommand, SimulationResult, VersionDiff, VersionEvidence, VersionRow } from "@/lib/types";
 
 const STORAGE_KEY = "ai-architect-project-id";
 const MIN_PANEL_WIDTH = 300;
@@ -58,6 +58,13 @@ export default function Home() {
   // place ghost (removed) nodes accurately; cleared when browsing history.
   const [ghostLayoutHint, setGhostLayoutHint] = useState<LayoutMap>({});
   const [diff, setDiff] = useState<VersionDiff | null>(null);
+  // The active version's real, persisted source citations (backend/app/db/
+  // schema.sql's `evidence` column) — empty for every chat/manual-edit
+  // version, populated for one that came from a real repo import. Kept in
+  // lockstep with rawState/rawLayout, set at every one of the same call
+  // sites those are (loadVersion, handleSend's architecture branch,
+  // handleNodeSave, handleApplyCommands).
+  const [versionEvidence, setVersionEvidence] = useState<VersionEvidence>({ evidence: [], citations: {} });
 
   const [activeVersionId, setActiveVersionId] = useState<string | null>(null);
   const [latestVersionId, setLatestVersionId] = useState<string | null>(null);
@@ -175,6 +182,7 @@ export default function Home() {
     setRawState(null);
     setRawLayout({});
     setGhostLayoutHint({});
+    setVersionEvidence({ evidence: [], citations: {} });
     setDiff(null);
     setUndoStack([]);
     setRedoStack([]);
@@ -280,6 +288,7 @@ export default function Home() {
     setGhostLayoutHint({}); // no in-memory hint when jumping to an arbitrary version
     setRawState(version.state);
     setRawLayout(layout);
+    setVersionEvidence(version.evidence ?? { evidence: [], citations: {} });
     // No diff here — this just loads a version's actual current state, not
     // a "what changed" view. `diff` (and its removed-node ghosts) is only
     // ever set right after a live edit in handleSend, and explicitly via
@@ -347,6 +356,7 @@ export default function Home() {
         setGhostLayoutHint(isTier ? {} : rawLayout);
         setRawState(result.version.state);
         setRawLayout(newLayout);
+        setVersionEvidence(result.version.evidence ?? { evidence: [], citations: {} });
         setDiff(result.diff);
         setSimulationResult(null); // stale now that the graph changed
         recordEdit();
@@ -383,6 +393,7 @@ export default function Home() {
     setGhostLayoutHint(rawLayout);
     setRawState(result.version.state);
     setRawLayout(newLayout);
+    setVersionEvidence(result.version.evidence ?? { evidence: [], citations: {} });
     setDiff(result.diff);
     setSimulationResult(null); // stale now that the graph changed
     recordEdit();
@@ -413,6 +424,7 @@ export default function Home() {
     setGhostLayoutHint(rawLayout);
     setRawState(result.version.state);
     setRawLayout(newLayout);
+    setVersionEvidence(result.version.evidence ?? { evidence: [], citations: {} });
     setDiff(result.diff);
     setSimulationResult(null); // stale now that the graph changed
     recordEdit();
@@ -701,6 +713,7 @@ export default function Home() {
                   onShare={!compareResult && activeVersionId ? handleCopyShareLink : undefined}
                   projectId={!compareResult && projectId ? projectId : undefined}
                   versionId={!compareResult && activeVersionId ? activeVersionId : undefined}
+                  evidence={compareResult ? undefined : versionEvidence}
                   simDock={
                     // Permanently on the canvas, not gated behind opening
                     // the Simulate tab — the sidebar tab is now only for

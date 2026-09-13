@@ -20,7 +20,7 @@ import { Map, Network, Redo2, Trash2, Undo2, X } from "lucide-react";
 import { toFlowElements } from "@/lib/diffView";
 import type { LayoutMap } from "@/lib/layout";
 import { applySimulation } from "@/lib/simView";
-import type { ArchEdge, ArchitectureState, ArchNode, MutationCommand, SimulationResult, VersionDiff } from "@/lib/types";
+import type { ArchEdge, ArchitectureState, ArchNode, MutationCommand, SimulationResult, VersionDiff, VersionEvidence } from "@/lib/types";
 import { AddNodeMenu } from "./AddNodeMenu";
 import { ArchNodeCard } from "./ArchNodeCard";
 import { CanvasLoadingOverlay } from "./CanvasLoadingOverlay";
@@ -89,6 +89,10 @@ interface Props {
   onRedo?: () => void;
   canUndo?: boolean;
   canRedo?: boolean;
+  /** The active version's persisted evidence/citations, forwarded
+   * straight to NodeDetailCard — see its own prop doc for what this is
+   * and why it's usually empty. */
+  evidence?: VersionEvidence;
   /** Present exactly when the Simulate tab is active on a live (non-
    * compare) canvas — renders the playback dock and enables click-a-node
    * Kill/Revive from NodeDetailCard. Omit to render a plain canvas with
@@ -126,6 +130,7 @@ export function ArchitectureCanvas({
   onShare,
   projectId,
   versionId,
+  evidence,
 }: Props) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
@@ -366,6 +371,7 @@ export function ArchitectureCanvas({
             onDelete={onApplyCommands ? handleDeleteNode : undefined}
             killed={simDock?.killIds.includes(selectedNode.id)}
             onToggleKill={simDock ? () => simDock.onToggleKill(selectedNode.id) : undefined}
+            evidence={evidence}
           />
         )}
         {selectedEdge && onApplyCommands && (

@@ -143,10 +143,20 @@ async def persist_ingestion(project_name: str, result: IngestionResult) -> dict:
     came back."""
     assert result.ok and result.state is not None
     project = await repo.create_project(project_name)
+    # Real evidence + citations, persisted alongside the version instead
+    # of only ever existing in this one HTTP response — schema.sql's own
+    # comment on the `evidence` column explains why: without this, a
+    # node's real source citation (which file/line justified it) was
+    # gone the moment the ingest response left this request, even though
+    # the version itself sticks around indefinitely.
+    evidence_payload = {
+        "evidence": [e.model_dump(mode="json") for e in result.evidence.evidence] if result.evidence else [],
+        "citations": result.citations,
+    }
     # "reconstruction", not "initial" -- schema.sql documents this kind
     # explicitly, and the frontend's VersionHistory timeline already has a
     # dedicated visual treatment for it (orange dot, History icon) that
     # never actually triggered until this was fixed, since every ingested
     # version was silently tagged as a normal fresh interview instead.
-    version = await repo.create_version(project["id"], result.state, kind="reconstruction")
+    version = await repo.create_version(project["id"], result.state, kind="reconstruction", evidence=evidence_payload)
     return {"project": project, "version": version}

@@ -73,13 +73,14 @@ async def create_version(
     parent_version_id: Optional[UUID] = None,
     label: Optional[str] = None,
     layout: Optional[dict[str, Any]] = None,
+    evidence: Optional[dict[str, Any]] = None,
 ) -> dict:
     pool = await get_pool()
     row = await pool.fetchrow(
         """
-        insert into versions (project_id, parent_version_id, label, kind, state, layout)
-        values ($1, $2, $3, $4, $5, $6)
-        returning id, project_id, parent_version_id, label, kind, state, layout, created_at
+        insert into versions (project_id, parent_version_id, label, kind, state, layout, evidence)
+        values ($1, $2, $3, $4, $5, $6, $7)
+        returning id, project_id, parent_version_id, label, kind, state, layout, evidence, created_at
         """,
         project_id,
         parent_version_id,
@@ -87,6 +88,7 @@ async def create_version(
         kind,
         state.model_dump(mode="json"),
         layout or {},
+        evidence or {},
     )
     return dict(row)
 
@@ -95,7 +97,7 @@ async def get_latest_version(project_id: UUID) -> Optional[dict]:
     pool = await get_pool()
     row = await pool.fetchrow(
         """
-        select id, project_id, parent_version_id, label, kind, state, layout, created_at
+        select id, project_id, parent_version_id, label, kind, state, layout, evidence, created_at
         from versions where project_id = $1
         order by created_at desc limit 1
         """,
@@ -108,7 +110,7 @@ async def get_version(version_id: UUID) -> Optional[dict]:
     pool = await get_pool()
     row = await pool.fetchrow(
         """
-        select id, project_id, parent_version_id, label, kind, state, layout, created_at
+        select id, project_id, parent_version_id, label, kind, state, layout, evidence, created_at
         from versions where id = $1
         """,
         version_id,

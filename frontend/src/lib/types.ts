@@ -80,6 +80,17 @@ export interface ArchitectureState {
   adrs: ADR[];
 }
 
+// Persisted alongside the version (backend/app/db/schema.sql's `evidence`
+// column) — populated only for kind="reconstruction" (a real ingested
+// repo); every chat/manual edit has {evidence: [], citations: {}}, since
+// those were never grounded in real repo evidence to begin with. Lets a
+// node's real source citation survive past the one-time ingest response,
+// so it's still there any time the version is reopened later.
+export interface VersionEvidence {
+  evidence: Evidence[];
+  citations: Record<string, string[]>; // node_id -> evidence id(s)
+}
+
 export interface VersionRow {
   id: string;
   project_id: string;
@@ -88,6 +99,7 @@ export interface VersionRow {
   kind: string;
   state: ArchitectureState;
   layout: Record<string, { x: number; y: number }>;
+  evidence: VersionEvidence;
   created_at: string;
 }
 

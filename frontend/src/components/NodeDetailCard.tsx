@@ -1,8 +1,24 @@
 import { useState } from "react";
-import { AlertTriangle, Check, Cloud, Database, Globe, Heart, Layers, Pencil, Server, Skull, Trash2, X } from "lucide-react";
+import { AlertTriangle, Check, Cloud, Database, FileSearch, Globe, Heart, Layers, Pencil, Server, Skull, Trash2, X } from "lucide-react";
 import { getComponentInfo } from "@/lib/componentInfo";
-import type { ArchNode, NodeKind, NodeLoad, SimulationFinding } from "@/lib/types";
+import type { ArchNode, Evidence, NodeKind, NodeLoad, SimulationFinding, VersionEvidence } from "@/lib/types";
 import { IconButton, ProgressBar, Spinner } from "./ui";
+
+// Groups the real, cited evidence a node was reconstructed from (see
+// backend/app/services/ingestion_extract.py) into the handful of
+// categories actually worth a person's attention — everything else
+// (rest_route/web_framework/*_dependency/env_var_usage/...) still shows,
+// just under one catch-all rather than its own named section, since
+// those facts already inform the rationale text above and aren't
+// typically what someone clicks a node hoping to see more of.
+const EVIDENCE_GROUP: Record<string, string> = {
+  database_schema: "Tables",
+  database_table_usage: "Tables",
+  auth_usage: "Authentication",
+  auth_provider_dependency: "Authentication",
+  third_party_api_call: "API calls",
+};
+const EVIDENCE_GROUP_ORDER = ["Tables", "Authentication", "API calls", "Other citations"];
 
 const KIND_META: Record<NodeKind, { label: string; Icon: typeof Server; accent: string }> = {
   service: { label: "Service", Icon: Server, accent: "text-blue-500" },
@@ -77,9 +93,15 @@ interface Props {
    * directly instead of hunting through a checkbox list. */
   killed?: boolean;
   onToggleKill?: () => void;
+  /** The active version's persisted evidence/citations (backend/app/db/
+   * schema.sql's `evidence` column) — present only for a version that
+   * came from a real repo import (kind="reconstruction"); every chat/
+   * manual-edit version has empty evidence, so this section just doesn't
+   * render for those nodes, correctly (there's nothing to cite). */
+  evidence?: VersionEvidence;
 }
 
-export function NodeDetailCard({ node, load, finding, onClose, onSave, onDelete, killed, onToggleKill }: Props) {
+export function NodeDetailCard({ node, load, finding, onClose, onSave, onDelete, killed, onToggleKill, evidence }: Props) {
   const meta = KIND_META[node.node_kind];
   const Icon = meta.Icon;
   const info = getComponentInfo(node);
@@ -118,6 +140,19 @@ export function NodeDetailCard({ node, load, finding, onClose, onSave, onDelete,
     .map(([key, label]) => ({ key, label, value: key === "storage_gb" ? `${node[key]} GB` : String(node[key]).replace(/_/g, " ") }));
 
   const rationale = typeof node.rationale === "string" && node.rationale.trim() ? node.rationale : null;
+
+  // Real citations for THIS node, grouped for display — never fabricated:
+  // an id in `citations` that doesn't resolve to a real evidence entry
+  // (shouldn't happen, but the map is untyped JSON from the DB) is
+  // silently dropped rather than shown as a broken reference.
+  const citedEvidence: Evidence[] = (evidence?.citations[node.id] ?? [])
+    .map((id) => evidence?.evidence.find((e) => e.id === id))
+    .filter((e): e is Evidence => !!e);
+  const groupedEvidence = citedEvidence.reduce<Record<string, Evidence[]>>((acc, e) => {
+    const group = EVIDENCE_GROUP[e.fact] ?? "Other citations";
+    (acc[group] ??= []).push(e);
+    return acc;
+  }, {});
 
   // A field can be a string (language, engine, ...) or a number
   // (storage_gb) on the real node — both need to round-trip through the
@@ -286,6 +321,36 @@ export function NodeDetailCard({ node, load, finding, onClose, onSave, onDelete,
             </div>
           )}
         </div>
+      )}
+
+      {citedEvidence.length > 0 && !editing && (
+        // Collapsed by default — same <details> disclosure pattern
+        // AnalyzerPanel's cost "breakdown by component" already uses,
+        // since a node reconstructed from a real repo can carry dozens
+        // of citations (e.g. one per file importing a frontend
+        // framework) that would otherwise dominate this card.
+        <details className="mt-3 border-t border-slate-100 pt-3 dark:border-slate-800">
+          <summary className="flex cursor-pointer items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300">
+            <FileSearch size={11} /> Evidence ({citedEvidence.length})
+          </summary>
+          <div className="mt-2 space-y-2.5">
+            {EVIDENCE_GROUP_ORDER.filter((group) => groupedEvidence[group]?.length).map((group) => (
+              <div key={group}>
+                <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">{group}</p>
+                <ul className="mt-0.5 space-y-1.5">
+                  {groupedEvidence[group].map((e) => (
+                    <li key={e.id} className="text-[11px] leading-snug text-slate-600 dark:text-slate-300">
+                      {e.detail}
+                      <span className="mt-0.5 block truncate font-mono text-[10px] text-slate-400 dark:text-slate-500" title={e.source}>
+                        {e.source}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </details>
       )}
 
       {editing ? (
