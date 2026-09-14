@@ -4,7 +4,7 @@ from pydantic import BaseModel
 
 from app.models.advisory import AdvisoryAnswer, AnalysisAnswer, WebSource
 from app.models.analysis import Scorecard, ScorecardAnswer
-from app.models.commands import InterviewTurnOutput
+from app.models.commands import GatherQuestionOutput, InterviewTurnOutput
 from app.models.compare import CompareExplanation
 from app.models.diff import VersionDiff
 from app.models.evidence import EvidenceGraph, IngestionTurnOutput
@@ -106,42 +106,35 @@ INTERVIEW_SYSTEM_PROMPT = """You are the AI Architect requirements interviewer.
 
 You always operate in exactly one of three modes per turn:
 
-1. GATHER REQUIREMENTS (action="ask_question") — ask short, focused
-   questions to learn: expected users/scale, traffic pattern, budget,
-   consistency needs, availability needs, real-time requirements, and
-   whether this is a student/hobby project or production-track. Do not
-   ask more than 6 questions total before proposing an architecture.
-   Whenever a question has a natural small set of common answers (budget
-   tiers, scale tiers, yes/no, consistency strength, etc.), populate
-   `quick_replies` with 3-5 short tappable options (e.g. ["$0", "$50/mo",
-   "$500/mo", "Not sure"]) so the user can tap instead of typing — always
-   include an escape hatch like "Not sure" or "Other" when the options
-   aren't exhaustive. Leave `quick_replies` empty/omitted only for
-   genuinely open-ended questions (e.g. "what should we call this
-   project"). PREFER asking exactly one question per turn — that's the
-   only way `quick_replies` can stay meaningful, since one list can't
-   offer answers to two different questions at once. Only combine two
-   questions into a single turn when BOTH are genuinely open-ended (so no
-   quick_replies would apply to either one regardless); if either
-   question has a natural set of tappable answers, ask that one alone
-   with its quick_replies populated, and save the other for the next
-   turn.
-   Once budget and availability/consistency are both known and genuinely
-   conflict (see "BUDGET IS A HARD CEILING" below), don't silently move
-   to mode 2 — ask ONE more question naming the conflict, with
-   `quick_replies` for the real tradeoffs (e.g. ["Raise the budget",
-   "Lower the availability target", "Smallest setup that fits the
-   budget"]). Proceed once the user picks one, or says "Not sure" once.
+1. ASK A CLARIFYING QUESTION (action="ask_question") — the project's
+   basic requirements (scale, budget, availability, consistency) are
+   already gathered deterministically before you're ever called for a
+   brand-new project (see "Already-known constraints" below, always
+   complete by the time you see action="propose_architecture" become
+   relevant) — this mode is for everything else genuinely ambiguous: a
+   requested edit that could mean two different things ("remove the
+   queue" when two exist), or a real tradeoff worth surfacing before an
+   edit/tier proceeds. Whenever the question has a natural small set of
+   common answers, populate `quick_replies` with 3-5 short tappable
+   options, always including an escape hatch like "Not sure". Ask exactly
+   one question at a time.
 
-2. EDIT THE CURRENT ARCHITECTURE (action="propose_architecture") — once you
-   have enough to make a reasonable first architecture (usually after 3-6
-   answers), OR whenever the user asks for a targeted change to the
-   existing graph. Use update_node/remove_node/add_edge/remove_edge with
-   the EXISTING node ids shown in "Current architecture state" below —
-   never invent new ids for nodes that already exist. Emit the minimal set
-   of commands the request needs ("remove the queue" is exactly one
-   remove_node command, not a rebuild). If the request is genuinely
-   ambiguous, ask instead of guessing.
+2. EDIT THE CURRENT ARCHITECTURE (action="propose_architecture") — for a
+   brand-new project, this is your FIRST real decision once every required
+   constraint is already known (below) — before proposing, check budget
+   against availability/consistency (see "BUDGET IS A HARD CEILING"
+   below): if they genuinely conflict, use action="ask_question" instead,
+   naming the conflict with `quick_replies` for the real tradeoffs (e.g.
+   ["Raise the budget", "Lower the availability target", "Smallest setup
+   that fits the budget"]) rather than silently proposing something over
+   budget. Otherwise proceed. For an existing architecture, this mode is
+   also whenever the user asks for a targeted change to the graph. Use
+   update_node/remove_node/add_edge/remove_edge with the EXISTING node
+   ids shown in "Current architecture state" below — never invent new
+   ids for nodes that already exist. Emit the minimal set of commands the
+   request needs ("remove the queue" is exactly one remove_node command,
+   not a rebuild). If the request is genuinely ambiguous, ask instead of
+   guessing.
    When the request reports simulated overload/capacity findings (node,
    rps, capacity) and asks you to fix them, you MUST emit actual commands
    addressing the specific bottleneck(s) named — never just restate the
@@ -572,6 +565,58 @@ def build_judge_prompt(user_message: str, constraints: list[Constraint], state: 
 def build_system_prompt() -> str:
     schema = _compact_schema(InterviewTurnOutput)
     return INTERVIEW_SYSTEM_PROMPT.format(schema=schema, reference_patterns=REFERENCE_PATTERNS, attribute_shape_rules=ATTRIBUTE_SHAPE_RULES)
+
+
+# What to ask about for each required constraint, in REQUIRED_CONSTRAINT_ORDER
+# (services/interview.py) — budget deliberately last, so by the time it's
+# asked every other requirement is already known and a single, well-informed
+# feasibility check (INTERVIEW_SYSTEM_PROMPT's mode 2 "BUDGET IS A HARD
+# CEILING" pre-check) can run once, instead of the old approach of noticing
+# a conflict mid-interview and interrupting to ask about it.
+GATHER_CONSTRAINT_LABELS: dict[str, str] = {
+    "expected_users": "the expected number of active users",
+    "expected_rps": "the expected peak request rate (requests/second) during busy periods",
+    "availability_target": "the availability/uptime target (e.g. 99%, 99.9%, 99.95%)",
+    "consistency_requirement": "how strong consistency needs to be for critical data (e.g. strong vs. eventual)",
+    "budget_monthly_usd": "the monthly budget for hosting and services — this is the last question; once you answer, everything gathered gets checked for whether it's actually buildable within it",
+}
+
+
+GATHER_SYSTEM_PROMPT = """You are the AI Architect requirements interviewer,
+gathering facts before designing anything — no architecture exists yet.
+
+Ask exactly ONE short, focused question about: {constraint_label}. Do not
+ask about anything else this turn — every other requirement has its own
+turn already scheduled, in a fixed order, and this is the only one due
+now. Reference the project's own description naturally (e.g. name what
+they're building) rather than asking a generic question that could apply
+to anything.
+
+Whenever this question has a natural small set of common answers,
+populate `quick_replies` with 3-5 short tappable options (e.g. ["$0",
+"$50/mo", "$500/mo", "Not sure"]) so the user can tap instead of typing —
+always include an escape hatch like "Not sure". Leave `quick_replies`
+empty/omitted only for a genuinely open-ended question.
+
+`reasoning` (optional, 1-2 bullets): only when a real tradeoff already
+exists between what's already known (below) and this question, tied to
+actual stated values — never generic, omit for a simple, unrelated next
+question (most of the time).
+
+Project description (from the user): {description}
+
+Already-known constraints: {known_constraints}
+
+Output ONLY valid JSON matching this schema:
+{schema}
+"""
+
+
+def build_gather_prompt(constraint_type: str, description: str, known: list[Constraint]) -> str:
+    schema = _compact_schema(GatherQuestionOutput)
+    label = GATHER_CONSTRAINT_LABELS.get(constraint_type, constraint_type)
+    known_text = "; ".join(f"{c.type.value}={c.value}" for c in known) if known else "(none yet — this is the first question)"
+    return GATHER_SYSTEM_PROMPT.format(schema=schema, constraint_label=label, description=description, known_constraints=known_text)
 
 
 def build_compare_prompt(diff: VersionDiff, state_a: ArchitectureState, state_b: ArchitectureState) -> str:

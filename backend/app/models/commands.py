@@ -126,3 +126,35 @@ class InterviewTurnOutput(BaseModel):
     # tradeoff/driving constraint yet (a simple first question, or an
     # edit with an obvious single cause) — see prompts.py for the full rule.
     reasoning: Optional[list[str]] = None
+
+
+class GatherQuestionOutput(BaseModel):
+    """Structured output for ONE requirements-gathering question — a
+    deliberately much smaller sibling of InterviewTurnOutput, used only
+    before a project's first design exists (see services/interview.py's
+    REQUIRED_CONSTRAINT_ORDER checklist).
+
+    Two real bugs, found live, drove this split: (1) the interview used to
+    silently ask the same question twice, because nothing was actually
+    persisted from an answer until the LLM finally proposed a design — it
+    only ever lived in raw chat history, which the token-budget trim can
+    (and did) drop on a long interview; (2) every single gathering
+    question paid the full cost of InterviewTurnOutput's whole 7-variant
+    command schema plus the entire edit/tier rulebook, neither of which a
+    plain "what's your budget" question needs, which is why a long
+    interview could hit Groq's rate limit before a design was ever
+    proposed. Recording an answer as a real, versioned constraint is now
+    handled deterministically in code (services/interview.py), not by the
+    model — this schema's only job is phrasing the NEXT question (for a
+    constraint type code has already decided on, in a fixed order that
+    asks budget LAST) naturally, with good quick_replies.
+    """
+
+    question: str
+    quick_replies: Optional[list[str]] = None  # short tappable answers, e.g. ["$0", "$50/mo", "$500/mo", "Not sure"] — omit for genuinely open-ended questions
+    # 1-2 bullets, only when a real tradeoff already exists between what's
+    # already known and this question — never generic, omit otherwise
+    # (most gathering questions are a simple, unrelated next fact and have
+    # none — see InterviewTurnOutput.reasoning for the fuller rule this
+    # mirrors).
+    reasoning: Optional[list[str]] = None

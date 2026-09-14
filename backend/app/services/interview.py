@@ -7,13 +7,13 @@ from uuid import UUID
 
 from app.db import repository as repo
 from app.llm.factory import get_judge_provider, get_llm_provider
-from app.llm.prompts import build_advisory_prompt, build_analysis_prompt, build_judge_prompt, build_system_prompt, state_for_edit_prompt
+from app.llm.prompts import build_advisory_prompt, build_analysis_prompt, build_gather_prompt, build_judge_prompt, build_system_prompt, state_for_edit_prompt
 from app.llm.tokens import estimate_messages_tokens, estimate_tokens
 from app.models.advisory import AdvisoryAnswer, AnalysisAnswer, WebSource
-from app.models.commands import AnnotateDecisionCommand, MutationCommand, UpdateNodeCommand
+from app.models.commands import AnnotateDecisionCommand, GatherQuestionOutput, MutationCommand, SetConstraintCommand, UpdateNodeCommand
 from app.models.diff import VersionDiff
 from app.models.judge import JudgeVerdict
-from app.models.state import ADR, ArchitectureState, TriggeredBy, empty_state, gen_id
+from app.models.state import ADR, ArchitectureState, ConstraintType, TriggeredBy, empty_state, gen_id
 from app.services.adr import build_templated_decision
 from app.services.deterministic import try_deterministic_command
 from app.services.diff import diff_states
@@ -25,6 +25,39 @@ from app.services.web_search import search_web
 logger = logging.getLogger(__name__)
 
 MAX_ENGINE_RETRIES = 2  # additional retries when mutation validation itself fails, or the judge rejects
+
+# The deterministic requirements-gathering checklist for a brand-new
+# project (see _next_required_constraint / the gathering block in
+# handle_chat_turn). Fixed order, code-owned, not left to the model's
+# judgment — two real bugs, found live, drove this: the old fully
+# LLM-driven interview sometimes asked the same question twice (nothing
+# was actually persisted from an answer until the model finally proposed
+# a design, so a long interview's token-budget trim could drop the
+# earlier Q&A from what the model could still see), and it could re-ask
+# about budget mid-interview in an ad-hoc way whenever it happened to
+# notice a conflict. budget_monthly_usd is deliberately LAST: by the time
+# it's asked, every other requirement is already known, so a single,
+# well-informed feasibility check can run once (INTERVIEW_SYSTEM_PROMPT's
+# mode 2 pre-check) instead of guessing mid-conversation.
+REQUIRED_CONSTRAINT_ORDER: list[ConstraintType] = [
+    ConstraintType.expected_users,
+    ConstraintType.expected_rps,
+    ConstraintType.availability_target,
+    ConstraintType.consistency_requirement,
+    ConstraintType.budget_monthly_usd,
+]
+
+
+def _next_required_constraint(state: ArchitectureState) -> ConstraintType | None:
+    """The next constraint the gathering checklist still needs, in
+    REQUIRED_CONSTRAINT_ORDER — None once every one of them is recorded
+    (the signal that gathering is complete and the next turn moves on to
+    actually proposing a design)."""
+    known = {c.type for c in state.constraints}
+    for t in REQUIRED_CONSTRAINT_ORDER:
+        if t not in known:
+            return t
+    return None
 
 # Groq's free/on-demand tier caps a single request at 8,000 tokens/minute
 # — and that cap counts PROMPT + COMPLETION together. Calibrated against
@@ -315,6 +348,41 @@ async def _finalize(
     return ChatTurnResult(kind="architecture", summary=summary, version=version, diff=diff, usage=usage, reasoning=reasoning)
 
 
+async def _ask_gather_question(
+    project_id: UUID,
+    description: str,
+    state: ArchitectureState,
+    parent_id: UUID | None,
+    constraint_type: ConstraintType,
+    on_stage: OnStage | None = None,
+) -> ChatTurnResult:
+    """Phrases the NEXT requirements-gathering question — deliberately the
+    cheapest possible LLM call, same philosophy as _handle_advisory:
+    GatherQuestionOutput's tiny schema, no InterviewTurnOutput/command
+    union, no attribute-shape/edit rulebook, no judge pass, no full
+    conversation history. Recording the PREVIOUS answer, and working out
+    `description` (the project's own kickoff message, so every question
+    can reference "your food delivery app" naturally instead of reading
+    as a generic form), both already happened in handle_chat_turn before
+    this is ever called — this only ever asks the next one."""
+    provider = get_llm_provider()
+    prompt = build_gather_prompt(constraint_type.value, description, state.constraints)
+    await _emit(on_stage, "Preparing the next question…")
+    try:
+        turn = await provider.structured_json(prompt, description, GatherQuestionOutput)
+    except Exception as e:
+        return ChatTurnResult(kind="error", error=_friendly_provider_error(e))
+
+    await repo.add_message(project_id, "assistant", turn.question, version_id=parent_id)
+    return ChatTurnResult(
+        kind="question",
+        question=turn.question,
+        quick_replies=turn.quick_replies,
+        usage=getattr(provider, "last_usage", None),
+        reasoning=turn.reasoning,
+    )
+
+
 async def handle_chat_turn(
     project_id: UUID,
     user_message: str,
@@ -389,6 +457,51 @@ async def handle_chat_turn(
             return await _handle_advisory(project_id, user_message, current_state, parent_id, on_stage=on_stage)
         if intent == "analysis":
             return await _handle_analysis(project_id, user_message, current_state, parent_id, on_stage=on_stage)
+
+    # --- Tier 1.75: deterministic requirements-gathering checklist ---------
+    # Only relevant before a first design exists (no nodes yet) — once a
+    # real architecture is on the canvas, every further request is a
+    # normal edit through Tier 2 below, unchanged. See
+    # REQUIRED_CONSTRAINT_ORDER's own comment for the two real bugs this
+    # exists to fix.
+    if not current_state.nodes:
+        pending_type = _next_required_constraint(current_state)
+        if pending_type is not None:
+            branch_history = await repo.get_branch_history(project_id, parent_id)
+            description = branch_history[0]["content"] if branch_history else user_message
+            # More than one message in the branch means an assistant
+            # question already went out before this reply came in — this
+            # message is answering `pending_type` (whatever the checklist
+            # hasn't recorded yet, since nothing is persisted until the
+            # FIRST answer — the kickoff turn itself creates no version at
+            # all). Exactly one message (just the user_message add_message
+            # call above) means THIS is that very first message — the
+            # kickoff description, nothing to record yet. Deliberately not
+            # `parent_id is None` for this check: that stays None through
+            # BOTH the kickoff turn and the turn right after it (nothing
+            # persists until an answer is actually recorded), so it can't
+            # tell those two turns apart — a real bug caught before it
+            # ever shipped, by the first test written against this.
+            if len(branch_history) > 1:
+                await _emit(on_stage, "Recording your answer…")
+                result = apply_commands(current_state, [SetConstraintCommand(type=pending_type, value=user_message.strip())])
+                assert result.ok and result.state is not None  # a bare set_constraint can never fail structural validation
+                version = await repo.create_version(
+                    project_id, result.state, kind="initial" if parent_id is None else "edit", parent_version_id=parent_id
+                )
+                if user_message_id is not None:
+                    await repo.set_message_version(user_message_id, version["id"])
+                current_state = result.state
+                parent_id = version["id"]
+                pending_type = _next_required_constraint(current_state)
+
+            if pending_type is not None:
+                return await _ask_gather_question(project_id, description, current_state, parent_id, pending_type, on_stage=on_stage)
+            # else: checklist complete — fall through into Tier 2 below,
+            # which now sees every required constraint already recorded
+            # and makes its own first real decision (propose the design,
+            # or ask one more question if the budget genuinely doesn't
+            # fit — see INTERVIEW_SYSTEM_PROMPT mode 2's pre-check).
 
     # --- Tier 2 (spec §7): LLM-assisted, structured output only ------------
     # Scoped to this branch's own ancestry, not the whole project's flat
