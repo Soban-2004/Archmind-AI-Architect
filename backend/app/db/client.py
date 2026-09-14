@@ -30,6 +30,12 @@ async def get_pool() -> asyncpg.Pool:
             init=_init_connection,
             min_size=1,
             max_size=5,
+            # Supabase's transaction-mode pooler (PgBouncer) doesn't support
+            # session-level prepared statements, which asyncpg uses by
+            # default — without this it can hang or error unpredictably
+            # once deployed behind a pooler host (direct dev connections to
+            # Supabase are unaffected, since they don't go through PgBouncer).
+            statement_cache_size=0,
         )
     return _pool
 
