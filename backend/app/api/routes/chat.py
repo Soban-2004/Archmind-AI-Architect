@@ -20,7 +20,13 @@ def _result_payload(result: ChatTurnResult) -> dict:
     if result.kind == "error":
         return {"kind": "error", "error": result.error}
     if result.kind == "question":
-        return {"kind": "question", "question": result.question, "quick_replies": result.quick_replies or [], "usage": result.usage}
+        return {
+            "kind": "question",
+            "question": result.question,
+            "quick_replies": result.quick_replies or [],
+            "usage": result.usage,
+            "reasoning": result.reasoning or [],
+        }
     if result.kind == "answer":
         # A non-mutating turn (services/intent_router.py's advisory/
         # analysis lanes, or the empty-commands safety net in
@@ -30,7 +36,14 @@ def _result_payload(result: ChatTurnResult) -> dict:
         # _handle_advisory) — jsonable_encoder (used by the streaming
         # route) handles the WebSource pydantic models fine either way.
         return {"kind": "answer", "answer": result.summary, "usage": result.usage, "sources": result.sources or []}
-    return {"kind": "architecture", "summary": result.summary, "version": result.version, "diff": result.diff, "usage": result.usage}
+    return {
+        "kind": "architecture",
+        "summary": result.summary,
+        "version": result.version,
+        "diff": result.diff,
+        "usage": result.usage,
+        "reasoning": result.reasoning or [],
+    }
 
 
 @router.post("/{project_id}/chat")

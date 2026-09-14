@@ -91,6 +91,14 @@ class ChatTurnResult:
     # this turn (see web_search.py) — None/empty for every turn that isn't
     # a web-grounded advisory answer, which is most of them.
     sources: list[WebSource] | None = None
+    # The model's own InterviewTurnOutput.reasoning, unmodified — 1-3
+    # short bullets naming the real constraint(s)/tradeoff behind this
+    # question or these choices (see prompts.py). None for a Tier 1
+    # deterministic edit (no LLM call happened, so nothing to carry) and
+    # for any non-mutating "answer" turn; present on "question" and
+    # "architecture" turns whenever the model judged there was something
+    # genuinely worth surfacing.
+    reasoning: list[str] | None = None
 
 
 def _trim_history(history: list[dict], budget_tokens: int) -> tuple[list[dict], int]:
@@ -272,6 +280,7 @@ async def _finalize(
     usage: dict[str, int] | None = None,
     user_message_id: UUID | None = None,
     on_stage: OnStage | None = None,
+    reasoning: list[str] | None = None,
 ) -> ChatTurnResult:
     await _emit(on_stage, "Finalizing…")
     diff = diff_states(diff_base_state, new_state) if parent_version_id else None
@@ -303,7 +312,7 @@ async def _finalize(
     if user_message_id is not None:
         await repo.set_message_version(user_message_id, version["id"])
     await repo.add_message(project_id, "assistant", summary, version_id=version["id"])
-    return ChatTurnResult(kind="architecture", summary=summary, version=version, diff=diff, usage=usage)
+    return ChatTurnResult(kind="architecture", summary=summary, version=version, diff=diff, usage=usage, reasoning=reasoning)
 
 
 async def handle_chat_turn(
@@ -475,7 +484,7 @@ async def handle_chat_turn(
 
         if turn.action == "ask_question":
             await repo.add_message(project_id, "assistant", turn.question or "", version_id=parent_id)
-            return ChatTurnResult(kind="question", question=turn.question, quick_replies=turn.quick_replies, usage=total_usage)
+            return ChatTurnResult(kind="question", question=turn.question, quick_replies=turn.quick_replies, usage=total_usage, reasoning=turn.reasoning)
 
         commands = turn.commands or []
         is_tier = turn.action == "generate_tier"
@@ -546,6 +555,7 @@ async def handle_chat_turn(
             model_provided_decision=model_provided_decision,
             label=turn.tier_label if is_tier else None,
             usage=total_usage,
+            reasoning=turn.reasoning,
             user_message_id=user_message_id,
             on_stage=on_stage,
         )

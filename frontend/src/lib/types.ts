@@ -190,8 +190,8 @@ export interface WebSource {
 }
 
 export type ChatResponse =
-  | { kind: "question"; question: string; quick_replies: string[]; usage: TokenUsage | null }
-  | { kind: "architecture"; summary: string; version: VersionRow; diff: VersionDiff | null; usage: TokenUsage | null }
+  | { kind: "question"; question: string; quick_replies: string[]; usage: TokenUsage | null; reasoning?: string[] }
+  | { kind: "architecture"; summary: string; version: VersionRow; diff: VersionDiff | null; usage: TokenUsage | null; reasoning?: string[] }
   // A non-mutating chat reply — a question/recommendation answer, a
   // what-if analysis narration, or the empty-commands safety net (see
   // backend/app/services/intent_router.py). Nothing on the canvas
@@ -316,4 +316,13 @@ export interface ChatMessage {
    * ChatResponse's "answer" variant) — undefined/empty for every other
    * message, which is most of them. */
   sources?: WebSource[];
+  /** The model's own 1-3 bullets naming the real constraint(s)/tradeoff
+   * behind this question or these edit choices (see ChatResponse's
+   * "question"/"architecture" variants and backend/app/llm/prompts.py) —
+   * distinct from `content` (the question/summary itself): this is the
+   * "why", shown as its own small block, not folded into the same prose.
+   * Undefined/empty whenever the model judged there was nothing genuine
+   * worth surfacing, which is expected for a simple question or an edit
+   * with one obvious cause. */
+  reasoning?: string[];
 }

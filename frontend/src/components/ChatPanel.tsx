@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { ArrowDown, Check, Copy, ExternalLink, MessageSquare, SendHorizontal, Sparkles, User } from "lucide-react";
+import { ArrowDown, Check, Copy, ExternalLink, Lightbulb, MessageSquare, SendHorizontal, Sparkles, User } from "lucide-react";
 import { relativeTime } from "@/lib/format";
 import { useThinkingStatus } from "@/lib/useThinkingStatus";
 import type { ChatMessage } from "@/lib/types";
@@ -159,6 +159,27 @@ export function ChatPanel({ messages, onSend, busy, busyStage, onConsumeAnimatio
                     )}
                     {m.role === "assistant" && <CopyButton text={m.content} />}
                   </div>
+                  {m.role === "assistant" && m.reasoning && m.reasoning.length > 0 && (
+                    // The model's own reasoning for this question/edit —
+                    // real constraint(s) it's actually working from, not
+                    // narration bolted on after (see backend/app/llm/
+                    // prompts.py). Deliberately its own small block, not
+                    // folded into the chat bubble's prose above, so it
+                    // reads as "here's why", not as more of the answer.
+                    <div className="flex w-full flex-col gap-1 rounded-xl border border-amber-200/70 bg-amber-50/60 px-3 py-2 dark:border-amber-500/20 dark:bg-amber-500/[0.06]">
+                      <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:text-amber-400">
+                        <Lightbulb size={11} /> Why
+                      </div>
+                      <ul className="flex flex-col gap-0.5">
+                        {m.reasoning.map((point, idx) => (
+                          <li key={idx} className="flex gap-1.5 text-[12px] leading-relaxed text-amber-900/80 dark:text-amber-200/80">
+                            <span className="select-none text-amber-400 dark:text-amber-500">•</span>
+                            <span>{point}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                   {m.role === "assistant" && m.sources && m.sources.length > 0 && (
                     // Real sources services/web_search.py actually fetched
                     // and fed to this answer — a citation trail the user

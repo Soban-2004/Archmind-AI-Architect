@@ -117,3 +117,12 @@ class InterviewTurnOutput(BaseModel):
     commands: Optional[list[MutationCommand]] = None
     summary: Optional[str] = None  # short natural-language note for the chat log
     tier_label: Optional[str] = None  # required when action == "generate_tier", e.g. "$0 Student Tier"
+    # 1-3 short bullets, distinct from `question`/`summary`: for
+    # ask_question, the real tradeoff behind the question about to be
+    # asked (framed BEFORE the user answers, not narrated after); for
+    # propose_architecture, the specific already-stated constraints (real
+    # numbers/values, not generic advice) that drove the key choices just
+    # made. Always omit rather than invent one when there's no genuine
+    # tradeoff/driving constraint yet (a simple first question, or an
+    # edit with an obvious single cause) — see prompts.py for the full rule.
+    reasoning: Optional[list[str]] = None

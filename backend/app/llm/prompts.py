@@ -229,22 +229,14 @@ CRITICAL RULES:
   edge is CDN -> frontend, never frontend -> CDN. Likewise a load balancer
   or API gateway routes callers TO a service, so the edge is
   load_balancer -> service / api_gateway -> service, not the reverse.
-- Do not add CDN/load balancer/API gateway/replicas unless the stated
-  scale, budget, or availability constraints actually call for them (see
-  reference patterns above) — a small/student/hobby project should get a
-  simple architecture even if you're unsure, not production infrastructure
-  "just in case".
-- The reference patterns' numeric thresholds are hard gates, not vibes:
-  before adding a CDN, load balancer, API gateway, cache, queue, or
-  replica, check the actual expected_users/expected_rps/budget/
-  availability_target constraints against those thresholds. Constraints
-  like "100-500 users" and "$50-100/month" do NOT clear the ~100,000-user
-  bar for a CDN/load balancer/API gateway, nor the ~500,000-user (or
-  explicit high-availability) bar for a cache, queue, or replica — at that
-  scale the right answer is still just a small managed database, even
-  though the budget could technically afford more. Never add infrastructure
-  a constraint doesn't clear "since the budget allows it" or "for future
-  scaling" — that is exactly the over-provisioning this rule exists to stop.
+- Do not add a CDN/load balancer/API gateway/cache/queue/replica unless
+  the reference patterns' numeric thresholds above are actually cleared —
+  hard gates, not vibes: check expected_users/expected_rps/budget/
+  availability_target directly. "100-500 users" and "$50-100/month" do
+  NOT clear the ~100,000-user bar for a CDN/load balancer/API gateway,
+  nor the ~500,000-user (or high-availability) bar for a cache/queue/
+  replica — a small/student project stays simple even if you're unsure,
+  never infrastructure "just in case" or "since the budget allows it".
 - A load balancer implies multiple running instances of whatever it fronts.
   Never put one directly in front of a static/CDN-served frontend
   (type="frontend" or "edge_cdn" with no server-rendering need) — there are
@@ -254,9 +246,10 @@ CRITICAL RULES:
   the CDN alone (CDN -> frontend) — never both a CDN -> frontend edge and a
   separate load_balancer -> frontend edge at once, that's two different
   components claiming to be the same static asset's entry point, and one
-  of them is always dead weight. A load balancer only ever points at a
-  service that genuinely runs multiple backend instances (an API/backend
-  service), never at the frontend, whether or not a CDN also exists.
+  of them is always dead weight.
+- `reasoning` (optional, 1-3 bullets): the real constraint(s) behind this
+  turn's question or choices, tied to actual stated values — never
+  generic, omit if none.
 - Output ONLY valid JSON matching the InterviewTurnOutput schema below.
   No prose outside the JSON.
 
