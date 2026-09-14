@@ -9,6 +9,15 @@ class Settings:
     supabase_db_url: str = os.environ.get("SUPABASE_DB_URL", "")
     groq_api_key: str = os.environ.get("GROQ_API_KEY", "")
     groq_model: str = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
+    # Primary architect model (see llm/factory.py) — Cerebras serves the
+    # SAME gpt-oss-120b model Groq does, at a real ~4x higher free-tier
+    # TPM ceiling (30K vs 8K), confirmed against Cerebras's own rate-limit
+    # docs before adding this. Optional: absent CEREBRAS_API_KEY, the
+    # factory falls back to Groq alone, unchanged from before this existed
+    # — this is additive, not a hard new dependency for anyone running
+    # this project without a Cerebras account.
+    cerebras_api_key: str = os.environ.get("CEREBRAS_API_KEY", "")
+    cerebras_model: str = os.environ.get("CEREBRAS_MODEL", "gpt-oss-120b")
     # Judge pass (a second, independent model reviewing the architect's
     # proposed architecture for structural correctness — see
     # services/interview.py) — optional. Absent GEMINI_API_KEY, the judge

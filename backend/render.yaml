@@ -29,11 +29,21 @@ services:
       # "Transaction" pooler mode one).
       - key: SUPABASE_DB_URL
         sync: false
-      # Required — every chat/ingestion LLM call goes through Groq.
+      # Required — the automatic fallback if Cerebras below has a bad
+      # moment (see llm/factory.py, llm/fallback_provider.py), and the
+      # sole provider if CEREBRAS_API_KEY is left unset.
       - key: GROQ_API_KEY
         sync: false
       - key: GROQ_MODEL
         value: openai/gpt-oss-120b
+      # Optional — the PRIMARY architect model when set: same gpt-oss-120b
+      # model as Groq, at a real ~4x higher free-tier TPM ceiling (30K vs
+      # 8K). Absent key, this whole thing degrades to Groq-only, unchanged
+      # from before this existed.
+      - key: CEREBRAS_API_KEY
+        sync: false
+      - key: CEREBRAS_MODEL
+        value: gpt-oss-120b
       # Optional — absent key just skips the judge pass (see
       # services/interview.py), not a crash.
       - key: GEMINI_API_KEY
