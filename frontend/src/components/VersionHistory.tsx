@@ -55,7 +55,13 @@ export function VersionHistory({ projectId, activeVersionId, refreshKey, onSelec
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3.5 dark:border-slate-800">
+      <div className="flex items-center justify-between border-b border-slate-200 py-3.5 pl-8 pr-4 dark:border-slate-800">
+        {/* pl-8 (not the plain px-4 every other panel header uses) is
+         * deliberate: the collapse/expand toggle button that fronts this
+         * panel (see AppShell.tsx) is absolutely positioned half outside
+         * the panel's left edge, at -left-3.5 w-7 — its right edge lands
+         * at +14px into this panel, which used to sit right under this
+         * heading's own px-4 (16px) start and visibly overlap it. */}
         <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">History</h2>
         <Button size="sm" variant={compareMode ? "primary" : "secondary"} onClick={toggleCompareMode}>
           <GitCompare size={12} /> Compare
