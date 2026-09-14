@@ -1,0 +1,53 @@
+# Render Blueprint — lets you deploy this backend via "New +" -> "Blueprint"
+# in the Render dashboard instead of manually filling in every field by
+# hand. Secrets (anything with `sync: false`) are never committed here —
+# Render prompts for the real value once, in its own dashboard, at deploy
+# time.
+#
+# rootDir matters: this repo is a monorepo (backend/ + frontend/ as
+# siblings) — without it, Render would try to `pip install` from the repo
+# root, which has no requirements.txt at all.
+services:
+  - type: web
+    name: ai-architect-backend
+    runtime: python
+    rootDir: backend
+    plan: free
+    # Free tier is a single instance by default (no autoscaling) — this
+    # matters beyond cost: rate_limit.py's in-memory per-IP counters only
+    # produce correct limits on exactly one process. Don't raise this to
+    # multiple instances without first moving that to a Redis-backed
+    # store (see that module's own comment on why).
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.13
+      # Required — the app fails fast on startup without it (see
+      # db/client.py). Your Supabase project's connection string
+      # (Project Settings -> Database -> Connection string -> URI, the
+      # "Transaction" pooler mode one).
+      - key: SUPABASE_DB_URL
+        sync: false
+      # Required — every chat/ingestion LLM call goes through Groq.
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+      # Optional — absent key just skips the judge pass (see
+      # services/interview.py), not a crash.
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash-lite
+      # Optional — absent key just skips web-search grounding for
+      # time-sensitive advisory answers (see services/web_search.py).
+      - key: TAVILY_API_KEY
+        sync: false
+      # Required for the deployed frontend to actually be allowed to call
+      # this API — set to your real Vercel URL(s), comma-separated if
+      # more than one (e.g. a production + a preview domain). Defaults to
+      # localhost only, which will silently block every request from the
+      # deployed frontend if left unset.
+      - key: CORS_ORIGINS
+        sync: false

@@ -230,6 +230,64 @@ Visit `http://localhost:3000`. Describe a project (e.g. *"I want to build a
 stock trading app for college students"*) — the system asks a few
 clarifying questions, then renders the first architecture on the canvas.
 
+## Deployment
+
+The database is already hosted (it's the same Supabase project from Setup
+above) — deploying just means giving the frontend and backend a real,
+public home. Recommended pair: **Vercel** for the frontend (built by the
+Next.js team, zero-config), **Render** for the backend (a plain
+always-on Python process, no serverless cold-start weirdness for the
+in-memory rate limiter — see the note below).
+
+### Backend → Render
+
+1. [render.com](https://render.com) → sign in with GitHub → **New +** →
+   **Blueprint** → pick this repo. Render reads
+   [`backend/render.yaml`](./backend/render.yaml) and proposes one web
+   service (`ai-architect-backend`) — approve it.
+2. It'll pause on deploy asking for the env vars marked `sync: false` in
+   that file: `SUPABASE_DB_URL`, `GROQ_API_KEY`, optionally
+   `GEMINI_API_KEY`/`TAVILY_API_KEY`, and `CORS_ORIGINS` (leave this one
+   blank for now — circle back once the frontend has a real URL, step 3
+   below).
+3. No Blueprint file? Manual setup works identically: **New +** → **Web
+   Service** → this repo → **Root Directory**: `backend` → **Build
+   Command**: `pip install -r requirements.txt` → **Start Command**:
+   `uvicorn app.main:app --host 0.0.0.0 --port $PORT` → add the same env
+   vars by hand.
+4. Once deployed, Render gives you a URL like
+   `https://ai-architect-backend.onrender.com` — visit `/health` to
+   confirm it's actually up (same fail-fast-on-bad-DB-URL check as
+   local dev).
+
+**Stay on the free tier's single instance.** `rate_limit.py`'s per-IP
+counters are in-memory (documented in that module) — correct on exactly
+one process, silently too permissive across several. Don't turn on
+autoscaling later without first moving that to a Redis-backed store.
+
+### Frontend → Vercel
+
+1. [vercel.com](https://vercel.com) → sign in with GitHub → **Add New** →
+   **Project** → pick this repo.
+2. **Root Directory**: `frontend` (this is the one setting that matters —
+   Vercel auto-detects Next.js and needs no other config for this repo).
+3. **Environment Variables** → add `NEXT_PUBLIC_API_URL` = the Render URL
+   from above (e.g. `https://ai-architect-backend.onrender.com`, no
+   trailing slash).
+4. Deploy. Vercel gives you a real URL, e.g.
+   `https://ai-architect-yourname.vercel.app`.
+
+### Close the loop
+
+Go back to Render → the backend service's environment variables → set
+`CORS_ORIGINS` to that real Vercel URL (comma-separated if you end up
+with more than one, e.g. a production and a preview domain) → save
+(Render redeploys automatically). Without this step the deployed
+frontend's requests get silently blocked by the browser's own CORS
+check — `CORS_ORIGINS` defaults to `localhost` only.
+
+Visit the Vercel URL — that's the real, live app.
+
 ## Design notes carried into this implementation
 
 - **Mutation commands only.** The LLM's only output shape is
