@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 import { listComponentTypes } from "@/lib/componentInfo";
 import type { NodeKind } from "@/lib/types";
@@ -115,9 +115,23 @@ interface Props {
 export function ComponentPalette({ onPick, disabled }: Props) {
   const [open, setOpen] = useState(false);
   const [activeKind, setActiveKind] = useState<NodeKind>("service");
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // Same pattern ProjectSwitcher's dropdown already uses — found live:
+  // this popover had no way to close except picking a tile or toggling
+  // the "+" button again, so clicking anywhere else on the canvas just
+  // left it hanging open.
+  useEffect(() => {
+    if (!open) return;
+    function onClickOutside(e: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    window.addEventListener("mousedown", onClickOutside);
+    return () => window.removeEventListener("mousedown", onClickOutside);
+  }, [open]);
 
   return (
-    <div className="relative">
+    <div ref={rootRef} className="relative">
       <IconButton
         onClick={() => setOpen((v) => !v)}
         disabled={disabled}
