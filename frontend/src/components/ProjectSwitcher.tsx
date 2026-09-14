@@ -12,6 +12,14 @@ interface Props {
   projectName: string;
   onSwitch: (projectId: string) => void;
   onCreate: () => void;
+  /** The project id page.tsx's handleSwitchProject is currently loading
+   * (its real network round trip — fetch the project, then its latest
+   * version), or null when nothing's in flight. Shows a spinner on that
+   * one row and disables every row in the list meanwhile, so a slow
+   * response (a cold Render instance waking up, in particular) reads as
+   * "working on it" instead of an unresponsive dropdown inviting a
+   * rage-click on a different row. */
+  switchingToId?: string | null;
 }
 
 /**
@@ -22,7 +30,7 @@ interface Props {
  * built around one active project at a time, so switching should feel
  * like a quick jump, not a navigation.
  */
-export function ProjectSwitcher({ projectId, projectName, onSwitch, onCreate }: Props) {
+export function ProjectSwitcher({ projectId, projectName, onSwitch, onCreate, switchingToId }: Props) {
   const [open, setOpen] = useState(false);
   // null = never fetched yet (first open shows a spinner); every
   // subsequent open re-fetches in the background and swaps in fresh data
@@ -128,7 +136,11 @@ export function ProjectSwitcher({ projectId, projectName, onSwitch, onCreate }: 
                     p.id === projectId ? "bg-brand-50/60 dark:bg-indigo-500/10" : ""
                   }`}
                 >
-                  <Boxes size={14} className="shrink-0 text-slate-300 dark:text-slate-600" />
+                  {switchingToId === p.id ? (
+                    <Spinner className="h-3.5 w-3.5 shrink-0 text-brand-500 dark:text-indigo-400" />
+                  ) : (
+                    <Boxes size={14} className="shrink-0 text-slate-300 dark:text-slate-600" />
+                  )}
                   {renamingId === p.id ? (
                     <input
                       autoFocus
@@ -144,12 +156,17 @@ export function ProjectSwitcher({ projectId, projectName, onSwitch, onCreate }: 
                   ) : (
                     <button
                       onClick={() => onSwitch(p.id)}
-                      className="min-w-0 flex-1 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+                      disabled={!!switchingToId}
+                      className="min-w-0 flex-1 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 disabled:cursor-default disabled:opacity-60"
                     >
                       <p className="truncate font-medium text-slate-700 dark:text-slate-200">{p.name}</p>
                       <p className="truncate text-[10.5px] text-slate-400 dark:text-slate-500">
-                        {p.node_count !== null ? `${p.node_count} components · ` : ""}
-                        {p.last_activity_at ? relativeTime(p.last_activity_at) : "no activity yet"}
+                        {switchingToId === p.id
+                          ? "Opening…"
+                          : p.node_count !== null
+                            ? `${p.node_count} components · `
+                            : ""}
+                        {switchingToId === p.id ? "" : p.last_activity_at ? relativeTime(p.last_activity_at) : "no activity yet"}
                       </p>
                     </button>
                   )}

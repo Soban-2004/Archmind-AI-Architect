@@ -8,6 +8,7 @@ import {
   GitCompare,
   Hand,
   Layers,
+  Loader2,
   MessageSquare,
   ScanSearch,
   Search,
@@ -23,6 +24,15 @@ import { MiniArchitecturePreview } from "./MiniArchitecturePreview";
 interface Props {
   onNewProject: () => void;
   onImportRepo: () => void;
+  /** True while page.tsx's handleCreateProject (or switching to an
+   * existing project) is actually in flight — a real network round trip
+   * (create the project, then load its latest version), not instant.
+   * Disables both entry buttons so a slow response (a cold Render
+   * instance waking up, in particular) reads as "working on it" instead
+   * of inviting a rage-click, and swaps "Start a new project" into a
+   * spinner + "Creating…" so there's something to actually look at while
+   * it waits. Found live: this prop already existed but was never wired
+   * up from the caller, so it always silently did nothing. */
   busy?: boolean;
   /** The project remembered in localStorage, if its data has finished
    * loading silently in the background (see page.tsx's mount effect) —
@@ -174,10 +184,18 @@ export function Landing({ onNewProject, onImportRepo, busy, existingProject, onC
             <button
               onClick={onNewProject}
               disabled={busy}
-              className="group flex items-center justify-center gap-2 rounded-lg bg-bp-accent px-5 py-3.5 text-sm font-semibold text-white shadow-lg shadow-bp-accent/25 transition hover:-translate-y-0.5 hover:shadow-xl disabled:pointer-events-none disabled:opacity-50"
+              className="group flex items-center justify-center gap-2 rounded-lg bg-bp-accent px-5 py-3.5 text-sm font-semibold text-white shadow-lg shadow-bp-accent/25 transition hover:-translate-y-0.5 hover:shadow-xl disabled:pointer-events-none disabled:opacity-75"
             >
-              <MessageSquare size={15} /> Start a new project
-              <ArrowRight size={14} className="transition group-hover:translate-x-0.5" />
+              {busy ? (
+                <>
+                  <Loader2 size={15} className="animate-spin" /> Creating…
+                </>
+              ) : (
+                <>
+                  <MessageSquare size={15} /> Start a new project
+                  <ArrowRight size={14} className="transition group-hover:translate-x-0.5" />
+                </>
+              )}
             </button>
             <button
               onClick={onImportRepo}

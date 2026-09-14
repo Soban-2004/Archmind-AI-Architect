@@ -118,6 +118,19 @@ export function AppShell() {
   // actually arrives, cleared between turns so a stale stage never lingers.
   const [busyStage, setBusyStage] = useState<string | null>(null);
   const [initError, setInitError] = useState<string | null>(null);
+  // True while handleCreateProject/handleSwitchProject's real network
+  // round trip is in flight — surfaced on Landing's buttons (disabled +
+  // a spinner) so a slow response (a cold Render instance waking up, in
+  // particular) reads as "working on it" instead of looking frozen and
+  // inviting a rage-click. Doesn't cover handleImportSuccess — that only
+  // ever runs after ImportRepoScreen's own import already finished, with
+  // the new version already in hand, so there's nothing slow left to wait
+  // on by the time it's called.
+  const [projectActionPending, setProjectActionPending] = useState(false);
+  // Which project id handleSwitchProject is currently loading, specifically
+  // — lets ProjectSwitcher show a spinner on THAT one row instead of just
+  // a generic "something is happening" state across the whole list.
+  const [switchingToId, setSwitchingToId] = useState<string | null>(null);
   // Sum of real (not estimated) token usage across every LLM call this
   // browser session has made — resets on reload, like Claude Code's own
   // session status line. A turn the deterministic Tier-1 fast path
@@ -213,7 +226,21 @@ export function AppShell() {
    * Also keeps the URL in sync: pushes /project/[id] if it isn't already
    * the current route, so every entry point that opens a project (the
    * switcher, "+ New", import, a direct /project/[id] visit) ends up at
-   * the same, real, bookmarkable URL. */
+   * the same, real, bookmarkable URL.
+   *
+   * Deliberately does NOT clear rawState/activeVersionId/latestVersionId
+   * up front when there's a real version to load — found live: switching
+   * between two already-open projects used to clear rawState to null
+   * immediately, which made ArchitectureCanvas fall through to its "no
+   * architecture yet" empty state for the brief gap before loadVersion
+   * repopulated it, reading as "flashes back to the landing page" even
+   * though it never actually left the app view. The old project's diagram
+   * now stays on screen, unchanged, until the new one is actually ready
+   * to replace it — loadVersion below sets rawState/layout/etc. together,
+   * in one commit, so there's no intermediate empty frame to see. Only a
+   * genuinely version-less project (a brand-new one) clears them, which
+   * is the correct moment to show the empty state — there's really
+   * nothing to display yet. */
   async function openProject(project: Project) {
     localStorage.setItem(STORAGE_KEY, project.id);
     setProjectId(project.id);
@@ -223,13 +250,6 @@ export function AppShell() {
     setCompareResult(null);
     setSimulationResult(null);
     setSessionTokens(0);
-    setActiveVersionId(null);
-    setLatestVersionId(null);
-    setRawState(null);
-    setRawLayout({});
-    setGhostLayoutHint({});
-    setVersionEvidence({ evidence: [], citations: {} });
-    setDiff(null);
     setUndoStack([]);
     setRedoStack([]);
 
@@ -239,27 +259,43 @@ export function AppShell() {
     if (project.latest_version) {
       setLatestVersionId(project.latest_version.id);
       await loadVersion(project.id, project.latest_version.id, project.latest_version);
+    } else {
+      setActiveVersionId(null);
+      setLatestVersionId(null);
+      setRawState(null);
+      setRawLayout({});
+      setGhostLayoutHint({});
+      setVersionEvidence({ evidence: [], citations: {} });
+      setDiff(null);
     }
   }
 
   async function handleSwitchProject(id: string) {
     if (id === projectId) return;
+    setProjectActionPending(true);
+    setSwitchingToId(id);
     try {
       const project = await api.getProject(id);
       await openProject(project);
       setView("app");
     } catch (e) {
       setInitError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setProjectActionPending(false);
+      setSwitchingToId(null);
     }
   }
 
   async function handleCreateProject() {
+    setProjectActionPending(true);
     try {
       const created = await api.createProject("New Project");
       await openProject({ ...created, latest_version: null });
       setView("app");
     } catch (e) {
       setInitError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setProjectActionPending(false);
     }
   }
 
@@ -650,6 +686,7 @@ export function AppShell() {
                     projectName={projectName || "AI Architect"}
                     onSwitch={handleSwitchProject}
                     onCreate={handleShowLanding}
+                    switchingToId={switchingToId}
                   />
                   <p className="px-2 text-[11px] text-slate-400 dark:text-slate-500">
                     {viewingHistorical ? "editing will branch from here" : latestVersionId ? "editing latest version" : "new project"}
@@ -681,6 +718,7 @@ export function AppShell() {
             <Landing
               onNewProject={handleCreateProject}
               onImportRepo={() => setView("import")}
+              busy={projectActionPending}
               existingProject={projectId ? { id: projectId, name: projectName || "Untitled project" } : null}
               onContinue={() => {
                 setView("app");
