@@ -6,7 +6,16 @@ create extension if not exists pgcrypto;
 create table if not exists projects (
     id          uuid primary key default gen_random_uuid(),
     name        text not null,
-    created_at  timestamptz not null default now()
+    created_at  timestamptz not null default now(),
+    -- This app has no auth or per-user scoping at all (a deliberate
+    -- guest-mode design, not an oversight) — every project is visible to
+    -- every visitor by default. `hidden` exists for the one real
+    -- exception that design needs: a project belonging to whoever's
+    -- actually running/demoing this deployment, kept out of the public
+    -- list_projects() result while staying fully reachable by anyone who
+    -- already has its id (a saved link, or the owner's own browser) —
+    -- get_project() below deliberately does NOT filter on this column.
+    hidden      boolean not null default false
 );
 
 -- One row per version. Never updated in place (spec §3.2) — every mutation
@@ -81,3 +90,7 @@ alter table messages add column if not exists version_id uuid references version
 -- Same idempotent-add pattern, for a database that already had `versions`
 -- from before the `evidence` column existed.
 alter table versions add column if not exists evidence jsonb not null default '{}';
+
+-- Same idempotent-add pattern, for a database that already had `projects`
+-- from before the `hidden` column existed.
+alter table projects add column if not exists hidden boolean not null default false;

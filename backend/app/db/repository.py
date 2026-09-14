@@ -17,17 +17,22 @@ async def create_project(name: str) -> dict:
 
 
 async def get_project(project_id: UUID) -> Optional[dict]:
+    # Deliberately NOT filtered on `hidden` — this is the one lookup path
+    # that has to keep working for a hidden project (its owner opening it
+    # directly, or anyone with a saved link); only list_projects() below,
+    # the PUBLIC browse list, excludes it. See schema.sql's own comment
+    # on the column for why this asymmetry is intentional, not a gap.
     pool = await get_pool()
     row = await pool.fetchrow("select id, name, created_at from projects where id = $1", project_id)
     return dict(row) if row else None
 
 
 async def list_projects() -> list[dict]:
-    """Every project, newest-activity-first — a project with no versions
-    yet (created but abandoned before the first message) sorts by its own
-    created_at instead. node_count/last_activity_at come from each
-    project's own most recent version via a lateral join, so this is one
-    query rather than N+1."""
+    """Every NON-hidden project, newest-activity-first — a project with no
+    versions yet (created but abandoned before the first message) sorts
+    by its own created_at instead. node_count/last_activity_at come from
+    each project's own most recent version via a lateral join, so this is
+    one query rather than N+1."""
     pool = await get_pool()
     rows = await pool.fetch(
         """
@@ -42,6 +47,7 @@ async def list_projects() -> list[dict]:
             order by v.created_at desc
             limit 1
         ) lv on true
+        where p.hidden = false
         order by coalesce(lv.created_at, p.created_at) desc
         """
     )
@@ -54,6 +60,16 @@ async def rename_project(project_id: UUID, name: str) -> Optional[dict]:
         "update projects set name = $2 where id = $1 returning id, name, created_at",
         project_id,
         name,
+    )
+    return dict(row) if row else None
+
+
+async def set_project_hidden(project_id: UUID, hidden: bool) -> Optional[dict]:
+    pool = await get_pool()
+    row = await pool.fetchrow(
+        "update projects set hidden = $2 where id = $1 returning id, name, hidden, created_at",
+        project_id,
+        hidden,
     )
     return dict(row) if row else None
 
