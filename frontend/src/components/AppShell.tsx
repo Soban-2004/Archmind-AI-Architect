@@ -85,6 +85,12 @@ export function AppShell() {
 
   const [activeVersionId, setActiveVersionId] = useState<string | null>(null);
   const [latestVersionId, setLatestVersionId] = useState<string | null>(null);
+  // Mirrors activeVersionId for handleRunSimulation's stale-response guard
+  // below — a ref, not the state itself, because it needs to be read
+  // inside an already-in-flight async callback without that callback
+  // capturing a now-outdated closure value. Kept in sync by the effect
+  // right after activeVersionId's own declaration-adjacent effects.
+  const activeVersionIdRef = useRef<string | null>(null);
   const [versionsRefreshKey, setVersionsRefreshKey] = useState(0);
   // Quick undo/redo for edits made from THIS browser tab (chat edits,
   // manual canvas edits, node-detail saves) — not a separate mutation, just
@@ -560,16 +566,26 @@ export function AppShell() {
   // the stale, pre-update value.
   async function handleRunSimulation(overrideMultiplier?: number, overrideKillIds?: string[]) {
     if (!projectId || !activeVersionId) return;
+    // Captured now, compared against activeVersionIdRef.current once this
+    // resolves — more than one of these can legitimately be in flight at
+    // once (a fast edit can start a new run before a previous version's
+    // is done), and without this guard the one that happens to resolve
+    // LAST would win regardless of whether it's actually for the version
+    // still on screen. Found live: this used to silently apply a stale
+    // result for a version the user had already moved past.
+    const targetVersionId = activeVersionId;
     setSimRunning(true);
     setSimError(null);
     try {
-      const r = await api.simulate(projectId, activeVersionId, overrideMultiplier ?? simMultiplier, overrideKillIds ?? simKillIds);
+      const r = await api.simulate(projectId, targetVersionId, overrideMultiplier ?? simMultiplier, overrideKillIds ?? simKillIds);
+      if (targetVersionId !== activeVersionIdRef.current) return; // superseded by a newer edit while this was in flight
       setSimulationResult(r);
       setSimPlaying(true);
     } catch (e) {
+      if (targetVersionId !== activeVersionIdRef.current) return;
       setSimError(e instanceof Error ? e.message : String(e));
     } finally {
-      setSimRunning(false);
+      if (targetVersionId === activeVersionIdRef.current) setSimRunning(false);
     }
   }
 
@@ -606,6 +622,10 @@ export function AppShell() {
     setSimPlaying(true);
   }
 
+  useEffect(() => {
+    activeVersionIdRef.current = activeVersionId;
+  }, [activeVersionId]);
+
   // Live by default: the simulation dock lives permanently on the canvas
   // now (not gated behind switching to the Simulate tab — see the
   // simDock prop below), so it runs a baseline scenario the moment a
@@ -613,9 +633,22 @@ export function AppShell() {
   // open. Only fires once there's nothing to show yet; Stop clearing the
   // result does not auto-restart itself, which is the correct read of a
   // deliberate Stop.
+  //
+  // Deliberately does NOT also skip while simRunning is true (a previous
+  // fix here did, and it was a real bug — found live): editing faster
+  // than one simulate() round trip (quick palette adds/removes in a row)
+  // meant the PREVIOUS version's request was still "running" when the
+  // NEW version's activeVersionId arrived, so that guard silently
+  // blocked the new version from ever being simulated — the dock just
+  // sat there showing stale or no data. Now this always kicks off a
+  // fresh run for whatever activeVersionId just became current;
+  // handleRunSimulation's own stale-response guard (see its
+  // targetVersionId check) makes it safe for more than one to be in
+  // flight at once — only the response matching the CURRENT
+  // activeVersionId at resolution time is ever applied.
   useEffect(() => {
     if (compareResult) return;
-    if (simulationResult || simRunning) return;
+    if (simulationResult) return;
     if (!projectId || !activeVersionId) return;
     void handleRunSimulation();
     // eslint-disable-next-line react-hooks/exhaustive-deps
