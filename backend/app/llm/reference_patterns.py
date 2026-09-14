@@ -33,4 +33,14 @@ the specific request, do not apply these mechanically or all at once):
   database for the affected data over an eventually-consistent store; be
   cautious adding a cache without also describing an invalidation
   approach in the rationale.
+
+- BUDGET IS A HARD CEILING, not one pattern among equals: a stated
+  budget_monthly_usd overrides the availability/consistency patterns
+  above, which say nothing about cost. A real 99.9%+-style redundant
+  stack (replica + queue + cache + observability at once) essentially
+  never fits $50-100/mo, so treat a low budget + high availability_target
+  as a genuine conflict: add only the ONE or TWO highest-value pieces
+  instead of everything every pattern mentions, and say so plainly in
+  `summary` (what you added, what you left out, and why) rather than
+  silently proposing something that costs multiples of the stated budget.
 """
