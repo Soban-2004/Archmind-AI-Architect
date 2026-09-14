@@ -1,7 +1,7 @@
 import json
 from typing import TypeVar
 
-from groq import AsyncGroq
+from groq import APIStatusError, AsyncGroq
 from pydantic import BaseModel, ValidationError
 
 from app.config import settings
@@ -33,12 +33,26 @@ class GroqProvider(LLMProvider):
             if last_error:
                 turn_messages.append({"role": "user", "content": RETRY_SUFFIX.format(errors=last_error)})
 
-            resp = await self._client.chat.completions.create(
-                model=settings.groq_model,
-                messages=turn_messages,
-                response_format={"type": "json_object"},
-                temperature=0.3,
-            )
+            try:
+                resp = await self._client.chat.completions.create(
+                    model=settings.groq_model,
+                    messages=turn_messages,
+                    response_format={"type": "json_object"},
+                    temperature=0.3,
+                )
+            except APIStatusError as e:
+                # Groq's own server-side json_object validator can reject a
+                # malformed generation before we ever see a response body —
+                # e.g. json_validate_failed when the model emits plain text
+                # instead of JSON. That's the same class of retryable
+                # problem as our own json.loads/model_validate failures
+                # below, just raised one layer earlier, so feed it back
+                # through the identical retry path instead of letting it
+                # escape as an unhandled 400.
+                body = e.body if isinstance(e.body, dict) else {}
+                inner = body.get("error", {}) if isinstance(body, dict) else {}
+                last_error = inner.get("message") or str(e)
+                continue
             if resp.usage:
                 self.last_usage = {
                     "prompt_tokens": resp.usage.prompt_tokens,
