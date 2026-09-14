@@ -19,6 +19,7 @@ import { api } from "@/lib/api";
 import { buildDiffDisplayState } from "@/lib/diffView";
 import { computeIncrementalLayout } from "@/lib/incrementalLayout";
 import { computeDagreLayout, type LayoutMap } from "@/lib/layout";
+import { normalizeVersionEvidence } from "@/lib/types";
 import type { ArchitectureState, ChatMessage, ChatResponse, CompareResult, IngestResponse, MutationCommand, SimulationResult, VersionDiff, VersionEvidence, VersionRow } from "@/lib/types";
 
 const STORAGE_KEY = "ai-architect-project-id";
@@ -339,7 +340,7 @@ export function AppShell() {
     setGhostLayoutHint({}); // no in-memory hint when jumping to an arbitrary version
     setRawState(version.state);
     setRawLayout(layout);
-    setVersionEvidence(version.evidence ?? { evidence: [], citations: {} });
+    setVersionEvidence(normalizeVersionEvidence(version.evidence));
     // No diff here — this just loads a version's actual current state, not
     // a "what changed" view. `diff` (and its removed-node ghosts) is only
     // ever set right after a live edit in handleSend, and explicitly via
@@ -410,7 +411,7 @@ export function AppShell() {
         setGhostLayoutHint(isTier ? {} : rawLayout);
         setRawState(result.version.state);
         setRawLayout(newLayout);
-        setVersionEvidence(result.version.evidence ?? { evidence: [], citations: {} });
+        setVersionEvidence(normalizeVersionEvidence(result.version.evidence));
         setDiff(result.diff);
         setSimulationResult(null); // stale now that the graph changed
         recordEdit();
@@ -447,7 +448,7 @@ export function AppShell() {
     setGhostLayoutHint(rawLayout);
     setRawState(result.version.state);
     setRawLayout(newLayout);
-    setVersionEvidence(result.version.evidence ?? { evidence: [], citations: {} });
+    setVersionEvidence(normalizeVersionEvidence(result.version.evidence));
     setDiff(result.diff);
     setSimulationResult(null); // stale now that the graph changed
     recordEdit();
@@ -479,7 +480,7 @@ export function AppShell() {
     setGhostLayoutHint(rawLayout);
     setRawState(result.version.state);
     setRawLayout(newLayout);
-    setVersionEvidence(result.version.evidence ?? { evidence: [], citations: {} });
+    setVersionEvidence(normalizeVersionEvidence(result.version.evidence));
     setDiff(result.diff);
     setSimulationResult(null); // stale now that the graph changed
     recordEdit();

@@ -82,13 +82,24 @@ export interface ArchitectureState {
 
 // Persisted alongside the version (backend/app/db/schema.sql's `evidence`
 // column) — populated only for kind="reconstruction" (a real ingested
-// repo); every chat/manual edit has {evidence: [], citations: {}}, since
-// those were never grounded in real repo evidence to begin with. Lets a
-// node's real source citation survive past the one-time ingest response,
-// so it's still there any time the version is reopened later.
+// repo); every chat/manual edit was never grounded in real repo evidence
+// to begin with, so it has nothing here. IMPORTANT: the column's real
+// Postgres default is a bare `{}`, NOT `{evidence: [], citations: {}}` —
+// found live, a real crash clicking any node on a chat/manual-edit
+// version (evidence.citations[node.id] throws on a `{}` with no
+// `citations` key at all). A plain `version.evidence ?? fallback` does
+// NOT catch this: `{}` is truthy, so the fallback never runs. Every call
+// site that reads a VersionRow's `evidence` off the wire MUST go through
+// normalizeVersionEvidence below instead of trusting this type directly —
+// the type below describes the shape every OTHER part of the app is
+// safe to assume once normalized, not what the API literally returns.
 export interface VersionEvidence {
   evidence: Evidence[];
   citations: Record<string, string[]>; // node_id -> evidence id(s)
+}
+
+export function normalizeVersionEvidence(raw: Partial<VersionEvidence> | null | undefined): VersionEvidence {
+  return { evidence: raw?.evidence ?? [], citations: raw?.citations ?? {} };
 }
 
 export interface VersionRow {
