@@ -55,6 +55,21 @@ v6 change: database:vector added (embedding similarity search —
 Pinecone/Weaviate/Qdrant/pgvector). New `service:realtime` and
 external_dependency:feature_flags need no entry here for the same
 reason the v5 service/external_dependency additions didn't.
+
+v7 change: external_dependency's flat 100 req/s was calibrated as if
+every third-party integration were on a crippled free tier — found live
+when a market-data API sat right at "overloaded" from ordinary baseline
+traffic alone (the simulator's Rule 2 fan-out sends a service's FULL
+incoming load down every outgoing edge, so any dependency called on
+close to every request receives roughly the app's own peak rps). Most
+named production SaaS APIs on a standard/paid plan support several
+hundred rps, not ~100 — raised to 300 as a more representative single
+"standard tier" assumption. This does NOT change the deeper limitation:
+a real vendor's actual rate limit is a business fact this tool has no
+way to know, so this number is still a rough placeholder, not a fetched
+quota — see simulator.py's distinct finding message for an overloaded
+external_dependency, which says exactly that instead of implying an
+infra capacity problem the architecture can scale away.
 """
 from __future__ import annotations
 
@@ -62,7 +77,7 @@ from app.analyzer.engines import engine_spec_for
 from app.analyzer.sizing import size_spec_for
 from app.models.state import Node
 
-CAPACITY_VERSION = "v6"
+CAPACITY_VERSION = "v7"
 
 # requests/sec a single small instance of each kind is assumed to
 # saturate at, absent any other signal from the graph
@@ -71,7 +86,7 @@ _DEFAULT_CAPACITY_RPS: dict[str, float] = {
     "queue:queue": 10_000,  # SQS/RabbitMQ-shaped point-to-point queue
     "queue:pubsub": 20_000,  # Kafka/Kinesis-shaped fan-out
     "queue:stream": 20_000,  # Kafka Streams/Kinesis Streams-shaped continuous log
-    "external_dependency": 100,
+    "external_dependency": 300,  # a standard/paid third-party API plan, not a free-tier guess (v7 — see docstring)
     "database:relational": 200,
     "database:document": 400,
     "database:keyvalue": 30_000,

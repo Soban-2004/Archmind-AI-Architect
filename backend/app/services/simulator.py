@@ -192,10 +192,26 @@ def run_simulation(state: ArchitectureState, multiplier: float, kill_node_ids: l
     findings: list[SimulationFinding] = []
     overloaded = sorted([l for l in loads if l.status == "overloaded"], key=lambda l: l.utilization_pct, reverse=True)
     for i, l in enumerate(overloaded, start=1):
-        findings.append(SimulationFinding(
-            order=i, node_id=l.node_id, node_name=l.node_name,
-            message=f"{l.node_name} is at {l.utilization_pct:.0f}% of its assumed capacity ({l.capacity_rps:.0f} req/s, {l.basis}) — projected incoming load is {l.incoming_rps:.0f} req/s.",
-        ))
+        node = by_id.get(l.node_id)
+        if node is not None and node.node_kind == "external_dependency":
+            # Deliberately different wording: an "overloaded" internal
+            # service means the architecture under-provisioned itself,
+            # fixable by adding capacity. An external_dependency has no
+            # instance count this architecture controls at all (see
+            # cost.py) — this number is a rough stand-in for a vendor's
+            # real rate limit, which this tool has no way to know, so the
+            # honest framing is "you may be calling this more than its
+            # plan allows", with a fix that's about call pattern (caching,
+            # smoothing bursts, a higher-tier plan), not "scale it up".
+            message = (
+                f"{l.node_name} may be called faster than a typical third-party API plan allows — "
+                f"projected {l.incoming_rps:.0f} req/s against an assumed {l.capacity_rps:.0f} req/s ceiling "
+                f"({l.basis}). This isn't infra you can scale directly: consider caching its responses, "
+                f"smoothing bursts through a queue, or confirming the vendor's real rate limit for your plan."
+            )
+        else:
+            message = f"{l.node_name} is at {l.utilization_pct:.0f}% of its assumed capacity ({l.capacity_rps:.0f} req/s, {l.basis}) — projected incoming load is {l.incoming_rps:.0f} req/s."
+        findings.append(SimulationFinding(order=i, node_id=l.node_id, node_name=l.node_name, message=message))
 
     next_order = len(overloaded) + 1
     for e in state.edges:

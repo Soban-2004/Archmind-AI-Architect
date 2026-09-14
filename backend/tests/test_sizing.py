@@ -145,4 +145,4 @@ def test_keyvalue_database_capacity_raised_to_realistic_level():
     # Redis benchmarks (100k+ ops/sec unpipelined) -- just no longer off
     # by two orders of magnitude the way the old 5000 rps was.
     assert kv_capacity > 5_000 * 4
-    assert "capacity set v6" in basis
+    assert "capacity set v7" in basis
