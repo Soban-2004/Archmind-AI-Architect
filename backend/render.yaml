@@ -29,17 +29,34 @@ services:
       # "Transaction" pooler mode one).
       - key: SUPABASE_DB_URL
         sync: false
-      # Required — the automatic fallback if Cerebras below has a bad
-      # moment (see llm/factory.py, llm/fallback_provider.py), and the
-      # sole provider if CEREBRAS_API_KEY is left unset.
+      # Required — the one hard dependency; every other provider below is
+      # optional and additive (see llm/factory.py's real fallback chain).
       - key: GROQ_API_KEY
         sync: false
       - key: GROQ_MODEL
         value: openai/gpt-oss-120b
-      # Optional — the PRIMARY architect model when set: same gpt-oss-120b
-      # model as Groq, at a real ~4x higher free-tier TPM ceiling (30K vs
-      # 8K). Absent key, this whole thing degrades to Groq-only, unchanged
-      # from before this existed.
+      # Optional, tried FIRST when set — OpenRouter's `:free`-suffixed
+      # models have NO token-per-minute ceiling at all, just a request-
+      # rate limit. Absent key, this degrades to Groq-only, unchanged
+      # from before this existed. The model below churns (OpenRouter's
+      # free-model roster changes without notice — confirmed live within
+      # this same session); check GET /models against your own account if
+      # this one's ever pulled and swap the value here.
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_MODEL
+        value: nvidia/nemotron-3-ultra-550b-a55b:free
+      # Optional, tried LAST — a real 1B tokens/month free, but only 1
+      # request/second, a third safety net rather than where most traffic
+      # should land.
+      - key: MISTRAL_API_KEY
+        sync: false
+      - key: MISTRAL_MODEL
+        value: mistral-small-latest
+      # Optional, NOT in the active provider chain right now (see
+      # llm/factory.py's own comment) — its free trial now requires a
+      # verified payment method. Safe to set; simply unused until that's
+      # resolved.
       - key: CEREBRAS_API_KEY
         sync: false
       - key: CEREBRAS_MODEL

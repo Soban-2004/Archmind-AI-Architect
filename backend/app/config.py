@@ -18,6 +18,29 @@ class Settings:
     # this project without a Cerebras account.
     cerebras_api_key: str = os.environ.get("CEREBRAS_API_KEY", "")
     cerebras_model: str = os.environ.get("CEREBRAS_MODEL", "gpt-oss-120b")
+    # Two more optional links in the fallback chain (see llm/factory.py) —
+    # both confirmed genuinely free, no card, before being added.
+    # OpenRouter's `:free`-suffixed models have NO token-per-minute
+    # ceiling at all (just a request-rate limit — 20 RPM/200 RPD as of
+    # when this was added), which is a more direct fix for "one request's
+    # prompt+state is too big" than a higher-but-still-finite TPM number
+    # would be. The default below is NOT the same gpt-oss-120b model
+    # Groq/Cerebras use — that :free variant was pulled within the same
+    # session this was added in (confirmed live: a real "model
+    # unavailable for free" response), which is exactly the kind of churn
+    # OpenRouter's own docs warn free-tier model availability has. Picked
+    # by actually querying GET /models for this account's current
+    # free-suffixed list and testing the largest one against a real
+    # structured-JSON call, not assumed from a doc. Expect to need to
+    # update this again — that's why it's a plain env var, not baked into
+    # code.
+    openrouter_api_key: str = os.environ.get("OPENROUTER_API_KEY", "")
+    openrouter_model: str = os.environ.get("OPENROUTER_MODEL", "nvidia/nemotron-3-ultra-550b-a55b:free")
+    # Mistral's free "Experiment" tier: a real 1B tokens/month, but only
+    # 1 request/second — kept last in the chain, a real third safety net
+    # rather than somewhere real traffic should normally land.
+    mistral_api_key: str = os.environ.get("MISTRAL_API_KEY", "")
+    mistral_model: str = os.environ.get("MISTRAL_MODEL", "mistral-small-latest")
     # Judge pass (a second, independent model reviewing the architect's
     # proposed architecture for structural correctness — see
     # services/interview.py) — optional. Absent GEMINI_API_KEY, the judge

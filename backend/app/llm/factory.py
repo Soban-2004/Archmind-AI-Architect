@@ -7,19 +7,46 @@ from app.llm.groq_provider import GroqProvider
 
 @lru_cache
 def get_llm_provider() -> LLMProvider:
-    # Cerebras primary (same gpt-oss-120b model as Groq, ~4x the free-tier
-    # TPM ceiling — see config.py's cerebras_api_key comment), Groq as a
-    # resilience fallback if Cerebras has a bad moment (see
-    # FallbackProvider) — not a replacement, since Groq has actually
-    # carried every real session this project has had before this.
-    # Absent CEREBRAS_API_KEY, this degrades to exactly the old
-    # Groq-only behavior, unchanged.
-    if settings.cerebras_api_key:
-        from app.llm.cerebras_provider import CerebrasProvider  # local import: only needed if the key is actually set
-        from app.llm.fallback_provider import FallbackProvider
+    # The chain, in the order requests actually try them — OpenRouter
+    # first, not Groq: `:free`-suffixed OpenRouter models (see config.py's
+    # openrouter_model comment for why the default isn't gpt-oss-120b)
+    # have NO token-per-minute ceiling at all, just a request-rate limit,
+    # which is a more direct fix for "one request's prompt+state is too
+    # big" than any finite TPM number — Groq's 8,000 included. Groq stays
+    # in the chain as the proven,
+    # battle-tested fallback (every real session before this one ran on
+    # it alone), and Mistral last — a real third safety net (1B tokens/
+    # month free) but only 1 request/second, not somewhere real traffic
+    # should normally land.
+    #
+    # Cerebras (llm/cerebras_provider.py — fully built and tested) is
+    # deliberately NOT in this chain right now: its free trial now
+    # requires a verified payment method (confirmed live, a real 402 from
+    # this project's own Cerebras account), so it's parked, not removed —
+    # add CerebrasProvider() back into the list below once that's
+    # resolved, one line.
+    #
+    # Each of OpenRouter/Mistral is optional and additive: absent its key,
+    # it's simply skipped, same fallback philosophy as Cerebras/Gemini/
+    # Tavily already use elsewhere in this file/config.py. Groq alone
+    # (GROQ_API_KEY) is the one hard requirement, unchanged from before
+    # any of this existed.
+    providers: list[LLMProvider] = []
+    if settings.openrouter_api_key:
+        from app.llm.openrouter_provider import OpenRouterProvider  # local import: only needed if the key is actually set
 
-        return FallbackProvider(primary=CerebrasProvider(), secondary=GroqProvider())
-    return GroqProvider()
+        providers.append(OpenRouterProvider())
+    providers.append(GroqProvider())
+    if settings.mistral_api_key:
+        from app.llm.mistral_provider import MistralProvider  # local import: only needed if the key is actually set
+
+        providers.append(MistralProvider())
+
+    if len(providers) == 1:
+        return providers[0]
+    from app.llm.fallback_provider import FallbackProvider
+
+    return FallbackProvider(providers)
 
 
 @lru_cache
