@@ -13,9 +13,10 @@ import re
 import tempfile
 import zipfile
 from pathlib import Path
+from typing import Optional
 
 import httpx
-from fastapi import APIRouter, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi import APIRouter, File, Form, Header, HTTPException, Request, Response, UploadFile
 from pydantic import BaseModel
 
 from app.rate_limit import INGEST_LIMIT, limiter
@@ -26,7 +27,7 @@ router = APIRouter(prefix="/ingest", tags=["ingestion"])
 MAX_UPLOAD_BYTES = 25_000_000  # 25MB — generous for a small sample project's source, not its node_modules/venv (discovery skips those anyway)
 
 
-async def _process_zip_bytes(raw: bytes, name: str) -> dict:
+async def _process_zip_bytes(raw: bytes, name: str, owner_token: Optional[str] = None) -> dict:
     """Shared by both routes below: extract -> ingest_repository ->
     persist_ingestion -> the wire response shape. One place, so the
     upload and GitHub-URL paths can never quietly drift apart on what a
@@ -72,7 +73,7 @@ async def _process_zip_bytes(raw: bytes, name: str) -> dict:
                 "unsupported_notes": result.evidence.unsupported_notes if result.evidence else [],
             }
 
-        persisted = await persist_ingestion(name, result)
+        persisted = await persist_ingestion(name, result, owner_token)
         return {
             "ok": True,
             "project": persisted["project"],
@@ -87,13 +88,13 @@ async def _process_zip_bytes(raw: bytes, name: str) -> dict:
 
 @router.post("")
 @limiter.limit(INGEST_LIMIT)
-async def ingest_project(request: Request, response: Response, file: UploadFile = File(...), name: str = Form("Ingested Project")):
+async def ingest_project(request: Request, response: Response, file: UploadFile = File(...), name: str = Form("Ingested Project"), x_guest_token: Optional[str] = Header(default=None)):
     # `response` unused directly but required — see chat.py's `chat` for why.
     if not file.filename or not file.filename.lower().endswith(".zip"):
         raise HTTPException(400, "upload must be a .zip file")
 
     raw = await file.read()
-    return await _process_zip_bytes(raw, name)
+    return await _process_zip_bytes(raw, name, x_guest_token)
 
 
 # --- GitHub URL import -------------------------------------------------
@@ -132,7 +133,7 @@ class GithubImportRequest(BaseModel):
 
 @router.post("/github")
 @limiter.limit(INGEST_LIMIT)
-async def ingest_from_github(request: Request, response: Response, body: GithubImportRequest):
+async def ingest_from_github(request: Request, response: Response, body: GithubImportRequest, x_guest_token: Optional[str] = Header(default=None)):
     """The same pipeline as POST /ingest, just fed by a zip this fetches
     server-side from GitHub's own public archive endpoint instead of
     requiring a manual download+upload round trip — no auth, so only
@@ -181,4 +182,4 @@ async def ingest_from_github(request: Request, response: Response, body: GithubI
         except httpx.HTTPError as e:
             raise HTTPException(400, f"couldn't download '{owner}/{repo}' from GitHub: {e}")
 
-    return await _process_zip_bytes(raw, body.name.strip() or f"{owner}/{repo}")
+    return await _process_zip_bytes(raw, body.name.strip() or f"{owner}/{repo}", x_guest_token)

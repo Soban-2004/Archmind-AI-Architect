@@ -134,7 +134,7 @@ async def ingest_repository(project_name: str, root: Path) -> IngestionResult:
     return result
 
 
-async def persist_ingestion(project_name: str, result: IngestionResult) -> dict:
+async def persist_ingestion(project_name: str, result: IngestionResult, owner_token: str | None = None) -> dict:
     """Creates the new project + its initial version from a successful
     IngestionResult. Separate from ingest_repository so a caller (the API
     route) can inspect/reject a low-confidence result — e.g. a large
@@ -142,7 +142,7 @@ async def persist_ingestion(project_name: str, result: IngestionResult) -> dict:
     committing it, rather than this always silently persisting whatever
     came back."""
     assert result.ok and result.state is not None
-    project = await repo.create_project(project_name)
+    project = await repo.create_project(project_name, owner_token)
     # Real evidence + citations, persisted alongside the version instead
     # of only ever existing in this one HTTP response — schema.sql's own
     # comment on the `evidence` column explains why: without this, a

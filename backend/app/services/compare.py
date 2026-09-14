@@ -21,9 +21,9 @@ class VersionNotFound(Exception):
     pass
 
 
-async def compare_versions(project_id: UUID, version_a_id: UUID, version_b_id: UUID) -> CompareResult:
-    row_a = await repo.get_version(version_a_id)
-    row_b = await repo.get_version(version_b_id)
+async def compare_versions(project_id: UUID, version_a_id: UUID, version_b_id: UUID, owner_token: str | None = None) -> CompareResult:
+    row_a = await repo.get_version(version_a_id, owner_token)
+    row_b = await repo.get_version(version_b_id, owner_token)
     if row_a is None or row_a["project_id"] != project_id:
         raise VersionNotFound(str(version_a_id))
     if row_b is None or row_b["project_id"] != project_id:

@@ -1,6 +1,7 @@
+from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 
 from app.db import repository as repo
 from app.models.simulation import SimulationRequest
@@ -11,8 +12,8 @@ router = APIRouter(prefix="/projects", tags=["simulation"])
 
 
 @router.post("/{project_id}/versions/{version_id}/simulate")
-async def simulate(project_id: UUID, version_id: UUID, body: SimulationRequest):
-    version = await repo.get_version(version_id)
+async def simulate(project_id: UUID, version_id: UUID, body: SimulationRequest, x_guest_token: Optional[str] = Header(default=None)):
+    version = await repo.get_version(version_id, x_guest_token)
     if version is None or version["project_id"] != project_id:
         raise HTTPException(404, "version not found")
 

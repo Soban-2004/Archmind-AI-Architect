@@ -16,7 +16,7 @@ from app.services import ingestion
 async def test_persist_ingestion_passes_evidence_and_citations_to_create_version(monkeypatch):
     captured: dict = {}
 
-    async def fake_create_project(name):
+    async def fake_create_project(name, owner_token=None):
         return {"id": "proj-1", "name": name, "created_at": "2026-01-01T00:00:00Z"}
 
     async def fake_create_version(project_id, state, kind, parent_version_id=None, label=None, layout=None, evidence=None):
@@ -50,7 +50,7 @@ async def test_persist_ingestion_handles_no_evidence_gracefully(monkeypatch):
     must not crash — empty evidence list, not an AttributeError."""
     captured: dict = {}
 
-    async def fake_create_project(name):
+    async def fake_create_project(name, owner_token=None):
         return {"id": "proj-1", "name": name, "created_at": "2026-01-01T00:00:00Z"}
 
     async def fake_create_version(project_id, state, kind, parent_version_id=None, label=None, layout=None, evidence=None):

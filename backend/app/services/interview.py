@@ -306,7 +306,13 @@ async def _finalize(
     return ChatTurnResult(kind="architecture", summary=summary, version=version, diff=diff, usage=usage)
 
 
-async def handle_chat_turn(project_id: UUID, user_message: str, base_version_id: UUID | None = None, on_stage: OnStage | None = None) -> ChatTurnResult:
+async def handle_chat_turn(
+    project_id: UUID,
+    user_message: str,
+    base_version_id: UUID | None = None,
+    on_stage: OnStage | None = None,
+    owner_token: str | None = None,
+) -> ChatTurnResult:
     """`base_version_id` is whatever version the frontend currently has
     active — an edit or a tier request both branch off it. This is what
     lets sibling tiers (spec §6 Phase 3) share one base instead of chaining
@@ -314,13 +320,25 @@ async def handle_chat_turn(project_id: UUID, user_message: str, base_version_id:
     history a proper branch instead of being blocked. `on_stage`, if given,
     is called with a short real-progress string at each stage this turn
     actually reaches — see OnStage's docstring above; every existing
-    caller omits it and behaves exactly as before."""
+    caller omits it and behaves exactly as before.
+
+    `owner_token` (db/schema.sql's own column doc explains the whole
+    mechanism) is checked against `project_id` itself FIRST, separately
+    from the base_version_id branch below — without this, a chat message
+    with no base_version_id (a project's very first turn) would fall
+    through to get_latest_version's own ownership filter returning None,
+    which this function would otherwise read as "a brand-new project
+    with nothing in it yet" and happily start building on someone
+    else's project_id."""
+    if await repo.get_project(project_id, owner_token) is None:
+        return ChatTurnResult(kind="error", error="project not found")
+
     if base_version_id is not None:
-        base_version = await repo.get_version(base_version_id)
+        base_version = await repo.get_version(base_version_id, owner_token)
         if base_version is None or base_version["project_id"] != project_id:
             return ChatTurnResult(kind="error", error="base_version_id not found")
     else:
-        base_version = await repo.get_latest_version(project_id)
+        base_version = await repo.get_latest_version(project_id, owner_token)
 
     current_state = _state_from_row(base_version)
     parent_id = base_version["id"] if base_version else None
@@ -535,7 +553,7 @@ async def handle_chat_turn(project_id: UUID, user_message: str, base_version_id:
     return ChatTurnResult(kind="error", error="Unexpected: exhausted retries without returning.")
 
 
-async def direct_update_node(project_id: UUID, base_version_id: UUID, node_id: str, attributes: dict) -> ChatTurnResult:
+async def direct_update_node(project_id: UUID, base_version_id: UUID, node_id: str, attributes: dict, owner_token: str | None = None) -> ChatTurnResult:
     """A direct node edit from the canvas UI (click a node, tweak a field,
     save) — Tier 1 (spec §7): deterministic, no LLM call at all, same
     philosophy as try_deterministic_command, just triggered by a UI action
@@ -544,7 +562,10 @@ async def direct_update_node(project_id: UUID, base_version_id: UUID, node_id: s
     _finalize path as every other edit, so it produces a real versioned,
     diffed, ADR'd change — not a side-channel that bypasses the rest of
     the system's guarantees."""
-    base_version = await repo.get_version(base_version_id)
+    if await repo.get_project(project_id, owner_token) is None:
+        return ChatTurnResult(kind="error", error="project not found")
+
+    base_version = await repo.get_version(base_version_id, owner_token)
     if base_version is None or base_version["project_id"] != project_id:
         return ChatTurnResult(kind="error", error="base_version_id not found")
 
@@ -559,7 +580,7 @@ async def direct_update_node(project_id: UUID, base_version_id: UUID, node_id: s
     return await _finalize(project_id, current_state, result.state, base_version["id"], "edit", summary, model_provided_decision=False)
 
 
-async def direct_apply_commands(project_id: UUID, base_version_id: UUID | None, commands: list[MutationCommand]) -> ChatTurnResult:
+async def direct_apply_commands(project_id: UUID, base_version_id: UUID | None, commands: list[MutationCommand], owner_token: str | None = None) -> ChatTurnResult:
     """A manual edit from the canvas UI — add a node via the palette,
     drag-connect two nodes, delete a node or edge — one or several
     commands in a single batch (e.g. add_node + add_edge to wire the new
@@ -585,11 +606,20 @@ async def direct_apply_commands(project_id: UUID, base_version_id: UUID | None, 
     if not commands:
         return ChatTurnResult(kind="error", error="no commands to apply")
 
+    # Checked regardless of which branch below runs — including
+    # base_version_id=None, the "brand-new project" case: project_id
+    # still names a REAL, already-created row at that point (POST
+    # /projects always runs first), so without this check someone could
+    # attach a new "initial" version to any project_id they can guess,
+    # owned or not.
+    if await repo.get_project(project_id, owner_token) is None:
+        return ChatTurnResult(kind="error", error="project not found")
+
     if base_version_id is None:
         current_state = empty_state()
         parent_id: UUID | None = None
     else:
-        base_version = await repo.get_version(base_version_id)
+        base_version = await repo.get_version(base_version_id, owner_token)
         if base_version is None or base_version["project_id"] != project_id:
             return ChatTurnResult(kind="error", error="base_version_id not found")
         current_state = _state_from_row(base_version)

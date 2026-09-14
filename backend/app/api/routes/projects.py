@@ -1,7 +1,7 @@
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import Response
 
 from app.db import repository as repo
@@ -19,61 +19,61 @@ def _state_of(version_row: dict) -> ArchitectureState:
 
 
 @router.post("")
-async def create_project(body: dict):
+async def create_project(body: dict, x_guest_token: Optional[str] = Header(default=None)):
     name = body.get("name", "Untitled Project")
-    project = await repo.create_project(name)
+    project = await repo.create_project(name, x_guest_token)
     return project
 
 
 @router.get("")
-async def list_projects():
-    return await repo.list_projects()
+async def list_projects(x_guest_token: Optional[str] = Header(default=None)):
+    return await repo.list_projects(x_guest_token)
 
 
 @router.patch("/{project_id}")
-async def rename_project(project_id: UUID, body: dict):
+async def rename_project(project_id: UUID, body: dict, x_guest_token: Optional[str] = Header(default=None)):
     name = (body.get("name") or "").strip()
     if not name:
         raise HTTPException(400, "name is required")
-    project = await repo.rename_project(project_id, name)
+    project = await repo.rename_project(project_id, name, x_guest_token)
     if project is None:
         raise HTTPException(404, "project not found")
     return project
 
 
 @router.delete("/{project_id}")
-async def delete_project(project_id: UUID):
-    deleted = await repo.delete_project(project_id)
+async def delete_project(project_id: UUID, x_guest_token: Optional[str] = Header(default=None)):
+    deleted = await repo.delete_project(project_id, x_guest_token)
     if not deleted:
         raise HTTPException(404, "project not found")
     return {"ok": True}
 
 
 @router.get("/{project_id}")
-async def get_project(project_id: UUID):
-    project = await repo.get_project(project_id)
+async def get_project(project_id: UUID, x_guest_token: Optional[str] = Header(default=None)):
+    project = await repo.get_project(project_id, x_guest_token)
     if project is None:
         raise HTTPException(404, "project not found")
-    latest = await repo.get_latest_version(project_id)
+    latest = await repo.get_latest_version(project_id, x_guest_token)
     return {**project, "latest_version": latest}
 
 
 @router.get("/{project_id}/versions")
-async def list_versions(project_id: UUID):
-    return await repo.list_versions(project_id)
+async def list_versions(project_id: UUID, x_guest_token: Optional[str] = Header(default=None)):
+    return await repo.list_versions(project_id, x_guest_token)
 
 
 @router.get("/{project_id}/versions/{version_id}")
-async def get_version(project_id: UUID, version_id: UUID):
-    version = await repo.get_version(version_id)
+async def get_version(project_id: UUID, version_id: UUID, x_guest_token: Optional[str] = Header(default=None)):
+    version = await repo.get_version(version_id, x_guest_token)
     if version is None or version["project_id"] != project_id:
         raise HTTPException(404, "version not found")
     return version
 
 
 @router.put("/{project_id}/versions/{version_id}/layout")
-async def put_version_layout(project_id: UUID, version_id: UUID, body: dict):
-    version = await repo.get_version(version_id)
+async def put_version_layout(project_id: UUID, version_id: UUID, body: dict, x_guest_token: Optional[str] = Header(default=None)):
+    version = await repo.get_version(version_id, x_guest_token)
     if version is None or version["project_id"] != project_id:
         raise HTTPException(404, "version not found")
     layout = body.get("layout")
@@ -84,7 +84,7 @@ async def put_version_layout(project_id: UUID, version_id: UUID, body: dict):
 
 
 @router.patch("/{project_id}/versions/{version_id}/nodes/{node_id}")
-async def update_node_direct(project_id: UUID, version_id: UUID, node_id: str, body: dict):
+async def update_node_direct(project_id: UUID, version_id: UUID, node_id: str, body: dict, x_guest_token: Optional[str] = Header(default=None)):
     """Direct node edit from the canvas (click a node, tweak a field,
     save) — deterministic, no LLM call (see services/interview.py's
     direct_update_node). Branches a new version off `version_id` exactly
@@ -93,26 +93,26 @@ async def update_node_direct(project_id: UUID, version_id: UUID, node_id: str, b
     if not isinstance(attributes, dict) or not attributes:
         raise HTTPException(400, "body must be {'attributes': {...}}")
 
-    result = await direct_update_node(project_id, version_id, node_id, attributes)
+    result = await direct_update_node(project_id, version_id, node_id, attributes, x_guest_token)
     if result.kind == "error":
         raise HTTPException(400, result.error)
     return {"summary": result.summary, "version": result.version, "diff": result.diff}
 
 
 @router.post("/{project_id}/versions/{version_id}/commands")
-async def apply_commands_direct(project_id: UUID, version_id: UUID, body: ApplyCommandsRequest):
+async def apply_commands_direct(project_id: UUID, version_id: UUID, body: ApplyCommandsRequest, x_guest_token: Optional[str] = Header(default=None)):
     """Manual canvas edits — add a node via the palette, drag-connect two
     nodes, delete something — land here as real MutationCommands, the
     same shape and the same validation (see services/interview.py's
     direct_apply_commands) a chat edit already goes through. No LLM call."""
-    result = await direct_apply_commands(project_id, version_id, body.commands)
+    result = await direct_apply_commands(project_id, version_id, body.commands, x_guest_token)
     if result.kind == "error":
         raise HTTPException(400, result.error)
     return {"summary": result.summary, "version": result.version, "diff": result.diff}
 
 
 @router.post("/{project_id}/commands")
-async def apply_commands_to_new_project(project_id: UUID, body: ApplyCommandsRequest):
+async def apply_commands_to_new_project(project_id: UUID, body: ApplyCommandsRequest, x_guest_token: Optional[str] = Header(default=None)):
     """The one case the route above can't cover: a genuinely brand-new
     project has no version at all yet (handleCreateProject deliberately
     doesn't auto-create a blank one — see its own comment in page.tsx), so
@@ -120,19 +120,19 @@ async def apply_commands_to_new_project(project_id: UUID, body: ApplyCommandsReq
     direct_apply_commands, just with base_version_id=None — starts from
     empty_state(), matching how a project's first chat-proposed
     architecture already does."""
-    result = await direct_apply_commands(project_id, None, body.commands)
+    result = await direct_apply_commands(project_id, None, body.commands, x_guest_token)
     if result.kind == "error":
         raise HTTPException(400, result.error)
     return {"summary": result.summary, "version": result.version, "diff": result.diff}
 
 
 @router.get("/{project_id}/versions/{version_id}/diff")
-async def get_version_diff(project_id: UUID, version_id: UUID, against: Optional[UUID] = None):
+async def get_version_diff(project_id: UUID, version_id: UUID, against: Optional[UUID] = None, x_guest_token: Optional[str] = Header(default=None)):
     """Diff any two versions (spec: compare engine must work on arbitrary
     pairs, not just parent/child — Phase 3 tiers branch off a shared parent
     rather than forming a line). Defaults `against` to this version's own
     parent, i.e. "what did this edit change"."""
-    version = await repo.get_version(version_id)
+    version = await repo.get_version(version_id, x_guest_token)
     if version is None or version["project_id"] != project_id:
         raise HTTPException(404, "version not found")
 
@@ -140,7 +140,7 @@ async def get_version_diff(project_id: UUID, version_id: UUID, against: Optional
     if against_id is None:
         before_state = empty_state()
     else:
-        against_version = await repo.get_version(against_id)
+        against_version = await repo.get_version(against_id, x_guest_token)
         if against_version is None or against_version["project_id"] != project_id:
             raise HTTPException(404, "'against' version not found")
         before_state = _state_of(against_version)
@@ -149,16 +149,16 @@ async def get_version_diff(project_id: UUID, version_id: UUID, against: Optional
 
 
 @router.get("/{project_id}/versions/{version_id}/export/starter-kit")
-async def export_starter_kit(project_id: UUID, version_id: UUID):
+async def export_starter_kit(project_id: UUID, version_id: UUID, x_guest_token: Optional[str] = Header(default=None)):
     """A small, real bundle meant to be handed to a coding agent (or a
     person) as the actual starting point for building this architecture —
     not just a picture of it (see services/starter_kit.py for what's in
     it and why). Every file is generated purely from data already
     validated and stored on this version; nothing invented per download."""
-    version = await repo.get_version(version_id)
+    version = await repo.get_version(version_id, x_guest_token)
     if version is None or version["project_id"] != project_id:
         raise HTTPException(404, "version not found")
-    project = await repo.get_project(project_id)
+    project = await repo.get_project(project_id, x_guest_token)
     if project is None:
         raise HTTPException(404, "project not found")
 

@@ -1,3 +1,4 @@
+import { getGuestToken } from "./guestToken";
 import type { ChatResponse, ChatStreamEvent, CompareResult, IngestResponse, MutationCommand, Scorecard, ScorecardAnswer, SimulationResult, VersionDiff, VersionRow, VersionSummary } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -5,7 +6,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
-    headers: { "Content-Type": "application/json", ...init?.headers },
+    headers: { "Content-Type": "application/json", "X-Guest-Token": getGuestToken(), ...init?.headers },
   });
   if (!res.ok) {
     const body = await res.text();
@@ -110,7 +111,7 @@ export const api = {
   async *sendChatMessageStream(projectId: string, message: string, baseVersionId?: string | null): AsyncGenerator<ChatStreamEvent> {
     const res = await fetch(`${API_URL}/projects/${projectId}/chat/stream`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-Guest-Token": getGuestToken() },
       body: JSON.stringify({ message, base_version_id: baseVersionId ?? null }),
     });
     if (!res.ok || !res.body) {
@@ -160,7 +161,9 @@ export const api = {
    * services/starter_kit.py). Not built on the shared `request` helper:
    * the response is a real zip file, not JSON. */
   downloadStarterKit: async (projectId: string, versionId: string): Promise<Blob> => {
-    const res = await fetch(`${API_URL}/projects/${projectId}/versions/${versionId}/export/starter-kit`);
+    const res = await fetch(`${API_URL}/projects/${projectId}/versions/${versionId}/export/starter-kit`, {
+      headers: { "X-Guest-Token": getGuestToken() },
+    });
     if (!res.ok) {
       const body = await res.text();
       throw new Error(`${res.status} ${res.statusText}: ${body}`);
@@ -176,7 +179,7 @@ export const api = {
     const form = new FormData();
     form.append("file", file);
     form.append("name", name);
-    const res = await fetch(`${API_URL}/ingest`, { method: "POST", body: form });
+    const res = await fetch(`${API_URL}/ingest`, { method: "POST", headers: { "X-Guest-Token": getGuestToken() }, body: form });
     if (!res.ok) {
       const body = await res.text();
       throw new Error(`${res.status} ${res.statusText}: ${body}`);

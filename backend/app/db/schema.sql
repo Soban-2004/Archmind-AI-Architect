@@ -7,14 +7,36 @@ create table if not exists projects (
     id          uuid primary key default gen_random_uuid(),
     name        text not null,
     created_at  timestamptz not null default now(),
-    -- This app has no auth or per-user scoping at all (a deliberate
-    -- guest-mode design, not an oversight) — every project is visible to
-    -- every visitor by default. `hidden` exists for the one real
-    -- exception that design needs: a project belonging to whoever's
-    -- actually running/demoing this deployment, kept out of the public
-    -- list_projects() result while staying fully reachable by anyone who
-    -- already has its id (a saved link, or the owner's own browser) —
-    -- get_project() below deliberately does NOT filter on this column.
+    -- No login here, by design (a guest-mode app, not an oversight) —
+    -- but "no login" and "no privacy between visitors" turned out to be
+    -- two different things once asked directly, so this is real, if
+    -- lightweight, per-visitor isolation: an opaque random id the
+    -- frontend generates once per browser and sends as the X-Guest-Token
+    -- header on every request. Person A's browser and Person B's browser
+    -- get different tokens, so list_projects() and every project-scoped
+    -- read/write in repository.py only ever returns/touches a project
+    -- whose owner_token matches the caller's own — Person B genuinely
+    -- cannot see or touch Person A's project, not just "it's not in
+    -- their list". A project with owner_token IS NULL (every project
+    -- created before this column existed) is the one deliberate
+    -- exception: reachable by anyone who already has its id, same
+    -- behavior it always had — this feature didn't retroactively lock
+    -- anyone out of their own pre-existing data.
+    --
+    -- The real, honest limitation of a token instead of an account:
+    -- it lives in one browser's localStorage. Clear site data, switch
+    -- browsers, or use a different device, and that identity — and
+    -- every project tied to it — is gone for good. There's nothing to
+    -- log back in with. That's the deliberate tradeoff for "no signup
+    -- screen, just open the app and your projects are yours."
+    owner_token text,
+    -- `hidden`: a SEPARATE, narrower exception from owner_token above —
+    -- for a project belonging to whoever's actually running/demoing this
+    -- deployment (kept out of the public browse list even though nobody
+    -- else could see it anyway once it's token-owned; mainly relevant
+    -- for a legacy owner_token-less project like this repo's own real
+    -- "Stock Hinge"). get_project() deliberately does NOT filter on
+    -- this column — only list_projects() (the public browse list) does.
     hidden      boolean not null default false
 );
 
@@ -43,6 +65,7 @@ create table if not exists versions (
 
 create index if not exists idx_versions_project on versions(project_id);
 create index if not exists idx_versions_parent on versions(parent_version_id);
+create index if not exists idx_projects_owner_token on projects(owner_token);
 
 -- Queryable independent of snapshots (spec §3.2). Each ADR is also embedded
 -- in the state.adrs of the version it was created in; this table exists so
@@ -94,3 +117,11 @@ alter table versions add column if not exists evidence jsonb not null default '{
 -- Same idempotent-add pattern, for a database that already had `projects`
 -- from before the `hidden` column existed.
 alter table projects add column if not exists hidden boolean not null default false;
+
+-- Same idempotent-add pattern, for a database that already had `projects`
+-- from before the `owner_token` column existed. Every pre-existing
+-- project gets owner_token=NULL, i.e. the "reachable by anyone with its
+-- id" grandfather case schema.sql's own comment on the column describes
+-- — never silently locked away from whoever was actually using it.
+alter table projects add column if not exists owner_token text;
+create index if not exists idx_projects_owner_token on projects(owner_token);

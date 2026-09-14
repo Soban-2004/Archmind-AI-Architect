@@ -1,8 +1,9 @@
 import asyncio
 import json
+from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Header, HTTPException, Request, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import StreamingResponse
 
@@ -34,7 +35,7 @@ def _result_payload(result: ChatTurnResult) -> dict:
 
 @router.post("/{project_id}/chat")
 @limiter.limit(LLM_LIMIT)
-async def chat(request: Request, response: Response, project_id: UUID, body: dict):
+async def chat(request: Request, response: Response, project_id: UUID, body: dict, x_guest_token: Optional[str] = Header(default=None)):
     # `response` is unused directly but MUST be declared: slowapi's
     # headers_enabled=True (rate_limit.py) needs a real injected Response
     # to write X-RateLimit-*/Retry-After headers onto for an endpoint that
@@ -48,13 +49,13 @@ async def chat(request: Request, response: Response, project_id: UUID, body: dic
     base_version_id_raw = body.get("base_version_id")
     base_version_id = UUID(base_version_id_raw) if base_version_id_raw else None
 
-    result = await handle_chat_turn(project_id, message, base_version_id)
+    result = await handle_chat_turn(project_id, message, base_version_id, owner_token=x_guest_token)
     return _result_payload(result)
 
 
 @router.post("/{project_id}/chat/stream")
 @limiter.limit(LLM_LIMIT)
-async def chat_stream(request: Request, project_id: UUID, body: dict):
+async def chat_stream(request: Request, project_id: UUID, body: dict, x_guest_token: Optional[str] = Header(default=None)):
     """Same real pipeline as POST /chat (handle_chat_turn) — this doesn't
     replace it, it's additive for a caller that wants live progress.
     Streamed as Server-Sent Events: a real `{"type": "stage", ...}` event
@@ -78,7 +79,7 @@ async def chat_stream(request: Request, project_id: UUID, body: dict):
 
         async def run() -> None:
             try:
-                result = await handle_chat_turn(project_id, message, base_version_id, on_stage=on_stage)
+                result = await handle_chat_turn(project_id, message, base_version_id, on_stage=on_stage, owner_token=x_guest_token)
                 await queue.put({"type": "result", "payload": _result_payload(result)})
             except Exception as e:
                 # Mirrors handle_chat_turn's own never-let-a-raw-exception-

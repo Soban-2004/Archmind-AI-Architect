@@ -94,7 +94,7 @@ async def test_resolves_default_branch_and_fetches_the_right_archive_url(monkeyp
     monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
     monkeypatch.setattr(httpx.AsyncClient, "stream", fake_stream)
 
-    async def fake_process(raw, name):
+    async def fake_process(raw, name, owner_token=None):
         calls["raw"] = raw
         calls["name"] = name
         return {"ok": True, "fake": True}
@@ -126,7 +126,7 @@ async def test_explicit_ref_in_the_url_skips_the_api_lookup(monkeypatch):
         calls["archive_url"] = url
         return _FakeStreamResponse([b"zip-bytes"])
 
-    async def fake_process(raw, name):
+    async def fake_process(raw, name, owner_token=None):
         return {"ok": True}
 
     monkeypatch.setattr(httpx.AsyncClient, "stream", fake_stream)

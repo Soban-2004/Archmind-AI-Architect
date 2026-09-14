@@ -76,13 +76,22 @@ class FakeRepo:
         self.messages: list[dict] = []
         self.versions_created: list[dict] = []
 
-    async def get_version(self, version_id):
+    async def get_version(self, version_id, owner_token=None):
         if self._base_version and self._base_version["id"] == version_id:
             return self._base_version
         return None
 
-    async def get_latest_version(self, project_id):
+    async def get_latest_version(self, project_id, owner_token=None):
         return self._base_version
+
+    async def get_project(self, project_id, owner_token=None):
+        # These tests aren't exercising ownership at all -- just needs to
+        # be truthy so handle_chat_turn/direct_update_node/
+        # direct_apply_commands's own "does this project exist" check
+        # (added alongside real per-visitor isolation) doesn't
+        # short-circuit into an error before reaching the logic actually
+        # under test here.
+        return {"id": project_id, "name": "Fake Project"}
 
     async def add_message(self, project_id, role, content, version_id=None):
         msg_id = uuid4()
@@ -141,6 +150,7 @@ def fake_repo(monkeypatch, base_version: dict) -> FakeRepo:
     repo = FakeRepo(base_version)
     monkeypatch.setattr(interview.repo, "get_version", repo.get_version)
     monkeypatch.setattr(interview.repo, "get_latest_version", repo.get_latest_version)
+    monkeypatch.setattr(interview.repo, "get_project", repo.get_project)
     monkeypatch.setattr(interview.repo, "add_message", repo.add_message)
     monkeypatch.setattr(interview.repo, "set_message_version", repo.set_message_version)
     monkeypatch.setattr(interview.repo, "get_branch_history", repo.get_branch_history)

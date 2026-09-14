@@ -64,7 +64,7 @@ def reconstructed_row(monkeypatch):
 
     import app.services.migration as migration
 
-    async def fake_get_version(version_id):
+    async def fake_get_version(version_id, owner_token=None):
         return rows.get(version_id)
 
     monkeypatch.setattr(migration.repo, "get_version", fake_get_version)

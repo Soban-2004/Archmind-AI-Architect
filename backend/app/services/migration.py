@@ -31,9 +31,9 @@ class VersionNotFound(Exception):
     pass
 
 
-async def generate_migration_blueprint(project_id: UUID, reconstructed_version_id: UUID, target_version_id: UUID) -> MigrationBlueprintResult:
-    reconstructed_row = await repo.get_version(reconstructed_version_id)
-    target_row = await repo.get_version(target_version_id)
+async def generate_migration_blueprint(project_id: UUID, reconstructed_version_id: UUID, target_version_id: UUID, owner_token: str | None = None) -> MigrationBlueprintResult:
+    reconstructed_row = await repo.get_version(reconstructed_version_id, owner_token)
+    target_row = await repo.get_version(target_version_id, owner_token)
     if reconstructed_row is None or reconstructed_row["project_id"] != project_id:
         raise VersionNotFound(str(reconstructed_version_id))
     if target_row is None or target_row["project_id"] != project_id:

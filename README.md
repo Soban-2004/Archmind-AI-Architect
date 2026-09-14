@@ -1301,3 +1301,79 @@ cost vs. capacity, storage_gb as an independent line (present and absent),
 infra_node/external_dependency nodes (no `size` field at all) unaffected,
 and size + real load scaling composing correctly together. Full backend
 suite (51 tests) and `tsc`/`eslint`/`next build` all clean.
+
+## Per-visitor project isolation, without a login screen
+
+Asked directly, ahead of deploying this publicly: "Person A's project
+must be visible only by Person A, not Person B — is that true today?" It
+wasn't. Every project was visible to every visitor by default (the
+guest-mode design was real, but "no login" had quietly also meant "no
+privacy between visitors", which turned out to be a different question
+once asked out loud). The rate limiter's per-IP counters don't help here
+either — they're in-memory, request-throttling only, never written to
+the database, with zero connection to which project belongs to whom.
+
+The constraint that shaped the fix: still no login screen, no signup,
+nothing to type — the whole point of guest mode. The answer is a `projects.
+owner_token` column: an opaque, random id the frontend generates once per
+browser (`crypto.randomUUID()`, `localStorage`, a new
+`lib/guestToken.ts`) and sends as `X-Guest-Token` on every request. No
+identity to create, no password to remember — but Person A's browser and
+Person B's browser get different tokens, so they genuinely see different,
+separate project lists, not just a UI-level filter over the same shared
+data.
+
+The real, honest limitation, stated plainly rather than glossed over: a
+token isn't an account. It lives in one browser's `localStorage` — clear
+site data, switch browsers, or use a different device, and that identity
+(and every project tied to it) is gone for good, with nothing to log back
+into. That's the deliberate tradeoff for skipping a signup screen
+entirely, not an oversight.
+
+**Enforced at the data layer, not just the list endpoint.** The tempting
+shortcut would have been "just filter `list_projects()` by token" and
+call it done — but that only hides a project from *browsing*, it doesn't
+actually stop someone who already has (or guesses) a project's id from
+opening, editing, or deleting it directly. Real isolation meant pushing
+the check into every read/write repository.py function that touches a
+project or version (`get_project`, `list_projects`, `rename_project`,
+`delete_project`, `get_latest_version`, `get_version`, `list_versions`),
+each filtering `owner_token IS NULL OR owner_token = $token` — the `IS
+NULL` half is the deliberate grandfather clause: every project created
+before this column existed (this repo's own real "Stock Hinge" project
+among them) stays reachable by anyone who already has its id, exactly
+its behavior before this feature, never retroactively locked away from
+whoever was actually using it. A mismatched token and a genuinely
+nonexistent id both resolve to the identical 404 — a stranger can never
+use the response to tell "doesn't exist" apart from "exists but isn't
+yours".
+
+Threading that through meant updating every service-layer entry point
+that resolves a project without going through a route-level check first
+— `handle_chat_turn`, `direct_update_node`, `direct_apply_commands`
+(services/interview.py), `compare_versions`, `generate_migration_
+blueprint` — plus a project-ownership check at the very top of the three
+interview.py functions specifically, independent of whichever
+base_version_id branch runs below it: the trickiest case found while
+building this was `direct_apply_commands`'s `base_version_id=None` path
+("start a brand-new project from empty_state()") — without an explicit
+check there, that branch would have let anyone attach a new version to
+*any* existing project_id they could guess, owned or not, since
+`get_latest_version` returning `None` for "not yours" was
+indistinguishable from `None` meaning "no versions yet".
+
+4 new tests (`test_project_isolation.py`) confirm all three of those
+entry points reject a request the moment ownership fails, via a
+FakeRepo whose `get_project` simulates "real project, wrong owner" and
+asserts nothing else gets called afterward. The actual SQL-level
+filtering needs a real database to test meaningfully (same reasoning as
+every other DB-touching function in this codebase) — verified live
+instead: two disposable guest tokens standing in for two real visitors,
+confirming Person A's project appears in Person A's list and nowhere in
+Person B's, a direct-by-id request from Person B (and from no token at
+all) 404s, the real owner's own reads/writes/deletes still work exactly
+as before, a cross-owner write attempt is rejected with a clean error
+(not a crash), and the real, pre-existing "Stock Hinge" project stays
+reachable regardless of which token — or no token — asks for it. Full
+backend suite: 181 passed (was 177). `tsc`/`eslint`/`next build` all
+clean. Disposable test projects cleaned up after verification.
