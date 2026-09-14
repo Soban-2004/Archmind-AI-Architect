@@ -2,7 +2,10 @@ import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { Cloud, Database, Globe, Layers, Server } from "lucide-react";
 import type { ArchNode, DiffStatus, LoadStatus, NodeKind } from "@/lib/types";
 
-const KIND_STYLE: Record<NodeKind, { bg: string; border: string; icon: string; label: string; Icon: typeof Server }> = {
+// Exported for the component palette (ComponentPalette.tsx) and the
+// right-click add-here menu — reused as-is so a palette tile's icon/color
+// is a real preview of the node it becomes, not a second visual language.
+export const KIND_STYLE: Record<NodeKind, { bg: string; border: string; icon: string; label: string; Icon: typeof Server }> = {
   service: {
     bg: "bg-blue-50 dark:bg-blue-500/10",
     border: "border-blue-300 dark:border-blue-500/40",

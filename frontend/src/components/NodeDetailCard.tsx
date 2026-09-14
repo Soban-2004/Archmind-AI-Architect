@@ -99,18 +99,38 @@ interface Props {
    * manual-edit version has empty evidence, so this section just doesn't
    * render for those nodes, correctly (there's nothing to cite). */
   evidence?: VersionEvidence;
+  /** Open straight into edit mode on mount — used exactly once, right
+   * after placing a new node from the component palette (see
+   * ArchitectureCanvas), so renaming it away from its default "New
+   * Relational Database"-style name is immediate instead of a second
+   * click to find Edit. Read only at mount (this component is keyed by
+   * node.id in ArchitectureCanvas, so a different node always means a
+   * fresh instance) — a later prop change doesn't reopen editing on an
+   * already-mounted card. */
+  startInEditMode?: boolean;
 }
 
-export function NodeDetailCard({ node, load, finding, onClose, onSave, onDelete, killed, onToggleKill, evidence }: Props) {
+export function NodeDetailCard({ node, load, finding, onClose, onSave, onDelete, killed, onToggleKill, evidence, startInEditMode }: Props) {
   const meta = KIND_META[node.node_kind];
   const Icon = meta.Icon;
   const info = getComponentInfo(node);
   const editableFields = EDITABLE_FIELDS[node.node_kind] ?? [];
 
-  const [editing, setEditing] = useState(false);
+  // startInEditMode's initial value is read here, via lazy useState
+  // initializers, rather than an effect that calls startEditing() on
+  // mount — this runs exactly once, synchronously, the first time this
+  // node's card is constructed (see startInEditMode's own doc: this
+  // component is keyed by node.id, so a fresh instance IS a fresh mount),
+  // with no extra render in between.
+  const [editing, setEditing] = useState(() => !!startInEditMode && !!onSave);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [draft, setDraft] = useState<Record<string, string>>(() => {
+    if (!startInEditMode || !onSave) return {};
+    const initial: Record<string, string> = { name: node.name };
+    for (const f of editableFields) initial[f.key] = displayValue(node[f.key]);
+    return initial;
+  });
   const [deleting, setDeleting] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 

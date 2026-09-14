@@ -379,7 +379,7 @@ export function AppShell() {
       if (result.kind === "question") {
         setMessages((prev) => [
           ...prev,
-          { role: "assistant", content: result.question, quickReplies: result.quick_replies, animate: true, createdAt: new Date().toISOString() },
+          { role: "assistant", content: result.question, quickReplies: result.quick_replies, reasoning: result.reasoning, animate: true, createdAt: new Date().toISOString() },
         ]);
       } else if (result.kind === "answer") {
         // Non-mutating reply (a question/recommendation answer or a
@@ -392,7 +392,10 @@ export function AppShell() {
           { role: "assistant", content: result.answer, sources: result.sources, animate: true, createdAt: new Date().toISOString() },
         ]);
       } else if (result.kind === "architecture") {
-        setMessages((prev) => [...prev, { role: "assistant", content: result.summary, animate: true, createdAt: new Date().toISOString() }]);
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: result.summary, reasoning: result.reasoning, animate: true, createdAt: new Date().toISOString() },
+        ]);
 
         const isTier = result.version.kind === "tier";
         // A tier is a fresh generation (unrelated node ids), not an
@@ -458,8 +461,9 @@ export function AppShell() {
    * delete node/edge — one or several MutationCommands from a single user
    * action, going through the exact same apply/finalize path as
    * handleNodeSave/handleSend, just a different origin for the commands.
-   * Errors are re-thrown so the calling UI (AddNodeMenu, the edge-delete
-   * confirm card, NodeDetailCard's delete confirm) can show them inline.
+   * Errors are re-thrown so the calling UI (ArchitectureCanvas's own
+   * handlePaletteAdd, the edge-delete confirm card, NodeDetailCard's
+   * delete confirm) can show them inline.
    * No activeVersionId is a real, valid state here (not "nothing to do
    * yet") — a genuinely brand-new project has no version at all until the
    * first one exists, so the very first manual add_node has to start the
