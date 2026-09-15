@@ -722,9 +722,24 @@ export function AppShell() {
           }}
         >
           <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-brand-400 to-brand-600 text-white shadow-soft">
-              <Boxes size={17} />
-            </div>
+            {view === "landing" ? (
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-brand-400 to-brand-600 text-white shadow-soft">
+                <Boxes size={17} />
+              </div>
+            ) : (
+              // Wired to actually go home — found live: the logo mark reads
+              // as a clickable "back to start" affordance (it's the one
+              // fixed anchor in every corner of the app), but nothing here
+              // ever navigated anywhere. Only shown once there's actually
+              // somewhere else to go (not on the landing screen itself).
+              <button
+                onClick={handleShowLanding}
+                title="Back to projects"
+                className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-brand-400 to-brand-600 text-white shadow-soft transition hover:brightness-110 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-background"
+              >
+                <Boxes size={17} />
+              </button>
+            )}
             <div className="leading-tight">
               {view === "app" ? (
                 <>
