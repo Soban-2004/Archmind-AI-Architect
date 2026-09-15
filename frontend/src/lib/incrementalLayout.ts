@@ -32,11 +32,41 @@ function findPositionedSibling(n: { id: string }, edge: ArchEdge, state: Archite
   return sibling ? (isOutgoing ? sibling.from_id : sibling.to_id) : null;
 }
 
+// Beyond this many nodes stacked straight down one column, a real group
+// (e.g. 3 backends behind a load balancer) starts reading as "everything
+// just piles up vertically" instead of an intentional cluster — found
+// live: a chat conversation with several edits in a row, each adding one
+// more sibling, produced one long single-file column of boxes regardless
+// of how many accumulated, because the old version of this function only
+// ever searched for a free slot by moving further down the same column.
+const MAX_COLUMN_SIBLINGS = 4;
+
+/** Finds an unoccupied spot near (x, startY), preferring straight down
+ * from it (so a small group still reads as one aligned column) but
+ * wrapping into a fresh column — offset right by one node-width — once a
+ * column already holds MAX_COLUMN_SIBLINGS nodes, instead of letting a
+ * single column grow without limit. This is the only thing that changed
+ * about incremental placement; sibling-detection and centroid placement
+ * above are untouched — a large group now actually fills 2D space instead
+ * of a single straight line, without needing dagre (or anything, LLM
+ * included) to re-lay out nodes that already have a placed position. */
 function firstFreeSlot(x: number, startY: number, layout: LayoutMap): { x: number; y: number } {
+  let col = 0;
+  let stacked = 0;
   let y = startY;
   let guard = 0;
-  while (Object.values(layout).some((p) => Math.abs(p.x - x) < NODE_WIDTH && Math.abs(p.y - y) < NODE_HEIGHT) && guard < 20) {
-    y += NODE_HEIGHT + 20;
+  while (guard < 40) {
+    const cx = x + col * (NODE_WIDTH + 60);
+    const collision = Object.values(layout).some((p) => Math.abs(p.x - cx) < NODE_WIDTH && Math.abs(p.y - y) < NODE_HEIGHT);
+    if (!collision) return { x: cx, y };
+    stacked++;
+    if (stacked >= MAX_COLUMN_SIBLINGS) {
+      col++;
+      stacked = 0;
+      y = startY;
+    } else {
+      y += NODE_HEIGHT + 20;
+    }
     guard++;
   }
   return { x, y };
