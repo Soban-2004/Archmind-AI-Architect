@@ -769,7 +769,7 @@ export function AppShell() {
                 // new or pick a path in," so a project-switcher control
                 // (whose own dropdown offers "+ New" again) is pure
                 // redundancy here, not a real affordance. Found live.
-                <p className="px-2 text-sm font-semibold text-slate-800 dark:text-slate-100">AI Architect</p>
+                <p className="px-2 font-display text-sm font-semibold text-slate-800 dark:text-slate-100">AI Architect</p>
               )}
             </div>
           </div>

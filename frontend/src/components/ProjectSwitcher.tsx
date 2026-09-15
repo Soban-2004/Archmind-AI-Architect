@@ -100,7 +100,7 @@ export function ProjectSwitcher({ projectId, projectName, onSwitch, onCreate, sw
         className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-left transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 active:scale-[0.98] dark:hover:bg-slate-800"
       >
         <div className="leading-tight">
-          <p className="max-w-[160px] truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{projectName}</p>
+          <p className="font-display max-w-[160px] truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{projectName}</p>
         </div>
         <ChevronDown size={13} className={`shrink-0 text-slate-400 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
       </button>
