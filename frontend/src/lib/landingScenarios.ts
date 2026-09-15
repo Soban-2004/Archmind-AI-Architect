@@ -12,13 +12,21 @@ import { NODE_HEIGHT, NODE_WIDTH, TRAFFIC_SOURCE_HEIGHT, TRAFFIC_SOURCE_WIDTH } 
 // product uses, so what a visitor sees here is pixel-for-pixel what the
 // product itself renders, not a separate illustration of it.
 
-// Tighter than lib/layout.ts's own dagre config (200x68 nodes, ranksep
+// Tighter than lib/layout.ts's own dagre config (224x68 nodes, ranksep
 // 100, nodesep 40) on purpose: these three scenario diagrams sit in a
 // boxed half-width column (Figure + a 50/50 row split), nowhere near as
 // much room as the hero gets, and the old 300/108 spacing was landing
 // them at MiniArchitecturePreview's own zoom floor — at or below the
 // minimum legible size, not just "a bit small."
-const COL = NODE_WIDTH + 40; // 240
+//
+// The +40 gap this used to be was tuned against NODE_WIDTH=200, and a
+// live screenshot after the width->224 bump showed the real problem it
+// was hiding all along: ArchNodeCard's status badge (SIM_BADGE, e.g.
+// "OVERLOADED") is absolutely positioned overhanging the node's own
+// top-right corner — at a 40px gap it visually collides with whatever
+// sits immediately to its right, not just looking "a bit close." +64
+// gives the badge real clearance instead of just scaling with the node.
+const COL = NODE_WIDTH + 64; // 288
 const ROW = NODE_HEIGHT + 30; // 98
 
 // --- Shared base topology: Storefront -> Gateway -> Orders API -> {DB, Cache}
@@ -82,7 +90,13 @@ export interface Scenario {
 // synthetic "Users" node (the same mechanism a live simulation uses)
 // attaches to just that one node automatically — no special-casing
 // needed, it falls straight out of the corrected topology.
-const HGAP = 40;
+// Found live: at 40, Storefront and API Gateway read as nearly touching
+// (the dotted connector barely visible) right next to API Gateway's
+// branch, which gets a visibly roomier gap — the asymmetry was supposed
+// to be "branch gets a bit extra," not "the single-line hops look
+// cramped." Raised the shared baseline; BRANCH_GAP_EXTRA below still adds
+// its own extra on top for the branch specifically.
+const HGAP = 56;
 const VGAP = 56;
 // The gap right after API Gateway gets extra room on top of the normal
 // HGAP — that's the one transition where a single node's two outgoing
