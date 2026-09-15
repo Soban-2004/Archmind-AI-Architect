@@ -320,6 +320,15 @@ export function AppShell() {
    * the URL matches what's on screen even if we got here from a
    * /project/[id] page. */
   function handleShowLanding() {
+    // Found live: navigating from /project/[id] to "/" unmounts and
+    // remounts AppShell (a different route segment, so every piece of
+    // component state — including projectId itself — resets) — which
+    // re-runs the mount effect that silently reopens whatever project
+    // localStorage still remembers, bouncing straight back into it about
+    // a second later (the round trip of that background api.getProject
+    // call). An explicit "go home" click has to actually clear that, not
+    // just change what's on screen right now, or the remount undoes it.
+    localStorage.removeItem(STORAGE_KEY);
     setView("landing");
     if (pathname !== "/") router.push("/");
   }
