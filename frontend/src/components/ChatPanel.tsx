@@ -248,7 +248,7 @@ export function ChatPanel({ messages, onSend, busy, busyStage, onConsumeAnimatio
         <button
           type="submit"
           disabled={busy || !draft.trim()}
-          className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-lg bg-brand-600 text-white shadow-sm shadow-brand-600/20 transition duration-150 hover:bg-brand-700 active:scale-95 disabled:opacity-40 disabled:active:scale-100"
+          className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-lg bg-brand-600 text-white shadow-soft transition duration-150 hover:bg-brand-700 active:scale-95 disabled:opacity-40 disabled:active:scale-100"
         >
           <SendHorizontal size={17} />
         </button>

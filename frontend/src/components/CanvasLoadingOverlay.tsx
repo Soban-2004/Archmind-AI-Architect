@@ -35,7 +35,7 @@ export function CanvasLoadingOverlay({ active, fullscreen = false }: Props) {
     >
       <div className="relative flex h-16 w-16 items-center justify-center">
         <div className="animate-spin-slow absolute inset-0 rounded-full border-2 border-dashed border-brand-300 dark:border-brand-500/40" />
-        <div className="flex h-10 w-10 animate-pulse items-center justify-center rounded-full bg-brand-600 text-white shadow-lg shadow-brand-600/30">
+        <div className="flex h-10 w-10 animate-pulse items-center justify-center rounded-full bg-brand-600 text-white shadow-soft">
           <Sparkles size={18} />
         </div>
       </div>

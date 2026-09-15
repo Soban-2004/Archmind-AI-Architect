@@ -5,102 +5,102 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --background: #f3f1ec; /* warm paper, not cool slate-tinted */
+  --background: #f4f1fb; /* soft lavender-white — a tint OF the brand violet, not neutral paper */
   --surface: #ffffff;
-  --surface-2: #f7f5f0; /* one step up from the page: a card sitting ON the page */
-  --surface-3: #efe8da; /* the raised/active/selected layer — one step past surface-2, not identical to it */
-  --foreground: #201d17; /* warm near-black, not cool slate */
+  --surface-2: #f6f2fc; /* one step up from the page: a card sitting ON the page */
+  --surface-3: #ece2fa; /* the raised/active/selected layer — one step past surface-2, not identical to it */
+  --foreground: #1c1730; /* deep violet-black, not neutral slate */
 
-  /* "Instrument Panel" identity: a warm amber/copper as the ONE action
-     accent (send button, primary CTA, selected node, focus ring) — in
-     place of the generic indigo-600 this used to be, and in place of the
-     blue this became mid-redesign. Amber was chosen for what it's paired
-     against: true near-black in dark mode reads as an actual instrument
-     panel (a dial, a warning light) rather than another blue SaaS product.
-     Same variable names as before (brand-*) so every existing
-     `bg-brand-600`/`text-brand-500`/etc. across the app repalettes for
-     free — this file is the only thing that needed to change for that. */
-  --brand-50: #fdf1e7;
-  --brand-100: #fce0c8;
-  --brand-300: #f3a868;
-  --brand-400: #ee8a48;
-  --brand-500: #d9702f;
-  --brand-600: #b95a22;
-  --brand-700: #93461a;
+  /* "Neon Grid" identity, v2: violet as the ONE action accent (send
+     button, primary CTA, selection), a deliberately separate pink for
+     informational moments — picked flat and specific (no glow/blur
+     anywhere, removed from every component that had it) rather than the
+     softer amber/cyanotype pairs tried earlier. Light mode uses a deeper,
+     more saturated violet than dark mode (#8b5cf6-family, not #b490ff)
+     since the bright dark-mode violet doesn't have enough contrast on a
+     light ground. Same variable names as before (brand-*) so every
+     existing `bg-brand-600`/`text-brand-500`/etc. across the app
+     repalettes for free. */
+  --brand-50: #f1ecfd;
+  --brand-100: #e2d7fb;
+  --brand-300: #a97ef2;
+  --brand-400: #8b5cf6;
+  --brand-500: #7c3aed;
+  --brand-600: #6d28d9;
+  --brand-700: #5b21b6;
 
-  /* The second, DELIBERATELY separate accent — reserved only for
-     informational/explanatory moments (a "why" callout, a citation), never
-     for actions. Keeping it out of brand-* is intentional: an action color
-     and an information color that looked the same would undo the whole
-     point of having two. */
-  --info-400: #38a3b8;
-  --info-500: #227e93;
-  --info-600: #186379;
+  /* The second, DELIBERATELY separate accent — pink, reserved only for
+     informational/explanatory moments (a "why" callout, a citation),
+     never for actions. Keeping it out of brand-* is intentional: an
+     action color and an information color that looked the same would
+     undo the whole point of having two. */
+  --info-400: #ec4899;
+  --info-500: #db2777;
+  --info-600: #be185d;
 
-  --rf-dot-color: #d8d2c4;
+  --rf-dot-color: #ddd2f2;
 
   /* A real elevation system, in place of "border + shadow-lg on
      everything". `soft` is the default for a floating surface (dropdown,
      tile, a card that's part of the page); `raised` is reserved for
      something genuinely modal/critical (a confirm dialog, an actively-
-     edited detail panel); `glow` is new — an accent-tinted ring for the
-     one selected/focused thing on screen, not a neutral shadow at all. */
-  --elevation-soft: 0 1px 2px rgba(32, 29, 23, 0.04), 0 10px 24px -14px rgba(32, 29, 23, 0.16);
-  --elevation-raised: 0 2px 6px rgba(32, 29, 23, 0.08), 0 24px 48px -18px rgba(32, 29, 23, 0.28);
-  --elevation-glow: 0 0 0 1px var(--brand-500), 0 0 20px -4px rgba(217, 112, 47, 0.45);
+     edited detail panel). No accent-glow token anymore — found live that
+     a colored halo read as decoration, not signal; a selected node now
+     gets a flat, solid-colored border instead (see ArchNodeCard.tsx). */
+  --elevation-soft: 0 1px 2px rgba(28, 23, 48, 0.05), 0 10px 24px -14px rgba(28, 23, 48, 0.18);
+  --elevation-raised: 0 2px 6px rgba(28, 23, 48, 0.09), 0 24px 48px -18px rgba(28, 23, 48, 0.3);
 
   /* "Blueprint" identity — shares the SAME accent as the rest of the app
      now, so the landing page and the product read as one identity. */
-  --bp-paper: #f5f2ea;
-  --bp-ink: #201d17;
+  --bp-paper: #f6f3fc;
+  --bp-ink: #1c1730;
   --bp-surface: #ffffff;
-  --bp-line: #e4dfd0;
-  --bp-line-strong: #cfc7b0;
-  --bp-muted: #7a7362;
-  --bp-accent: #b95a22;
-  --bp-accent-soft: #fdf1e7;
-  --bp-accent-2: #d9702f;
+  --bp-line: #e2d7f2;
+  --bp-line-strong: #c9b8e6;
+  --bp-muted: #726a8c;
+  --bp-accent: #6d28d9;
+  --bp-accent-soft: #f1ecfd;
+  --bp-accent-2: #7c3aed;
   --bp-good: #1f7a5c;
 }
 
 .dark {
-  --rf-dot-color: #262a30;
-  --background: #08090b; /* true near-black, the "instrument panel" ground */
-  --surface: #111317; /* the base panel layer — header, side rails */
-  --surface-2: #16191e; /* one step up — node cards, message bubbles */
-  --surface-3: #1d2129; /* two steps up — hover/active/selected state */
-  --foreground: #eef0f3;
+  --rf-dot-color: #241d36;
+  --background: #0d0a16; /* violet-tinted near-black — a dark shade OF the accent hue, not neutral black */
+  --surface: #120e1d; /* the base panel layer — header, side rails */
+  --surface-2: #171224; /* one step up — node cards, message bubbles */
+  --surface-3: #1e182e; /* two steps up — hover/active/selected state */
+  --foreground: #f3f0fa;
 
-  /* Same hue, pushed brighter for dark-ground contrast — the standard
-     "shift by ~1 step" pattern the rest of the scale already used. */
-  --brand-50: #2b1a0c;
-  --brand-100: #3d2411;
-  --brand-300: #e88a4c;
-  --brand-400: #ff8a4c;
-  --brand-500: #ff9a5f;
-  --brand-600: #ffab7a;
-  --brand-700: #ffc39d;
+  /* The specified neon-violet action color, full saturation, pushed
+     bright against the violet-black ground. */
+  --brand-50: #1f1733;
+  --brand-100: #2b2147;
+  --brand-300: #a184f0;
+  --brand-400: #b490ff;
+  --brand-500: #c2a3ff;
+  --brand-600: #cfb8ff;
+  --brand-700: #ddccff;
 
-  --info-400: #67c3d6;
-  --info-500: #7dd3fc;
-  --info-600: #9fe0fd;
+  --info-400: #ff5fa8;
+  --info-500: #ff7fbb;
+  --info-600: #ff9ecb;
 
   /* A black-based shadow barely reads against an already-dark surface —
      these lean on a faint light-edge instead (a soft inner highlight plus
      a real blur), the standard trick for elevation on a dark theme. */
   --elevation-soft: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 10px 24px -12px rgba(0, 0, 0, 0.55);
   --elevation-raised: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 24px 48px -16px rgba(0, 0, 0, 0.7);
-  --elevation-glow: 0 0 0 1px var(--brand-400), 0 0 24px -6px rgba(255, 138, 76, 0.5), 0 1px 0 rgba(255, 255, 255, 0.03) inset;
 
-  --bp-paper: #08090b;
-  --bp-ink: #eef0f3;
-  --bp-surface: #111317;
-  --bp-line: #23272e;
-  --bp-line-strong: #333944;
-  --bp-muted: #7d838d;
-  --bp-accent: #ff8a4c;
-  --bp-accent-soft: #2b1a0c;
-  --bp-accent-2: #ff9a5f;
+  --bp-paper: #0d0a16;
+  --bp-ink: #f3f0fa;
+  --bp-surface: #120e1d;
+  --bp-line: #2a2340;
+  --bp-line-strong: #3a3155;
+  --bp-muted: #8f87a8;
+  --bp-accent: #b490ff;
+  --bp-accent-soft: #1f1733;
+  --bp-accent-2: #c2a3ff;
   --bp-good: #4ade95;
 }
 
@@ -111,22 +111,22 @@
    Overriding the scale's own values here reskins all of them at once:
    same lightness at every one of the 11 stops as Tailwind's real slate
    (so every existing text/bg contrast pair is exactly as legible as
-   before — this is a hue change, not a lightness one), just rotated warm
-   (a graphite-with-amber-warmth neutral) instead of default Tailwind's
-   cool blue-gray — so borders/muted text/hover fills all sit in the same
-   "instrument panel" world as the brand accent instead of fighting it. */
+   before — this is a hue change, not a lightness one), just rotated
+   toward violet instead of default Tailwind's cool blue-gray — so
+   borders/muted text/hover fills all sit in the same world as the brand
+   accent instead of fighting it. */
 @theme {
-  --color-slate-50: #faf9f6;
-  --color-slate-100: #f2f0ea;
-  --color-slate-200: #e4e0d5;
-  --color-slate-300: #cdc7b6;
-  --color-slate-400: #a39c88;
-  --color-slate-500: #7d7666;
-  --color-slate-600: #5c5648;
-  --color-slate-700: #423e33;
-  --color-slate-800: #262319;
-  --color-slate-900: #17150f;
-  --color-slate-950: #0d0c08;
+  --color-slate-50: #f8f6fc;
+  --color-slate-100: #efebf7;
+  --color-slate-200: #ddd6ee;
+  --color-slate-300: #c3b8dd;
+  --color-slate-400: #9186ab;
+  --color-slate-500: #71638c;
+  --color-slate-600: #554870;
+  --color-slate-700: #3d3252;
+  --color-slate-800: #241d36;
+  --color-slate-900: #17111f;
+  --color-slate-950: #0e0a16;
 }
 
 @theme inline {
@@ -159,7 +159,6 @@
   --font-display: var(--font-space-grotesk);
   --shadow-soft: var(--elevation-soft);
   --shadow-raised: var(--elevation-raised);
-  --shadow-glow: var(--elevation-glow);
 
   --color-bp-paper: var(--bp-paper);
   --color-bp-ink: var(--bp-ink);

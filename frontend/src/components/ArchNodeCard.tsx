@@ -18,9 +18,12 @@ export const KIND_STYLE: Record<NodeKind, { bg: string; border: string; icon: st
     Icon: Server,
   },
   database: {
-    bg: "bg-purple-50 dark:bg-purple-500/15",
-    border: "border-purple-200 dark:border-purple-500/30",
-    icon: "text-purple-600 dark:text-purple-300",
+    // Yellow, not purple — purple/violet is the brand action color now
+    // (see globals.css), and reusing it here would make every database
+    // node look "selected" even when it isn't.
+    bg: "bg-yellow-50 dark:bg-yellow-500/15",
+    border: "border-yellow-200 dark:border-yellow-500/30",
+    icon: "text-yellow-600 dark:text-yellow-300",
     label: "Database",
     Icon: Database,
   },
@@ -85,13 +88,12 @@ export function ArchNodeCard({ data, selected }: NodeProps) {
 
   return (
     <div
-      className={`relative w-[224px] cursor-grab rounded-xl border border-slate-200 bg-surface-2 px-3.5 py-3 shadow-soft backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-raised active:cursor-grabbing dark:border-slate-800 ${ring} ${
-        // A real accent glow, not just an outline — matches the "this is
-        // the one thing you're looking at" treatment the rest of the app
-        // reserves for a genuinely selected/focused element. Composes with
-        // a diff/sim ring rather than fighting it (different CSS property).
-        selected ? "shadow-glow" : ""
-      }`}
+      className={`relative w-[224px] cursor-grab rounded-xl border bg-surface-2 px-3.5 py-3 shadow-soft backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-raised active:cursor-grabbing ${
+        // A flat, solid-colored border for the selected node — no glow.
+        // Two full px wider than the default 1px border so it still reads
+        // as "the one thing you're looking at" without a colored halo.
+        selected ? "border-2 border-brand-400" : "border-slate-200 dark:border-slate-800"
+      } ${ring}`}
     >
       {badge && (
         <span className={`absolute -top-2.5 -right-2 rounded-md px-1.5 py-0.5 text-[8.5px] font-semibold uppercase tracking-wide shadow-soft ${badge.className}`}>
