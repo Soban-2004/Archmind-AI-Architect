@@ -525,7 +525,7 @@ function CanvasBody({
         // bottom-right, so this is the one corner nothing else claims.
         <IconButton
           onClick={() => setMinimapVisible((v) => !v)}
-          className="absolute right-3.5 top-3.5 z-10 border border-slate-200 bg-white/90 shadow-sm backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/90"
+          className="absolute right-3.5 top-3.5 z-10 border border-slate-200 bg-surface/90 shadow-soft backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/90"
           title={minimapVisible ? "Hide minimap" : "Show minimap"}
         >
           <Map size={14} className={minimapVisible ? "text-brand-600 dark:text-brand-400" : ""} />
@@ -617,7 +617,7 @@ function CanvasBody({
       <CanvasLoadingOverlay active={busy} />
       <div className={`absolute right-3.5 z-10 flex items-center gap-2 ${nodes.length > 5 ? "top-14" : "top-3.5"}`}>
         {(onUndo || onRedo) && (
-          <div className="flex items-center overflow-hidden rounded-lg border border-slate-200 bg-white/90 shadow-sm backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/90">
+          <div className="flex items-center overflow-hidden rounded-lg border border-slate-200 bg-surface/90 shadow-soft backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/90">
             <IconButton
               onClick={onUndo}
               disabled={busy || !canUndo}

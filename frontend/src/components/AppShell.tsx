@@ -705,8 +705,8 @@ export function AppShell() {
 
   return (
     <div className="h-screen bg-background p-3">
-      <div ref={appRef} className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-surface shadow-xl shadow-slate-900/5 dark:border-slate-800 dark:shadow-black/20">
-        <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 dark:border-slate-800 dark:bg-slate-900">
+      <div ref={appRef} className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-surface shadow-raised dark:border-slate-800">
+        <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-surface px-4 dark:border-slate-800 dark:bg-slate-900">
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white shadow-sm shadow-brand-600/30">
               <Boxes size={17} />
@@ -765,7 +765,7 @@ export function AppShell() {
           </div>
         ) : (
           <div className="flex min-h-0 flex-1">
-            <div style={{ width: panelWidth }} className="flex shrink-0 flex-col border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+            <div style={{ width: panelWidth }} className="flex shrink-0 flex-col border-r border-slate-200 bg-surface dark:border-slate-800 dark:bg-slate-900">
               {compareResult ? (
                 <div key="compare" className="flex min-h-0 flex-1 animate-fade-in flex-col">
                   <ComparePanel result={compareResult.result} onExit={() => setCompareResult(null)} />
@@ -869,11 +869,11 @@ export function AppShell() {
             {projectId && (
               <div
                 style={{ width: historyCollapsed ? HISTORY_RAIL_WIDTH : HISTORY_WIDTH }}
-                className="relative shrink-0 border-l border-slate-200 bg-white transition-[width] duration-200 dark:border-slate-800 dark:bg-slate-900"
+                className="relative shrink-0 border-l border-slate-200 bg-surface transition-[width] duration-200 dark:border-slate-800 dark:bg-slate-900"
               >
                 <IconButton
                   onClick={() => setHistoryCollapsed((v) => !v)}
-                  className="absolute -left-3.5 top-3.5 z-10 h-7 w-7 border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800"
+                  className="absolute -left-3.5 top-3.5 z-10 h-7 w-7 bg-surface shadow-soft dark:bg-slate-800"
                   title={historyCollapsed ? "Show history" : "Hide history"}
                 >
                   {historyCollapsed ? <ChevronLeft size={13} /> : <ChevronRight size={13} />}
