@@ -29,7 +29,7 @@ function ThinkingBubble({ active, realStage }: { active: boolean; realStage?: st
   const displayText = realStage || phrase;
   return (
     <div className="flex items-start gap-2 pl-9">
-      <div className="flex flex-col gap-1 rounded-2xl rounded-bl-sm bg-surface px-3.5 py-2.5 text-xs text-slate-500 shadow-soft dark:bg-slate-800 dark:text-slate-400">
+      <div className="flex flex-col gap-1 rounded-2xl rounded-bl-sm bg-surface px-3.5 py-2.5 text-xs text-slate-500 shadow-soft dark:bg-surface-2 dark:text-slate-400">
         <div className="flex items-center gap-2">
           <Spinner className="h-3.5 w-3.5 shrink-0" />
           <span key={displayText} className="animate-fade-in">
@@ -133,7 +133,7 @@ export function ChatPanel({ messages, onSend, busy, busyStage, onConsumeAnimatio
             {messages.map((m, i) => (
               <div key={i} className={`group flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
                 {m.role === "assistant" && (
-                  <div className="mr-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-600 dark:text-brand-300">
+                  <div className="mr-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-brand-100 text-brand-600 dark:border dark:border-brand-400/25 dark:bg-surface-3 dark:text-brand-400">
                     <MessageSquare size={13} />
                   </div>
                 )}
@@ -141,8 +141,8 @@ export function ChatPanel({ messages, onSend, busy, busyStage, onConsumeAnimatio
                   <div
                     className={`rounded-2xl px-3.5 py-2 text-[13px] leading-relaxed ${
                       m.role === "user"
-                        ? "whitespace-pre-wrap rounded-br-sm bg-brand-600 text-white shadow-soft"
-                        : "rounded-bl-sm bg-surface text-slate-700 shadow-soft dark:bg-slate-800 dark:text-slate-200"
+                        ? "whitespace-pre-wrap rounded-br-sm bg-surface-3 text-slate-800 shadow-soft dark:text-slate-100"
+                        : "rounded-bl-sm bg-surface text-slate-700 shadow-soft dark:bg-surface-2 dark:text-slate-200"
                     }`}
                   >
                     {m.role === "assistant" ? (
@@ -237,7 +237,7 @@ export function ChatPanel({ messages, onSend, busy, busyStage, onConsumeAnimatio
         </button>
       )}
 
-      <form onSubmit={handleSubmit} className="flex gap-2 border-t border-slate-200 bg-surface p-3 dark:border-slate-800 dark:bg-slate-900">
+      <form onSubmit={handleSubmit} className="flex gap-2 border-t border-slate-200 bg-surface p-3 dark:border-slate-800">
         <input
           className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm placeholder:text-slate-400 focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:bg-slate-800 dark:focus:ring-brand-500/20"
           placeholder="Type a message…"

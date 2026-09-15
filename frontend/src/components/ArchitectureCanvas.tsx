@@ -525,7 +525,7 @@ function CanvasBody({
         // bottom-right, so this is the one corner nothing else claims.
         <IconButton
           onClick={() => setMinimapVisible((v) => !v)}
-          className="absolute right-3.5 top-3.5 z-10 border border-slate-200 bg-surface/90 shadow-soft backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/90"
+          className="absolute right-3.5 top-3.5 z-10 border border-slate-200 bg-surface/90 shadow-soft backdrop-blur-sm dark:border-slate-700 dark:bg-surface/90"
           title={minimapVisible ? "Hide minimap" : "Show minimap"}
         >
           <Map size={14} className={minimapVisible ? "text-brand-600 dark:text-brand-400" : ""} />
@@ -553,7 +553,7 @@ function CanvasBody({
         // Same top-left slot NodeDetailCard uses — mutually exclusive
         // with it (selecting an edge clears the node selection and vice
         // versa), so there's never a collision.
-        <div className="animate-fade-in absolute left-4 top-4 z-10 w-72 rounded-xl bg-surface/95 p-4 shadow-raised backdrop-blur dark:bg-slate-900/95">
+        <div className="animate-fade-in absolute left-4 top-4 z-10 w-72 rounded-xl bg-surface/95 p-4 shadow-raised backdrop-blur dark:bg-surface/95">
           <div className="flex items-start justify-between gap-2">
             <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">
               Remove the connection from{" "}
@@ -585,7 +585,7 @@ function CanvasBody({
         // manually-drawn edge the connectivity registry refused (onConnect),
         // or a manual add_node that failed the same validation
         // (handlePaletteAdd) — a small dismissible banner either way.
-        <div className="animate-fade-in absolute left-1/2 top-4 z-20 flex max-w-md -translate-x-1/2 items-start gap-2 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs text-red-700 shadow-lg dark:border-red-500/20 dark:bg-slate-900 dark:text-red-400">
+        <div className="animate-fade-in absolute left-1/2 top-4 z-20 flex max-w-md -translate-x-1/2 items-start gap-2 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs text-red-700 shadow-lg dark:border-red-500/20 dark:text-red-400">
           <span className="flex-1">⚠️ {edgeError}</span>
           <button onClick={() => setEdgeError(null)} className="shrink-0 text-red-400 hover:text-red-600 dark:hover:text-red-300">
             <X size={13} />
@@ -599,7 +599,7 @@ function CanvasBody({
         // directly at that point instead of falling back to the
         // incremental layout's guess.
         <div
-          className="animate-fade-in absolute z-40 rounded-xl bg-surface shadow-raised dark:bg-slate-900"
+          className="animate-fade-in absolute z-40 rounded-xl bg-surface shadow-raised"
           style={{ left: contextMenu.localX, top: contextMenu.localY }}
           onMouseDown={(e) => e.stopPropagation()}
         >
@@ -617,7 +617,7 @@ function CanvasBody({
       <CanvasLoadingOverlay active={busy} />
       <div className={`absolute right-3.5 z-10 flex items-center gap-2 ${nodes.length > 5 ? "top-14" : "top-3.5"}`}>
         {(onUndo || onRedo) && (
-          <div className="flex items-center overflow-hidden rounded-lg border border-slate-200 bg-surface/90 shadow-soft backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/90">
+          <div className="flex items-center overflow-hidden rounded-lg border border-slate-200 bg-surface/90 shadow-soft backdrop-blur-sm dark:border-slate-700 dark:bg-surface/90">
             <IconButton
               onClick={onUndo}
               disabled={busy || !canUndo}

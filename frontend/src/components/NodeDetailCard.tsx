@@ -225,7 +225,7 @@ export function NodeDetailCard({ node, load, finding, onClose, onSave, onDelete,
     // bottom-left, and this card was sitting directly on top of them
     // (and, once added, the simulation dock's bottom-center bar too) —
     // top-left is the one corner nothing else on the canvas claims.
-    <div className="animate-fade-in absolute left-4 top-4 z-10 w-72 rounded-xl bg-surface/95 p-4 shadow-raised backdrop-blur dark:bg-slate-900/95">
+    <div className="animate-fade-in absolute left-4 top-4 z-10 w-72 rounded-xl bg-surface/95 p-4 shadow-raised backdrop-blur dark:bg-surface/95">
       <div className="flex items-start justify-between">
         <div className="flex min-w-0 items-center gap-2.5">
           <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800 ${meta.accent}`}>
@@ -285,7 +285,7 @@ export function NodeDetailCard({ node, load, finding, onClose, onSave, onDelete,
                 setError(null);
               }}
               disabled={deleting}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
             >
               Cancel
             </button>
@@ -319,8 +319,12 @@ export function NodeDetailCard({ node, load, finding, onClose, onSave, onDelete,
         // state.py's Service.rationale) — shown ahead of the generic
         // componentInfo.ts reference text below, and never truncated: it's
         // usually one or two sentences, short enough to just show in full.
-        <div className="mt-3 rounded-lg border border-brand-100 bg-brand-50/60 p-2.5 dark:border-brand-500/20 dark:bg-brand-500/10">
-          <p className="text-[10px] font-medium uppercase tracking-wide text-brand-600 dark:text-brand-300">Why this is here</p>
+        // Cyan, not amber — this app now reserves amber for the ONE action
+        // accent (buttons, selection, focus). A rationale is informational,
+        // the same role ChatPanel's inline citation "Why" plays, so it gets
+        // the app's other, deliberately separate info color instead.
+        <div className="mt-3 rounded-lg border border-info-400/25 bg-info-400/[0.06] p-2.5 dark:border-info-500/25 dark:bg-info-500/10">
+          <p className="text-[10px] font-medium uppercase tracking-wide text-info-600 dark:text-info-400">Why this is here</p>
           <p className="mt-1 text-xs leading-relaxed text-slate-700 dark:text-slate-200">{rationale}</p>
         </div>
       )}

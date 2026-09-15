@@ -135,13 +135,13 @@ export function ComponentPalette({ onPick, disabled }: Props) {
       <IconButton
         onClick={() => setOpen((v) => !v)}
         disabled={disabled}
-        className="bg-surface/90 shadow-soft backdrop-blur-sm dark:bg-slate-900/90"
+        className="bg-surface/90 shadow-soft backdrop-blur-sm dark:bg-surface/90"
         title="Add a component"
       >
         <Plus size={14} className={open ? "text-brand-600 dark:text-brand-400" : ""} />
       </IconButton>
       {open && (
-        <div className="animate-fade-in absolute right-0 top-full z-30 mt-1.5 rounded-xl bg-surface shadow-raised dark:bg-slate-900">
+        <div className="animate-fade-in absolute right-0 top-full z-30 mt-1.5 rounded-xl bg-surface shadow-raised">
           <PaletteTiles
             activeKind={activeKind}
             onKindChange={setActiveKind}

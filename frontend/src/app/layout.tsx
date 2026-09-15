@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
+import { Geist, Geist_Mono, IBM_Plex_Mono, IBM_Plex_Sans, Space_Grotesk } from "next/font/google";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import "./globals.css";
 
@@ -13,10 +13,13 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-// Used only by Landing.tsx's own "blueprint" visual identity — the rest
-// of the app keeps Geist. Loaded at the root (next/font/google requires
-// this) but the CSS variable only actually gets referenced inside
-// globals.css's .landing-blueprint scope, so it costs nothing elsewhere.
+// The app's real UI typefaces (see globals.css's @theme inline block):
+// Plex Sans for running UI text, Plex Mono for real tabular/technical data
+// (capacity numbers, engine names — never decorative), Space Grotesk for
+// the handful of display moments (the app name, a panel's big number)
+// that should carry a bit more personality than the plain UI face. Geist
+// stays loaded but unused in app CSS — removing it outright would mean
+// re-verifying nothing still references --font-geist-sans/mono.
 const plexSans = IBM_Plex_Sans({
   variable: "--font-plex-sans",
   subsets: ["latin"],
@@ -29,6 +32,12 @@ const plexMono = IBM_Plex_Mono({
   weight: ["400", "500", "600"],
 });
 
+const spaceGrotesk = Space_Grotesk({
+  variable: "--font-space-grotesk",
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
+});
+
 export const metadata: Metadata = {
   title: "AI Architect",
   description: "An AI architecture intelligence engine",
@@ -38,7 +47,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} ${plexSans.variable} ${plexMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${plexSans.variable} ${plexMono.variable} ${spaceGrotesk.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <head>

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { usePathname, useParams, useRouter } from "next/navigation";
-import { Activity, ArrowLeft, Boxes, ChevronLeft, ChevronRight, Gauge, MessageSquare, Zap } from "lucide-react";
+import { Activity, ArrowLeft, Boxes, ChevronLeft, ChevronRight, Gauge, History, MessageSquare, Zap } from "lucide-react";
 import { AnalyzerPanel } from "@/components/AnalyzerPanel";
 import { ArchitectureCanvas } from "@/components/ArchitectureCanvas";
 import { ChatPanel } from "@/components/ChatPanel";
@@ -22,6 +22,7 @@ import { computeDagreLayout, type LayoutMap } from "@/lib/layout";
 import { normalizeVersionEvidence } from "@/lib/types";
 import type { ArchitectureState, ChatMessage, ChatResponse, CompareResult, IngestResponse, MutationCommand, SimulationResult, VersionDiff, VersionEvidence, VersionRow } from "@/lib/types";
 
+type MobileView = "workspace" | "canvas" | "history";
 const STORAGE_KEY = "ai-architect-project-id";
 const MIN_PANEL_WIDTH = 300;
 const MAX_PANEL_WIDTH = 640;
@@ -145,6 +146,11 @@ export function AppShell() {
 
   const [panelWidth, setPanelWidth] = useState(380);
   const [historyCollapsed, setHistoryCollapsed] = useState(false);
+  // Below `md` the three-pane layout (chat / canvas / history) can't just
+  // shrink — there's no room for even two of them side by side — so it
+  // becomes one panel at a time, switched here, instead of the desktop
+  // row. Desktop ignores this entirely (its own always-visible layout).
+  const [mobileView, setMobileView] = useState<MobileView>("workspace");
   const appRef = useRef<HTMLDivElement>(null);
   const resizingRef = useRef(false);
 
@@ -706,9 +712,17 @@ export function AppShell() {
   return (
     <div className="h-screen bg-background p-3">
       <div ref={appRef} className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-surface shadow-raised dark:border-slate-800">
-        <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-surface px-4 dark:border-slate-800 dark:bg-slate-900">
+        <header
+          className="relative flex h-14 shrink-0 items-center justify-between overflow-hidden border-b border-slate-200 bg-surface px-4 dark:border-slate-800 dark:bg-surface"
+          style={{
+            // A gradient mesh spent exactly once, on the one strip of the
+            // app that's always visible — not a repeating hero pattern.
+            backgroundImage:
+              "radial-gradient(480px 140px at 12% -80%, color-mix(in srgb, var(--brand-400) 14%, transparent), transparent 65%)",
+          }}
+        >
           <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white shadow-sm shadow-brand-600/30">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-brand-400 to-brand-600 text-white shadow-soft">
               <Boxes size={17} />
             </div>
             <div className="leading-tight">
@@ -764,136 +778,178 @@ export function AppShell() {
             <ImportRepoScreen onSuccess={handleImportSuccess} onCancel={() => setView("landing")} />
           </div>
         ) : (
-          <div className="flex min-h-0 flex-1">
-            <div style={{ width: panelWidth }} className="flex shrink-0 flex-col border-r border-slate-200 bg-surface dark:border-slate-800 dark:bg-slate-900">
-              {compareResult ? (
-                <div key="compare" className="flex min-h-0 flex-1 animate-fade-in flex-col">
-                  <ComparePanel result={compareResult.result} onExit={() => setCompareResult(null)} />
-                </div>
-              ) : (
-                <>
-                  {activeVersionId && (
-                    <div className="border-b border-slate-200 p-2.5 dark:border-slate-800">
-                      <Tabs
-                        active={mode}
-                        onChange={setMode}
-                        tabs={[
-                          { id: "chat", label: "Chat", icon: <MessageSquare size={13} /> },
-                          { id: "analyze", label: "Analyze", icon: <Gauge size={13} /> },
-                          { id: "simulate", label: "Simulate", icon: <Activity size={13} /> },
-                        ]}
-                      />
-                    </div>
+          (() => {
+            // Shared between the desktop three-pane row and the mobile
+            // one-panel-at-a-time view below, so the two layouts can
+            // never drift into showing different content for the same
+            // state — only the chrome around them differs.
+            const workspacePanel = compareResult ? (
+              <div key="compare" className="flex min-h-0 flex-1 animate-fade-in flex-col">
+                <ComparePanel result={compareResult.result} onExit={() => setCompareResult(null)} />
+              </div>
+            ) : (
+              <>
+                {activeVersionId && (
+                  <div className="border-b border-slate-200 p-2.5 dark:border-slate-800">
+                    <Tabs
+                      active={mode}
+                      onChange={setMode}
+                      tabs={[
+                        { id: "chat", label: "Chat", icon: <MessageSquare size={13} /> },
+                        { id: "analyze", label: "Analyze", icon: <Gauge size={13} /> },
+                        { id: "simulate", label: "Simulate", icon: <Activity size={13} /> },
+                      ]}
+                    />
+                  </div>
+                )}
+                <div key={mode} className="min-h-0 flex-1 animate-fade-in">
+                  {mode === "analyze" && projectId && activeVersionId ? (
+                    <AnalyzerPanel projectId={projectId} versionId={activeVersionId} onExit={() => setMode("chat")} onFixInChat={handleFixInChat} />
+                  ) : mode === "simulate" && projectId && activeVersionId && rawState ? (
+                    <SimulationPanel
+                      state={rawState}
+                      result={simulationResult}
+                      killIds={simKillIds}
+                      onToggleKill={handleToggleKill}
+                      error={simError}
+                      onExit={() => setMode("chat")}
+                      onFixInChat={handleFixInChat}
+                    />
+                  ) : (
+                    <ChatPanel messages={messages} onSend={handleSend} busy={busy || !projectId} busyStage={busyStage} onConsumeAnimation={handleConsumeAnimation} />
                   )}
-                  <div key={mode} className="min-h-0 flex-1 animate-fade-in">
-                    {mode === "analyze" && projectId && activeVersionId ? (
-                      <AnalyzerPanel projectId={projectId} versionId={activeVersionId} onExit={() => setMode("chat")} onFixInChat={handleFixInChat} />
-                    ) : mode === "simulate" && projectId && activeVersionId && rawState ? (
-                      <SimulationPanel
-                        state={rawState}
-                        result={simulationResult}
-                        killIds={simKillIds}
-                        onToggleKill={handleToggleKill}
-                        error={simError}
-                        onExit={() => setMode("chat")}
-                        onFixInChat={handleFixInChat}
-                      />
-                    ) : (
-                      <ChatPanel messages={messages} onSend={handleSend} busy={busy || !projectId} busyStage={busyStage} onConsumeAnimation={handleConsumeAnimation} />
+                </div>
+              </>
+            );
+
+            const canvasPanel = (
+              <>
+                {viewingHistorical && (
+                  <div className="flex items-center justify-between border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-400">
+                    <span>Viewing an earlier version. New edits will branch off from here.</span>
+                    {latestVersionId && projectId && (
+                      <button className="flex items-center gap-1 font-medium underline" onClick={() => handleSelectVersionFromHistory(latestVersionId)}>
+                        <ArrowLeft size={12} /> Back to latest
+                      </button>
                     )}
                   </div>
-                </>
-              )}
-            </div>
+                )}
+                <div className="min-h-0 flex-1">
+                  <ArchitectureCanvas
+                    state={displayState}
+                    layout={displayLayout}
+                    diff={displayDiff}
+                    simulation={displaySimulation}
+                    onNodePositionsChange={compareResult ? undefined : handleNodePositionsChange}
+                    onNodeSave={compareResult ? undefined : handleNodeSave}
+                    onApplyCommands={compareResult ? undefined : handleApplyCommands}
+                    onUndo={compareResult ? undefined : handleUndo}
+                    onRedo={compareResult ? undefined : handleRedo}
+                    canUndo={!compareResult && undoStack.length > 0}
+                    canRedo={!compareResult && redoStack.length > 0}
+                    busy={!compareResult && busy}
+                    projectName={projectName}
+                    onShare={!compareResult && activeVersionId ? handleCopyShareLink : undefined}
+                    projectId={!compareResult && projectId ? projectId : undefined}
+                    versionId={!compareResult && activeVersionId ? activeVersionId : undefined}
+                    evidence={compareResult ? undefined : versionEvidence}
+                    simDock={
+                      // Permanently on the canvas, not gated behind opening
+                      // the Simulate tab — the sidebar tab is now only for
+                      // the detailed findings report, not for whether the
+                      // dock itself exists.
+                      !compareResult
+                        ? {
+                            multiplier: simMultiplier,
+                            onMultiplierChange: handleMultiplierChange,
+                            playing: simPlaying,
+                            onPlayPause: handlePlayPause,
+                            onStop: handleStopSimulation,
+                            running: simRunning,
+                            killIds: simKillIds,
+                            onToggleKill: handleToggleKill,
+                          }
+                        : undefined
+                    }
+                  />
+                </div>
+              </>
+            );
 
-            {/* Drag handle to resize the left panel */}
-            <div
-              onMouseDown={startResizing}
-              className="group relative w-1 shrink-0 cursor-col-resize bg-slate-200 transition-colors hover:bg-brand-400 dark:bg-slate-800 dark:hover:bg-brand-500"
-            >
-              <div className="absolute inset-y-0 -left-1 -right-1" />
-            </div>
+            const historyPanel = projectId && (
+              <VersionHistory
+                projectId={projectId}
+                activeVersionId={activeVersionId}
+                refreshKey={versionsRefreshKey}
+                onSelect={handleSelectVersionFromHistory}
+                onCompare={handleCompare}
+              />
+            );
 
-            <div className="flex min-w-0 flex-1 flex-col">
-              {viewingHistorical && (
-                <div className="flex items-center justify-between border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-400">
-                  <span>Viewing an earlier version. New edits will branch off from here.</span>
-                  {latestVersionId && projectId && (
-                    <button className="flex items-center gap-1 font-medium underline" onClick={() => handleSelectVersionFromHistory(latestVersionId)}>
-                      <ArrowLeft size={12} /> Back to latest
-                    </button>
+            const mobileTabs: { id: MobileView; label: string; icon: ReactNode }[] = [
+              { id: "workspace", label: "Chat", icon: <MessageSquare size={13} /> },
+              { id: "canvas", label: "Canvas", icon: <Boxes size={13} /> },
+              ...(projectId ? [{ id: "history" as const, label: "History", icon: <History size={13} /> }] : []),
+            ];
+
+            return (
+              <>
+                {/* Desktop / tablet: chat, canvas, and history all
+                    visible at once, side by side. Unchanged from before —
+                    the mobile view below is a fully separate layout, not
+                    a squeeze of this one. */}
+                <div className="hidden min-h-0 flex-1 md:flex">
+                  <div style={{ width: panelWidth }} className="flex shrink-0 flex-col border-r border-slate-200 bg-surface dark:border-slate-800">
+                    {workspacePanel}
+                  </div>
+
+                  {/* Drag handle to resize the left panel */}
+                  <div
+                    onMouseDown={startResizing}
+                    className="group relative w-1 shrink-0 cursor-col-resize bg-slate-200 transition-colors hover:bg-brand-400 dark:bg-slate-800 dark:hover:bg-brand-500"
+                  >
+                    <div className="absolute inset-y-0 -left-1 -right-1" />
+                  </div>
+
+                  <div className="flex min-w-0 flex-1 flex-col">{canvasPanel}</div>
+
+                  {projectId && (
+                    <div
+                      style={{ width: historyCollapsed ? HISTORY_RAIL_WIDTH : HISTORY_WIDTH }}
+                      className="relative shrink-0 border-l border-slate-200 bg-surface transition-[width] duration-200 dark:border-slate-800"
+                    >
+                      <IconButton
+                        onClick={() => setHistoryCollapsed((v) => !v)}
+                        className="absolute -left-3.5 top-3.5 z-10 h-7 w-7 bg-surface shadow-soft dark:bg-slate-800"
+                        title={historyCollapsed ? "Show history" : "Hide history"}
+                      >
+                        {historyCollapsed ? <ChevronLeft size={13} /> : <ChevronRight size={13} />}
+                      </IconButton>
+                      {!historyCollapsed && historyPanel}
+                    </div>
                   )}
                 </div>
-              )}
-              <div className="min-h-0 flex-1">
-                <ArchitectureCanvas
-                  state={displayState}
-                  layout={displayLayout}
-                  diff={displayDiff}
-                  simulation={displaySimulation}
-                  onNodePositionsChange={compareResult ? undefined : handleNodePositionsChange}
-                  onNodeSave={compareResult ? undefined : handleNodeSave}
-                  onApplyCommands={compareResult ? undefined : handleApplyCommands}
-                  onUndo={compareResult ? undefined : handleUndo}
-                  onRedo={compareResult ? undefined : handleRedo}
-                  canUndo={!compareResult && undoStack.length > 0}
-                  canRedo={!compareResult && redoStack.length > 0}
-                  busy={!compareResult && busy}
-                  projectName={projectName}
-                  onShare={!compareResult && activeVersionId ? handleCopyShareLink : undefined}
-                  projectId={!compareResult && projectId ? projectId : undefined}
-                  versionId={!compareResult && activeVersionId ? activeVersionId : undefined}
-                  evidence={compareResult ? undefined : versionEvidence}
-                  simDock={
-                    // Permanently on the canvas, not gated behind opening
-                    // the Simulate tab — the sidebar tab is now only for
-                    // the detailed findings report, not for whether the
-                    // dock itself exists.
-                    !compareResult
-                      ? {
-                          multiplier: simMultiplier,
-                          onMultiplierChange: handleMultiplierChange,
-                          playing: simPlaying,
-                          onPlayPause: handlePlayPause,
-                          onStop: handleStopSimulation,
-                          running: simRunning,
-                          killIds: simKillIds,
-                          onToggleKill: handleToggleKill,
-                        }
-                      : undefined
-                  }
-                />
-              </div>
-            </div>
 
-            {projectId && (
-              <div
-                style={{ width: historyCollapsed ? HISTORY_RAIL_WIDTH : HISTORY_WIDTH }}
-                className="relative shrink-0 border-l border-slate-200 bg-surface transition-[width] duration-200 dark:border-slate-800 dark:bg-slate-900"
-              >
-                <IconButton
-                  onClick={() => setHistoryCollapsed((v) => !v)}
-                  className="absolute -left-3.5 top-3.5 z-10 h-7 w-7 bg-surface shadow-soft dark:bg-slate-800"
-                  title={historyCollapsed ? "Show history" : "Hide history"}
-                >
-                  {historyCollapsed ? <ChevronLeft size={13} /> : <ChevronRight size={13} />}
-                </IconButton>
-                {!historyCollapsed && (
-                  <VersionHistory
-                    projectId={projectId}
-                    activeVersionId={activeVersionId}
-                    refreshKey={versionsRefreshKey}
-                    onSelect={handleSelectVersionFromHistory}
-                    onCompare={handleCompare}
-                  />
-                )}
-              </div>
-            )}
-          </div>
+                {/* Mobile: one panel at a time — there's no room to show
+                    even two of chat/canvas/history side by side below
+                    `md`, so the three-pane row above is replaced entirely
+                    (not shrunk) by a switcher over a single full-width
+                    panel. */}
+                <div className="flex min-h-0 flex-1 flex-col md:hidden">
+                  <div className="border-b border-slate-200 p-2 dark:border-slate-800">
+                    <Tabs active={mobileView} onChange={setMobileView} tabs={mobileTabs} />
+                  </div>
+                  <div className="flex min-h-0 flex-1 flex-col">
+                    {mobileView === "workspace" ? workspacePanel : mobileView === "canvas" ? canvasPanel : historyPanel}
+                  </div>
+                </div>
+              </>
+            );
+          })()
         )}
 
         {sessionTokens > 0 && (
-          <div className="flex h-6 shrink-0 items-center justify-end gap-1.5 border-t border-slate-200 bg-slate-50 px-3 text-[10px] text-slate-400 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-500">
+          <div className="flex h-6 shrink-0 items-center justify-end gap-1.5 border-t border-slate-200 bg-slate-50 px-3 text-[10px] text-slate-400 dark:border-slate-800 dark:bg-surface/60 dark:text-slate-500">
             <Zap size={10} />
             {sessionTokens.toLocaleString()} tokens used this session
           </div>

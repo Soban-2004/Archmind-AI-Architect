@@ -235,7 +235,7 @@ export function AnalyzerPanel({ projectId, versionId, onExit, onFixInChat }: Pro
         )}
       </div>
 
-      <form onSubmit={handleAsk} className="flex gap-2 border-t border-slate-200 bg-surface p-3 dark:border-slate-800 dark:bg-slate-900">
+      <form onSubmit={handleAsk} className="flex gap-2 border-t border-slate-200 bg-surface p-3 dark:border-slate-800">
         <input
           className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs placeholder:text-slate-400 focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:bg-slate-800 dark:focus:ring-brand-500/20"
           placeholder='"why is scalability only 62?"'

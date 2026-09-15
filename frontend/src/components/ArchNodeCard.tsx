@@ -5,38 +5,42 @@ import type { ArchNode, DiffStatus, LoadStatus, NodeKind } from "@/lib/types";
 // Exported for the component palette (ComponentPalette.tsx) and the
 // right-click add-here menu — reused as-is so a palette tile's icon/color
 // is a real preview of the node it becomes, not a second visual language.
+// Only the icon chip carries the kind color now (a neutral card body reads
+// as one coherent instrument panel; five different full-card tints reads
+// as five different products). Each hue is still deliberately distinct so
+// a chip is a real at-a-glance kind indicator, not decoration.
 export const KIND_STYLE: Record<NodeKind, { bg: string; border: string; icon: string; label: string; Icon: typeof Server }> = {
   service: {
-    bg: "bg-blue-50 dark:bg-blue-500/10",
-    border: "border-blue-300 dark:border-blue-500/40",
-    icon: "text-blue-500 dark:text-blue-400",
+    bg: "bg-blue-50 dark:bg-blue-500/15",
+    border: "border-blue-200 dark:border-blue-500/30",
+    icon: "text-blue-600 dark:text-blue-300",
     label: "Service",
     Icon: Server,
   },
   database: {
-    bg: "bg-emerald-50 dark:bg-emerald-500/10",
-    border: "border-emerald-300 dark:border-emerald-500/40",
-    icon: "text-emerald-500 dark:text-emerald-400",
+    bg: "bg-purple-50 dark:bg-purple-500/15",
+    border: "border-purple-200 dark:border-purple-500/30",
+    icon: "text-purple-600 dark:text-purple-300",
     label: "Database",
     Icon: Database,
   },
   queue: {
-    bg: "bg-purple-50 dark:bg-purple-500/10",
-    border: "border-purple-300 dark:border-purple-500/40",
-    icon: "text-purple-500 dark:text-purple-400",
+    bg: "bg-emerald-50 dark:bg-emerald-500/15",
+    border: "border-emerald-200 dark:border-emerald-500/30",
+    icon: "text-emerald-600 dark:text-emerald-300",
     label: "Queue",
     Icon: Layers,
   },
   external_dependency: {
-    bg: "bg-orange-50 dark:bg-orange-500/10",
-    border: "border-orange-300 dark:border-orange-500/40",
-    icon: "text-orange-500 dark:text-orange-400",
+    bg: "bg-info-400/10 dark:bg-info-500/15",
+    border: "border-info-400/30 dark:border-info-500/30",
+    icon: "text-info-600 dark:text-info-400",
     label: "External",
     Icon: Globe,
   },
   infra_node: {
-    bg: "bg-slate-100 dark:bg-slate-500/10",
-    border: "border-slate-300 dark:border-slate-500/40",
+    bg: "bg-slate-100 dark:bg-slate-500/15",
+    border: "border-slate-300 dark:border-slate-500/30",
     icon: "text-slate-500 dark:text-slate-400",
     label: "Infra",
     Icon: Cloud,
@@ -44,21 +48,21 @@ export const KIND_STYLE: Record<NodeKind, { bg: string; border: string; icon: st
 };
 
 const DIFF_RING: Record<DiffStatus, string> = {
-  added: "ring-2 ring-green-500 ring-offset-2 dark:ring-offset-slate-950",
+  added: "ring-2 ring-emerald-500 ring-offset-2 dark:ring-offset-background",
   removed: "opacity-40 border-dashed border-red-400",
-  changed: "ring-2 ring-amber-500 ring-offset-2 dark:ring-offset-slate-950",
+  changed: "ring-2 ring-brand-500 ring-offset-2 dark:ring-offset-background",
 };
 
 const DIFF_BADGE: Record<DiffStatus, { text: string; className: string }> = {
-  added: { text: "Added", className: "bg-green-600 text-white" },
+  added: { text: "Added", className: "bg-emerald-600 text-white" },
   removed: { text: "Removed", className: "bg-red-500 text-white" },
-  changed: { text: "Changed", className: "bg-amber-500 text-white" },
+  changed: { text: "Changed", className: "bg-brand-500 text-white" },
 };
 
 const SIM_RING: Record<LoadStatus, string> = {
-  ok: "ring-2 ring-green-400 ring-offset-2 dark:ring-offset-slate-950",
-  warning: "ring-2 ring-amber-500 ring-offset-2 dark:ring-offset-slate-950",
-  overloaded: "ring-4 ring-red-500 ring-offset-2 animate-pulse dark:ring-offset-slate-950",
+  ok: "ring-2 ring-emerald-400 ring-offset-2 dark:ring-offset-background",
+  warning: "ring-2 ring-amber-500 ring-offset-2 dark:ring-offset-background",
+  overloaded: "ring-4 ring-red-500 ring-offset-2 animate-pulse dark:ring-offset-background",
   killed: "opacity-30 border-dashed border-slate-400 grayscale",
 };
 
@@ -81,32 +85,33 @@ export function ArchNodeCard({ data, selected }: NodeProps) {
 
   return (
     <div
-      className={`relative w-[200px] cursor-grab rounded-xl border ${style.border} ${style.bg} px-3.5 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.06)] backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md active:cursor-grabbing dark:shadow-[0_1px_2px_rgba(0,0,0,0.3)] ${ring} ${
-        // A separate CSS `outline` (not `ring`, which is a box-shadow) so
-        // selection stays visible even when a diff/sim ring is already
-        // using the box-shadow slot — the two compose instead of one
-        // silently overwriting the other. Previously selection was just
-        // "shadow-md", indistinguishable from the existing hover shadow.
-        selected ? "shadow-md outline outline-2 outline-offset-2 outline-brand-500 dark:outline-brand-400" : ""
+      className={`relative w-[224px] cursor-grab rounded-xl border border-slate-200 bg-surface-2 px-3.5 py-3 shadow-soft backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-raised active:cursor-grabbing dark:border-slate-800 ${ring} ${
+        // A real accent glow, not just an outline — matches the "this is
+        // the one thing you're looking at" treatment the rest of the app
+        // reserves for a genuinely selected/focused element. Composes with
+        // a diff/sim ring rather than fighting it (different CSS property).
+        selected ? "shadow-glow" : ""
       }`}
     >
       {badge && (
-        <span className={`absolute -top-2.5 -right-2 rounded-full px-2 py-0.5 text-[9px] font-bold shadow-sm ${badge.className}`}>{badge.text}</span>
+        <span className={`absolute -top-2.5 -right-2 rounded-md px-1.5 py-0.5 text-[8.5px] font-semibold uppercase tracking-wide shadow-soft ${badge.className}`}>
+          {badge.text}
+        </span>
       )}
-      <Handle type="target" position={Position.Left} className="!h-2 !w-2 !border-2 !border-white !bg-slate-400 dark:!border-slate-900 dark:!bg-slate-500" />
+      <Handle type="target" position={Position.Left} className="!h-2 !w-2 !border-2 !border-surface !bg-slate-400 dark:!bg-slate-600" />
       <div className="flex items-center gap-2">
-        <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/70 dark:bg-black/20 ${style.icon}`}>
+        <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border ${style.border} ${style.bg} ${style.icon}`}>
           <Icon size={15} strokeWidth={2.25} />
         </div>
         <div className="min-w-0">
           <div className="truncate text-[13px] font-semibold text-slate-800 dark:text-slate-100">{node.name}</div>
-          <div className="truncate text-[11px] text-slate-500 dark:text-slate-400">
+          <div className="truncate font-mono text-[10.5px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
             {style.label}
             {node.engine ? ` · ${String(node.engine)}` : node.type ? ` · ${String(node.type).replace(/_/g, " ")}` : ""}
           </div>
         </div>
       </div>
-      <Handle type="source" position={Position.Right} className="!h-2 !w-2 !border-2 !border-white !bg-slate-400 dark:!border-slate-900 dark:!bg-slate-500" />
+      <Handle type="source" position={Position.Right} className="!h-2 !w-2 !border-2 !border-surface !bg-slate-400 dark:!bg-slate-600" />
     </div>
   );
 }

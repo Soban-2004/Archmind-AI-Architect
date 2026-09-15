@@ -5,105 +5,135 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --background: #eef0f2; /* graphite-tinted neutral, not slate's blue lean */
+  --background: #f3f1ec; /* warm paper, not cool slate-tinted */
   --surface: #ffffff;
-  --foreground: #12161c; /* near-black, cool-neutral */
+  --surface-2: #f7f5f0; /* one step up from the page: a card sitting ON the page */
+  --surface-3: #efe8da; /* the raised/active/selected layer — one step past surface-2, not identical to it */
+  --foreground: #201d17; /* warm near-black, not cool slate */
 
-  /* "Cyanotype blue" — the literal color of an architectural blueprint,
-     chosen deliberately in place of the indigo-600 this used to be:
-     indigo is probably the single most common accent in AI-generated
-     Tailwind UIs, and this product's whole identity is "blueprints for
-     software architecture" — the color is subject-grounded, not a
-     default. Same variable names as before (brand-*) so every existing
+  /* "Instrument Panel" identity: a warm amber/copper as the ONE action
+     accent (send button, primary CTA, selected node, focus ring) — in
+     place of the generic indigo-600 this used to be, and in place of the
+     blue this became mid-redesign. Amber was chosen for what it's paired
+     against: true near-black in dark mode reads as an actual instrument
+     panel (a dial, a warning light) rather than another blue SaaS product.
+     Same variable names as before (brand-*) so every existing
      `bg-brand-600`/`text-brand-500`/etc. across the app repalettes for
-     free — this file is the only thing that needed to change for that.
-     300/400 are new (the old scale only had 50/100/500/600/700, which is
-     exactly why raw `indigo-300`/`indigo-400` utility classes crept into
-     components elsewhere — nothing else to reach for at the time). */
-  --brand-50: #eef4f8;
-  --brand-100: #d9e8f0;
-  --brand-300: #86b4d0;
-  --brand-400: #4a86a8;
-  --brand-500: #2f6a8c;
-  --brand-600: #1d4e73;
-  --brand-700: #163e5c;
+     free — this file is the only thing that needed to change for that. */
+  --brand-50: #fdf1e7;
+  --brand-100: #fce0c8;
+  --brand-300: #f3a868;
+  --brand-400: #ee8a48;
+  --brand-500: #d9702f;
+  --brand-600: #b95a22;
+  --brand-700: #93461a;
 
-  --rf-dot-color: #cbd5e1;
+  /* The second, DELIBERATELY separate accent — reserved only for
+     informational/explanatory moments (a "why" callout, a citation), never
+     for actions. Keeping it out of brand-* is intentional: an action color
+     and an information color that looked the same would undo the whole
+     point of having two. */
+  --info-400: #38a3b8;
+  --info-500: #227e93;
+  --info-600: #186379;
+
+  --rf-dot-color: #d8d2c4;
 
   /* A real elevation system, in place of "border + shadow-lg on
-     everything" (the single biggest reason the app used to read as
-     templated — every panel, regardless of importance, had the exact
-     same recipe). `soft` is the new default for a floating surface
-     (dropdown, tile, a card that's part of the page); `raised` is
-     reserved for something genuinely modal/critical (a confirm dialog,
-     an actively-edited detail panel) — the two should feel different,
-     not just be two names for the same weight. Neither includes a
-     border on its own; add one explicitly (sparingly) only where a
-     surface genuinely needs a crisp edge, not as the default way to
-     separate it from the page. Dark mode gets its own values below — a
-     black-based shadow barely registers against an already-dark
-     surface, so it leans on a bit of border-like definition instead. */
-  --elevation-soft: 0 1px 2px rgba(15, 23, 42, 0.04), 0 10px 24px -14px rgba(15, 23, 42, 0.16);
-  --elevation-raised: 0 2px 6px rgba(15, 23, 42, 0.08), 0 24px 48px -18px rgba(15, 23, 42, 0.28);
+     everything". `soft` is the default for a floating surface (dropdown,
+     tile, a card that's part of the page); `raised` is reserved for
+     something genuinely modal/critical (a confirm dialog, an actively-
+     edited detail panel); `glow` is new — an accent-tinted ring for the
+     one selected/focused thing on screen, not a neutral shadow at all. */
+  --elevation-soft: 0 1px 2px rgba(32, 29, 23, 0.04), 0 10px 24px -14px rgba(32, 29, 23, 0.16);
+  --elevation-raised: 0 2px 6px rgba(32, 29, 23, 0.08), 0 24px 48px -18px rgba(32, 29, 23, 0.28);
+  --elevation-glow: 0 0 0 1px var(--brand-500), 0 0 20px -4px rgba(217, 112, 47, 0.45);
 
-  /* "Blueprint" identity — now shares the SAME accent as the rest of the
-     app (--bp-accent below reuses the exact cyanotype blue above) rather
-     than its own separate indigo, so the landing page and the product
-     itself read as one identity instead of the landing page having a
-     distinct look that drops away the moment you start actually using
-     the tool. Its own IBM Plex type pairing and paper/ink neutrals stay
-     — those were never the generic part. */
-  --bp-paper: #f5f7fb;
-  --bp-ink: #0b1220;
+  /* "Blueprint" identity — shares the SAME accent as the rest of the app
+     now, so the landing page and the product read as one identity. */
+  --bp-paper: #f5f2ea;
+  --bp-ink: #201d17;
   --bp-surface: #ffffff;
-  --bp-line: #d6deeb;
-  --bp-line-strong: #b9c6dd;
-  --bp-muted: #5b6b87;
-  --bp-accent: #1d4e73;
-  --bp-accent-soft: #eef4f8;
-  --bp-accent-2: #2f6a8c;
-  --bp-good: #0f7a5c;
+  --bp-line: #e4dfd0;
+  --bp-line-strong: #cfc7b0;
+  --bp-muted: #7a7362;
+  --bp-accent: #b95a22;
+  --bp-accent-soft: #fdf1e7;
+  --bp-accent-2: #d9702f;
+  --bp-good: #1f7a5c;
 }
 
 .dark {
-  --rf-dot-color: #334155;
-  --background: #0a0d12;
-  --surface: #12161d;
-  --foreground: #e7ebf0;
+  --rf-dot-color: #262a30;
+  --background: #08090b; /* true near-black, the "instrument panel" ground */
+  --surface: #111317; /* the base panel layer — header, side rails */
+  --surface-2: #16191e; /* one step up — node cards, message bubbles */
+  --surface-3: #1d2129; /* two steps up — hover/active/selected state */
+  --foreground: #eef0f3;
 
-  /* Same hue as light mode, shifted brighter/more saturated the same way
-     the old indigo scale already did (dark-700 lands near light-600's
-     lightness, etc.) — proven pattern, just repalette'd. */
-  --brand-50: #15222b;
-  --brand-100: #1b2e3a;
-  --brand-300: #5a9ac0;
-  --brand-400: #6fb3d8;
-  --brand-500: #4a86a8;
-  --brand-600: #3d7ea3;
-  --brand-700: #2f6a8c;
+  /* Same hue, pushed brighter for dark-ground contrast — the standard
+     "shift by ~1 step" pattern the rest of the scale already used. */
+  --brand-50: #2b1a0c;
+  --brand-100: #3d2411;
+  --brand-300: #e88a4c;
+  --brand-400: #ff8a4c;
+  --brand-500: #ff9a5f;
+  --brand-600: #ffab7a;
+  --brand-700: #ffc39d;
+
+  --info-400: #67c3d6;
+  --info-500: #7dd3fc;
+  --info-600: #9fe0fd;
 
   /* A black-based shadow barely reads against an already-dark surface —
-     these lean on a faint light-edge instead (a soft inner highlight
-     plus a real blur), the standard trick for elevation on a dark
-     theme. */
-  --elevation-soft: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 10px 24px -12px rgba(0, 0, 0, 0.5);
-  --elevation-raised: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 24px 48px -16px rgba(0, 0, 0, 0.65);
+     these lean on a faint light-edge instead (a soft inner highlight plus
+     a real blur), the standard trick for elevation on a dark theme. */
+  --elevation-soft: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 10px 24px -12px rgba(0, 0, 0, 0.55);
+  --elevation-raised: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 24px 48px -16px rgba(0, 0, 0, 0.7);
+  --elevation-glow: 0 0 0 1px var(--brand-400), 0 0 24px -6px rgba(255, 138, 76, 0.5), 0 1px 0 rgba(255, 255, 255, 0.03) inset;
 
-  --bp-paper: #070a12;
-  --bp-ink: #e7ecf7;
-  --bp-surface: #0e1526;
-  --bp-line: #1e293f;
-  --bp-line-strong: #2a3a57;
-  --bp-muted: #8592ad;
-  --bp-accent: #6fb3d8;
-  --bp-accent-soft: #15222b;
-  --bp-accent-2: #4a86a8;
-  --bp-good: #34d399;
+  --bp-paper: #08090b;
+  --bp-ink: #eef0f3;
+  --bp-surface: #111317;
+  --bp-line: #23272e;
+  --bp-line-strong: #333944;
+  --bp-muted: #7d838d;
+  --bp-accent: #ff8a4c;
+  --bp-accent-soft: #2b1a0c;
+  --bp-accent-2: #ff9a5f;
+  --bp-good: #4ade95;
+}
+
+/* Every panel/card/button in the app (ui.tsx, AppShell, ChatPanel,
+   AnalyzerPanel, NodeDetailCard, ...) is built on Tailwind's stock
+   `slate-*` scale for borders/text/neutral fills — hundreds of call
+   sites, never going to be worth rewriting one-by-one to bespoke tokens.
+   Overriding the scale's own values here reskins all of them at once:
+   same lightness at every one of the 11 stops as Tailwind's real slate
+   (so every existing text/bg contrast pair is exactly as legible as
+   before — this is a hue change, not a lightness one), just rotated warm
+   (a graphite-with-amber-warmth neutral) instead of default Tailwind's
+   cool blue-gray — so borders/muted text/hover fills all sit in the same
+   "instrument panel" world as the brand accent instead of fighting it. */
+@theme {
+  --color-slate-50: #faf9f6;
+  --color-slate-100: #f2f0ea;
+  --color-slate-200: #e4e0d5;
+  --color-slate-300: #cdc7b6;
+  --color-slate-400: #a39c88;
+  --color-slate-500: #7d7666;
+  --color-slate-600: #5c5648;
+  --color-slate-700: #423e33;
+  --color-slate-800: #262319;
+  --color-slate-900: #17150f;
+  --color-slate-950: #0d0c08;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
   --color-foreground: var(--foreground);
   --color-brand-50: var(--brand-50);
   --color-brand-100: var(--brand-100);
@@ -112,10 +142,24 @@
   --color-brand-500: var(--brand-500);
   --color-brand-600: var(--brand-600);
   --color-brand-700: var(--brand-700);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-info-400: var(--info-400);
+  --color-info-500: var(--info-500);
+  --color-info-600: var(--info-600);
+  /* The app used to fork into two typefaces: IBM Plex for the landing
+     page's deliberate identity, and Geist — the literal default of every
+     unstyled Next.js app — for the actual product once you clicked in.
+     That's backwards: the product itself is where a distinct identity
+     matters most, and Geist is the single strongest "this is a generic
+     AI-generated app" tell there is. Plex Sans is now the app's UI
+     typeface everywhere; Space Grotesk is layered in for a few display
+     moments (see .font-display below) where the plain UI face reads too
+     neutral — headings that should carry some personality, not run text. */
+  --font-sans: var(--font-plex-sans);
+  --font-mono: var(--font-plex-mono);
+  --font-display: var(--font-space-grotesk);
   --shadow-soft: var(--elevation-soft);
   --shadow-raised: var(--elevation-raised);
+  --shadow-glow: var(--elevation-glow);
 
   --color-bp-paper: var(--bp-paper);
   --color-bp-ink: var(--bp-ink);
@@ -140,10 +184,10 @@ body {
    on every scrollable panel at once. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #cbd5e1 transparent;
+  scrollbar-color: #cdc7b6 transparent;
 }
 .dark * {
-  scrollbar-color: #334155 transparent;
+  scrollbar-color: #333944 transparent;
 }
 ::-webkit-scrollbar {
   width: 8px;
@@ -153,11 +197,11 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background-color: #cbd5e1;
+  background-color: #cdc7b6;
   border-radius: 999px;
 }
 .dark ::-webkit-scrollbar-thumb {
-  background-color: #334155;
+  background-color: #333944;
 }
 
 /* React Flow chrome, restyled to match the app rather than its defaults */
@@ -165,56 +209,56 @@ body {
   display: none;
 }
 .react-flow__controls {
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 1px 3px rgba(32, 29, 23, 0.08), 0 1px 2px rgba(32, 29, 23, 0.06);
   border-radius: 10px;
   overflow: hidden;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #e4e0d5;
 }
 .react-flow__controls-button {
   border: none;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e4e0d5;
   background: white;
-  fill: #475569;
+  fill: #5c5648;
 }
 .react-flow__controls-button:hover {
-  background: #f8fafc;
+  background: #f2f0ea;
 }
 .react-flow__edge-textbg {
-  fill: #f8fafc;
+  fill: #f2f0ea;
 }
 .react-flow__edge-text {
-  fill: #334155;
+  fill: #423e33;
   font-size: 11px;
 }
 .react-flow__minimap {
   border-radius: 10px;
   overflow: hidden;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.06);
-  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px rgba(32, 29, 23, 0.08), 0 1px 2px rgba(32, 29, 23, 0.06);
+  border: 1px solid #e4e0d5;
 }
 
 .dark .react-flow__controls {
-  border-color: #1e293b;
+  border-color: #23272e;
 }
 .dark .react-flow__controls-button {
-  background: #0f172a;
-  border-bottom-color: #1e293b;
-  fill: #94a3b8;
+  background: #111317;
+  border-bottom-color: #23272e;
+  fill: #9aa0ab;
 }
 .dark .react-flow__controls-button:hover {
-  background: #1e293b;
+  background: #1d2129;
 }
 .dark .react-flow__controls-button path {
-  fill: #94a3b8;
+  fill: #9aa0ab;
 }
 .dark .react-flow__edge-textbg {
-  fill: #0f172a;
+  fill: #111317;
 }
 .dark .react-flow__edge-text {
-  fill: #cbd5e1;
+  fill: #c7d1d6;
 }
 .dark .react-flow__minimap {
-  border-color: #1e293b;
+  border-color: #23272e;
 }
 
 @keyframes fade-in {

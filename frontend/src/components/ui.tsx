@@ -22,10 +22,18 @@ export function Button({
   // the surface" rather than boxed — the crisp edge is saved for
   // `primary`'s own case (a solid fill genuinely benefits from one).
   const variants = {
-    primary: "bg-brand-600 text-white hover:bg-brand-700 shadow-soft",
-    secondary: "bg-surface text-slate-700 shadow-soft hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800",
-    ghost: "text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200",
-    danger: "bg-red-600 text-white hover:bg-red-700 shadow-soft",
+    // The one deliberately bold surface in the whole component set — a
+    // real two-stop gradient, not a flat fill, reserved for exactly this
+    // one role (see globals.css's comment on --brand-* for why amber). A
+    // flat single-color fill is the single most recognizable "unstyled
+    // component library" button recipe there is; spending one real
+    // gradient here (and nowhere else — not on cards, not on backgrounds)
+    // is what keeps it reading as a choice instead of a decoration.
+    primary:
+      "border border-brand-700/40 bg-gradient-to-b from-brand-400 to-brand-600 text-white hover:brightness-105 shadow-soft dark:border-brand-300/20 dark:text-[#1a0d05] dark:font-semibold",
+    secondary: "border border-slate-200 bg-surface-2 text-slate-700 shadow-soft hover:bg-slate-50 dark:border-slate-800 dark:text-slate-200 dark:hover:bg-surface-3",
+    ghost: "text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-surface-3 dark:hover:text-slate-200",
+    danger: "border border-red-700 bg-red-600 text-white hover:bg-red-700 shadow-soft",
   };
   return <button className={`${base} ${sizes[size]} ${variants[variant]} ${className}`} {...props} />;
 }
@@ -33,7 +41,7 @@ export function Button({
 export function IconButton({ className = "", ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
-      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition duration-150 hover:bg-slate-100 hover:text-slate-600 active:scale-90 disabled:opacity-40 disabled:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300 dark:focus-visible:ring-offset-slate-900 ${className}`}
+      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition duration-150 hover:bg-slate-100 hover:text-slate-600 active:scale-90 disabled:opacity-40 disabled:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 dark:text-slate-500 dark:hover:bg-surface-3 dark:hover:text-slate-300 dark:focus-visible:ring-offset-background ${className}`}
       {...props}
     />
   );
@@ -57,14 +65,14 @@ export function Badge({ tone = "slate", children, className = "" }: { tone?: key
 
 export function Tabs<T extends string>({ tabs, active, onChange }: { tabs: { id: T; label: string; icon?: ReactNode }[]; active: T; onChange: (id: T) => void }) {
   return (
-    <div className="flex gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-800">
+    <div className="flex gap-1 rounded-lg bg-slate-100 p-1 dark:bg-surface">
       {tabs.map((t) => (
         <button
           key={t.id}
           onClick={() => onChange(t.id)}
           className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${
             active === t.id
-              ? "bg-surface text-slate-800 shadow-soft dark:bg-slate-700 dark:text-slate-100"
+              ? "bg-surface text-slate-800 shadow-soft dark:bg-surface-3 dark:text-slate-100"
               : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
           }`}
         >
@@ -121,7 +129,9 @@ export function ProgressBar({ pct, colorClassName = "bg-brand-500" }: { pct: num
 export function EmptyState({ icon, title, description }: { icon: ReactNode; title: string; description?: string }) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2 px-8 text-center">
-      <div className="mb-1 flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">{icon}</div>
+      <div className="mb-1 flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-500">
+        {icon}
+      </div>
       <p className="text-sm font-medium text-slate-600 dark:text-slate-300">{title}</p>
       {description && <p className="text-xs text-slate-400 dark:text-slate-500">{description}</p>}
     </div>
