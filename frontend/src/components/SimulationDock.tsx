@@ -41,7 +41,7 @@ export function SimulationDock({ multiplier, onMultiplierChange, playing, onPlay
     // fix — same trick any full-width absolutely-positioned overlay with
     // centered content needs.
     <div className="animate-fade-in pointer-events-none absolute inset-x-0 bottom-4 z-20 flex justify-center">
-      <div className="pointer-events-auto flex items-center gap-3 rounded-2xl border border-slate-200 bg-white/95 px-3 py-2 shadow-lg backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
+      <div className="pointer-events-auto flex items-center gap-3 rounded-2xl bg-surface/95 px-3 py-2 shadow-raised backdrop-blur dark:bg-slate-900/95">
         <div className="flex items-center gap-1 pl-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
           <Zap size={11} />
         </div>
@@ -52,7 +52,7 @@ export function SimulationDock({ multiplier, onMultiplierChange, playing, onPlay
               onClick={() => onMultiplierChange(m)}
               className={`rounded-md px-2.5 py-1 text-xs font-semibold transition active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${
                 multiplier === m
-                  ? "bg-white text-brand-700 shadow-sm dark:bg-slate-700 dark:text-indigo-300"
+                  ? "bg-white text-brand-700 shadow-sm dark:bg-slate-700 dark:text-brand-300"
                   : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
               }`}
             >

@@ -47,7 +47,7 @@ export function ComparePanel({ result, onExit }: Props) {
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3.5 dark:border-slate-800">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-100 text-brand-600 dark:text-indigo-300">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-100 text-brand-600 dark:text-brand-300">
             <GitCompare size={15} />
           </div>
           <div>
@@ -75,7 +75,7 @@ export function ComparePanel({ result, onExit }: Props) {
           return (
             <div
               key={row.ref}
-              className={`rounded-xl border border-l-4 border-slate-200 bg-white px-3.5 py-2.5 shadow-sm transition-shadow hover:shadow-md dark:border-slate-800 dark:bg-slate-800/50 ${STATUS_BORDER[row.status]}`}
+              className={`rounded-xl border-l-4 bg-surface px-3.5 py-2.5 shadow-soft transition-shadow hover:shadow-raised dark:bg-slate-800/50 ${STATUS_BORDER[row.status]}`}
             >
               <div className="flex items-center gap-2">
                 <span className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${STATUS_STYLE[row.status]}`}>

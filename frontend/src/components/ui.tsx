@@ -14,14 +14,18 @@ export function Button({
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "ghost" | "danger"; size?: "sm" | "md" }) {
   const base =
-    "inline-flex items-center justify-center gap-1.5 rounded-lg font-medium transition duration-150 active:scale-[0.97] disabled:opacity-40 disabled:pointer-events-none disabled:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900";
+    "inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition duration-150 active:scale-[0.97] disabled:opacity-40 disabled:pointer-events-none disabled:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900";
   const sizes = { sm: "px-2.5 py-1 text-xs", md: "px-3.5 py-2 text-sm" };
+  // `secondary` used to be border+shadow-sm — the exact recipe repeated
+  // on every panel in the app regardless of importance. It's elevation-
+  // only now (shadow-soft, no border), so a button reads as "sitting on
+  // the surface" rather than boxed — the crisp edge is saved for
+  // `primary`'s own case (a solid fill genuinely benefits from one).
   const variants = {
-    primary: "bg-brand-600 text-white hover:bg-brand-700 shadow-sm shadow-brand-600/20",
-    secondary:
-      "bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 shadow-sm dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700 dark:hover:bg-slate-700",
+    primary: "bg-brand-600 text-white hover:bg-brand-700 shadow-soft",
+    secondary: "bg-surface text-slate-700 shadow-soft hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800",
     ghost: "text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200",
-    danger: "bg-red-600 text-white hover:bg-red-700 shadow-sm shadow-red-600/20",
+    danger: "bg-red-600 text-white hover:bg-red-700 shadow-soft",
   };
   return <button className={`${base} ${sizes[size]} ${variants[variant]} ${className}`} {...props} />;
 }
@@ -37,7 +41,7 @@ export function IconButton({ className = "", ...props }: ButtonHTMLAttributes<HT
 
 const BADGE_TONES = {
   slate: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
-  brand: "bg-brand-50 text-brand-700 dark:bg-indigo-500/15 dark:text-indigo-300",
+  brand: "bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300",
   green: "bg-green-50 text-green-700 dark:bg-green-500/15 dark:text-green-400",
   amber: "bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400",
   red: "bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-400",
@@ -60,11 +64,11 @@ export function Tabs<T extends string>({ tabs, active, onChange }: { tabs: { id:
           onClick={() => onChange(t.id)}
           className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${
             active === t.id
-              ? "bg-white text-slate-800 shadow-sm dark:bg-slate-700 dark:text-slate-100"
+              ? "bg-surface text-slate-800 shadow-soft dark:bg-slate-700 dark:text-slate-100"
               : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
           }`}
         >
-          {t.icon}
+  {t.icon}
           {t.label}
         </button>
       ))}
@@ -153,7 +157,7 @@ const MARKDOWN_COMPONENTS: Components = {
   h3: ({ children }) => <p className="mb-1 mt-1.5 text-[13px] font-semibold first:mt-0">{children}</p>,
   code: ({ children }) => <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[12px] dark:bg-slate-700">{children}</code>,
   a: ({ children, href }) => (
-    <a href={href} target="_blank" rel="noreferrer" className="text-brand-600 underline underline-offset-2 dark:text-indigo-300">
+    <a href={href} target="_blank" rel="noreferrer" className="text-brand-600 underline underline-offset-2 dark:text-brand-300">
       {children}
     </a>
   ),

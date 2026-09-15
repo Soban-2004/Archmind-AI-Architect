@@ -42,7 +42,7 @@ export function SimulationPanel({ state, result, killIds, onToggleKill, error, o
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3.5 dark:border-slate-800">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-100 text-brand-600 dark:text-indigo-300">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-100 text-brand-600 dark:text-brand-300">
             <Activity size={15} />
           </div>
           <h1 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Simulate Traffic</h1>

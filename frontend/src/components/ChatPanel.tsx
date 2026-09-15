@@ -29,7 +29,7 @@ function ThinkingBubble({ active, realStage }: { active: boolean; realStage?: st
   const displayText = realStage || phrase;
   return (
     <div className="flex items-start gap-2 pl-9">
-      <div className="flex flex-col gap-1 rounded-2xl rounded-bl-sm border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-500 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
+      <div className="flex flex-col gap-1 rounded-2xl rounded-bl-sm bg-surface px-3.5 py-2.5 text-xs text-slate-500 shadow-soft dark:bg-slate-800 dark:text-slate-400">
         <div className="flex items-center gap-2">
           <Spinner className="h-3.5 w-3.5 shrink-0" />
           <span key={displayText} className="animate-fade-in">
@@ -133,16 +133,16 @@ export function ChatPanel({ messages, onSend, busy, busyStage, onConsumeAnimatio
             {messages.map((m, i) => (
               <div key={i} className={`group flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
                 {m.role === "assistant" && (
-                  <div className="mr-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-600 dark:text-indigo-300">
+                  <div className="mr-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-600 dark:text-brand-300">
                     <MessageSquare size={13} />
                   </div>
                 )}
                 <div className={`flex max-w-[82%] flex-col gap-1 ${m.role === "user" ? "items-end" : "items-start"}`}>
                   <div
-                    className={`rounded-2xl px-3.5 py-2 text-[13px] leading-relaxed shadow-sm ${
+                    className={`rounded-2xl px-3.5 py-2 text-[13px] leading-relaxed ${
                       m.role === "user"
-                        ? "whitespace-pre-wrap rounded-br-sm bg-brand-600 text-white"
-                        : "rounded-bl-sm border border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                        ? "whitespace-pre-wrap rounded-br-sm bg-brand-600 text-white shadow-soft"
+                        : "rounded-bl-sm bg-surface text-slate-700 shadow-soft dark:bg-slate-800 dark:text-slate-200"
                     }`}
                   >
                     {m.role === "assistant" ? (
@@ -166,8 +166,8 @@ export function ChatPanel({ messages, onSend, busy, busyStage, onConsumeAnimatio
                     // prompts.py). Deliberately its own small block, not
                     // folded into the chat bubble's prose above, so it
                     // reads as "here's why", not as more of the answer.
-                    <div className="flex w-full flex-col gap-1 rounded-xl border border-amber-200/70 bg-amber-50/60 px-3 py-2 dark:border-amber-500/20 dark:bg-amber-500/[0.06]">
-                      <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:text-amber-400">
+                    <div className="flex w-full flex-col gap-1 rounded-r-lg border-l-2 border-amber-400/60 bg-amber-50/50 py-1.5 pl-2.5 pr-3 dark:border-amber-400/40 dark:bg-amber-500/[0.05]">
+                      <div className="flex items-center gap-1.5 text-[10.5px] font-medium text-amber-700 dark:text-amber-400">
                         <Lightbulb size={11} /> Why
                       </div>
                       <ul className="flex flex-col gap-0.5">
@@ -193,7 +193,7 @@ export function ChatPanel({ messages, onSend, busy, busyStage, onConsumeAnimatio
                           target="_blank"
                           rel="noopener noreferrer"
                           title={s.snippet}
-                          className="flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10.5px] text-slate-500 transition hover:border-brand-300 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-400 dark:hover:border-indigo-500/40 dark:hover:text-indigo-300"
+                          className="flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10.5px] text-slate-500 transition hover:border-brand-300 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-400 dark:hover:border-brand-500/40 dark:hover:text-brand-300"
                         >
                           <ExternalLink size={10} className="shrink-0" />
                           <span className="truncate">{s.title}</span>
@@ -207,7 +207,7 @@ export function ChatPanel({ messages, onSend, busy, busyStage, onConsumeAnimatio
                         <button
                           key={reply}
                           onClick={() => handleQuickReply(reply)}
-                          className="rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-medium text-brand-700 transition hover:bg-brand-100 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300 dark:hover:bg-indigo-500/20"
+                          className="rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-medium text-brand-700 transition hover:bg-brand-100 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-300 dark:hover:bg-brand-500/20"
                         >
                           {reply}
                         </button>
@@ -231,7 +231,7 @@ export function ChatPanel({ messages, onSend, busy, busyStage, onConsumeAnimatio
       {showJumpToLatest && (
         <button
           onClick={jumpToLatest}
-          className="animate-fade-in absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-md transition hover:bg-slate-50 active:scale-95 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+          className="animate-fade-in absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-surface px-3 py-1.5 text-xs font-medium text-slate-600 shadow-raised transition hover:bg-slate-50 active:scale-95 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
         >
           <ArrowDown size={12} /> Jump to latest
         </button>

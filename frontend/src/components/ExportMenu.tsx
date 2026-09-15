@@ -105,11 +105,11 @@ export function ExportMenu({ flowElementRef, projectName, onShare, projectId, ve
         className="border border-slate-200 bg-white/90 shadow-sm backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/90"
         title="Export or share"
       >
-        <Download size={14} className={open ? "text-brand-600 dark:text-indigo-400" : ""} />
+        <Download size={14} className={open ? "text-brand-600 dark:text-brand-400" : ""} />
       </IconButton>
 
       {open && (
-        <div className="animate-fade-in absolute right-0 top-full z-30 mt-1.5 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
+        <div className="animate-fade-in absolute right-0 top-full z-30 mt-1.5 w-56 overflow-hidden rounded-xl bg-surface shadow-raised dark:bg-slate-900">
           <button
             onClick={() => handleExport("png")}
             disabled={busy !== null}

@@ -124,7 +124,7 @@ export function AnalyzerPanel({ projectId, versionId, onExit, onFixInChat }: Pro
         )}
 
         {scorecard && scorecard.estimated_monthly_cost_usd !== null && (
-          <div className="mb-2 rounded-xl border border-slate-200 bg-white px-3.5 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-800/50">
+          <div className="mb-2 rounded-xl bg-surface px-3.5 py-3 shadow-soft dark:bg-slate-800/50">
             <div className="flex items-center justify-between">
               <span className="flex items-center gap-1.5 text-[13px] font-medium text-slate-700 dark:text-slate-200">
                 <DollarSign size={13} /> Estimated cost
@@ -184,7 +184,7 @@ export function AnalyzerPanel({ projectId, versionId, onExit, onFixInChat }: Pro
           {scorecard?.categories.map((cat) => (
             <div
               key={cat.category}
-              className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 shadow-sm transition-shadow hover:shadow-md dark:border-slate-800 dark:bg-slate-800/50"
+              className="rounded-xl bg-surface px-3.5 py-2.5 shadow-soft transition-shadow hover:shadow-raised dark:bg-slate-800/50"
             >
               <div className="flex items-center justify-between">
                 <span className="text-[13px] font-medium text-slate-700 dark:text-slate-200">{CATEGORY_LABEL[cat.category]}</span>

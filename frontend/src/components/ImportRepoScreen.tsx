@@ -163,7 +163,7 @@ export function ImportRepoScreen({ onSuccess, onCancel }: Props) {
                 onClick={() => inputRef.current?.click()}
                 className={`mt-3 flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-6 py-10 text-center transition ${
                   dragActive
-                    ? "border-brand-400 bg-brand-50/60 dark:border-indigo-500/50 dark:bg-indigo-500/5"
+                    ? "border-brand-400 bg-brand-50/60 dark:border-brand-500/50 dark:bg-brand-500/5"
                     : "border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-slate-600"
                 }`}
               >
@@ -176,7 +176,7 @@ export function ImportRepoScreen({ onSuccess, onCancel }: Props) {
                 />
                 {file ? (
                   <>
-                    <FileArchive size={22} className="text-brand-500 dark:text-indigo-400" />
+                    <FileArchive size={22} className="text-brand-500 dark:text-brand-400" />
                     <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{file.name}</p>
                     <p className="text-[11px] text-slate-400 dark:text-slate-500">{(file.size / 1024).toFixed(0)} KB — click to choose a different file</p>
                   </>
@@ -193,7 +193,7 @@ export function ImportRepoScreen({ onSuccess, onCancel }: Props) {
                 <label className="block text-[11px] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
                   Repo URL
                 </label>
-                <div className="mt-1 flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 focus-within:border-brand-400 focus-within:ring-2 focus-within:ring-brand-100 dark:border-slate-700 dark:bg-slate-800 dark:focus-within:ring-indigo-500/20">
+                <div className="mt-1 flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 focus-within:border-brand-400 focus-within:ring-2 focus-within:ring-brand-100 dark:border-slate-700 dark:bg-slate-800 dark:focus-within:ring-brand-500/20">
                   <GitBranch size={14} className="shrink-0 text-slate-300 dark:text-slate-600" />
                   <input
                     value={githubUrl}
@@ -216,7 +216,7 @@ export function ImportRepoScreen({ onSuccess, onCancel }: Props) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Imported Project"
-              className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-indigo-500/20"
+              className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-brand-500/20"
             />
 
             <Button className="mt-5 w-full" disabled={mode === "upload" ? !file : !githubUrl.trim()} onClick={handleSubmit}>

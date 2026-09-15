@@ -106,7 +106,7 @@ export function ProjectSwitcher({ projectId, projectName, onSwitch, onCreate, sw
       </button>
 
       {open && (
-        <div className="animate-fade-in absolute left-0 top-full z-30 mt-1.5 w-72 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
+        <div className="animate-fade-in absolute left-0 top-full z-30 mt-1.5 w-72 overflow-hidden rounded-xl bg-surface shadow-raised dark:bg-slate-900">
           <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2 dark:border-slate-800">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Projects</p>
             <button
@@ -114,7 +114,7 @@ export function ProjectSwitcher({ projectId, projectName, onSwitch, onCreate, sw
                 setOpen(false);
                 onCreate();
               }}
-              className="flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium text-brand-600 transition hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 active:scale-95 dark:text-indigo-300 dark:hover:bg-indigo-500/10"
+              className="flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium text-brand-600 transition hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 active:scale-95 dark:text-brand-300 dark:hover:bg-brand-500/10"
             >
               <Plus size={12} /> New
             </button>
@@ -133,11 +133,11 @@ export function ProjectSwitcher({ projectId, projectName, onSwitch, onCreate, sw
                 <div
                   key={p.id}
                   className={`group flex items-center gap-2 px-3 py-2 text-sm transition-colors hover:bg-slate-50 dark:hover:bg-slate-800 ${
-                    p.id === projectId ? "bg-brand-50/60 dark:bg-indigo-500/10" : ""
+                    p.id === projectId ? "bg-brand-50/60 dark:bg-brand-500/10" : ""
                   }`}
                 >
                   {switchingToId === p.id ? (
-                    <Spinner className="h-3.5 w-3.5 shrink-0 text-brand-500 dark:text-indigo-400" />
+                    <Spinner className="h-3.5 w-3.5 shrink-0 text-brand-500 dark:text-brand-400" />
                   ) : (
                     <Boxes size={14} className="shrink-0 text-slate-300 dark:text-slate-600" />
                   )}
@@ -151,7 +151,7 @@ export function ProjectSwitcher({ projectId, projectName, onSwitch, onCreate, sw
                         if (e.key === "Escape") setRenamingId(null);
                       }}
                       onBlur={() => commitRename(p.id)}
-                      className="min-w-0 flex-1 rounded border border-brand-300 bg-white px-1.5 py-0.5 text-sm dark:border-indigo-500/50 dark:bg-slate-800"
+                      className="min-w-0 flex-1 rounded border border-brand-300 bg-white px-1.5 py-0.5 text-sm dark:border-brand-500/50 dark:bg-slate-800"
                     />
                   ) : (
                     <button
@@ -170,7 +170,7 @@ export function ProjectSwitcher({ projectId, projectName, onSwitch, onCreate, sw
                       </p>
                     </button>
                   )}
-                  {p.id === projectId && renamingId !== p.id && <Check size={13} className="shrink-0 text-brand-600 dark:text-indigo-400" />}
+                  {p.id === projectId && renamingId !== p.id && <Check size={13} className="shrink-0 text-brand-600 dark:text-brand-400" />}
 
                   {confirmDeleteId === p.id ? (
                     <div className="flex shrink-0 items-center gap-0.5">

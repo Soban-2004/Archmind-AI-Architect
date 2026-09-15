@@ -5,47 +5,89 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --background: #f1f5f9; /* slate-100 page backdrop, app sits inset on top */
+  --background: #eef0f2; /* graphite-tinted neutral, not slate's blue lean */
   --surface: #ffffff;
-  --foreground: #0f172a; /* slate-900 */
+  --foreground: #12161c; /* near-black, cool-neutral */
 
-  --brand-50: #eef2ff;
-  --brand-100: #e0e7ff;
-  --brand-500: #6366f1;
-  --brand-600: #4f46e5;
-  --brand-700: #4338ca;
+  /* "Cyanotype blue" — the literal color of an architectural blueprint,
+     chosen deliberately in place of the indigo-600 this used to be:
+     indigo is probably the single most common accent in AI-generated
+     Tailwind UIs, and this product's whole identity is "blueprints for
+     software architecture" — the color is subject-grounded, not a
+     default. Same variable names as before (brand-*) so every existing
+     `bg-brand-600`/`text-brand-500`/etc. across the app repalettes for
+     free — this file is the only thing that needed to change for that.
+     300/400 are new (the old scale only had 50/100/500/600/700, which is
+     exactly why raw `indigo-300`/`indigo-400` utility classes crept into
+     components elsewhere — nothing else to reach for at the time). */
+  --brand-50: #eef4f8;
+  --brand-100: #d9e8f0;
+  --brand-300: #86b4d0;
+  --brand-400: #4a86a8;
+  --brand-500: #2f6a8c;
+  --brand-600: #1d4e73;
+  --brand-700: #163e5c;
 
   --rf-dot-color: #cbd5e1;
 
-  /* "Blueprint" identity — Landing.tsx only, the rest of the app keeps
-     the brand- and slate-based tokens above and Geist type untouched.
-     A schematic engineering-drawing palette (not the flat SaaS-gradient
-     look) with its own IBM Plex type pairing, kept as real tokens (not
-     one-off hex literals in the component) so light/dark stay consistent
-     the same way every other color in this file already does. */
+  /* A real elevation system, in place of "border + shadow-lg on
+     everything" (the single biggest reason the app used to read as
+     templated — every panel, regardless of importance, had the exact
+     same recipe). `soft` is the new default for a floating surface
+     (dropdown, tile, a card that's part of the page); `raised` is
+     reserved for something genuinely modal/critical (a confirm dialog,
+     an actively-edited detail panel) — the two should feel different,
+     not just be two names for the same weight. Neither includes a
+     border on its own; add one explicitly (sparingly) only where a
+     surface genuinely needs a crisp edge, not as the default way to
+     separate it from the page. Dark mode gets its own values below — a
+     black-based shadow barely registers against an already-dark
+     surface, so it leans on a bit of border-like definition instead. */
+  --elevation-soft: 0 1px 2px rgba(15, 23, 42, 0.04), 0 10px 24px -14px rgba(15, 23, 42, 0.16);
+  --elevation-raised: 0 2px 6px rgba(15, 23, 42, 0.08), 0 24px 48px -18px rgba(15, 23, 42, 0.28);
+
+  /* "Blueprint" identity — now shares the SAME accent as the rest of the
+     app (--bp-accent below reuses the exact cyanotype blue above) rather
+     than its own separate indigo, so the landing page and the product
+     itself read as one identity instead of the landing page having a
+     distinct look that drops away the moment you start actually using
+     the tool. Its own IBM Plex type pairing and paper/ink neutrals stay
+     — those were never the generic part. */
   --bp-paper: #f5f7fb;
   --bp-ink: #0b1220;
   --bp-surface: #ffffff;
   --bp-line: #d6deeb;
   --bp-line-strong: #b9c6dd;
   --bp-muted: #5b6b87;
-  --bp-accent: #4f46e5;
-  --bp-accent-soft: #eef0fe;
-  --bp-accent-2: #0ea5e9;
-  --bp-good: #059669;
+  --bp-accent: #1d4e73;
+  --bp-accent-soft: #eef4f8;
+  --bp-accent-2: #2f6a8c;
+  --bp-good: #0f7a5c;
 }
 
 .dark {
   --rf-dot-color: #334155;
-  --background: #020617; /* slate-950 page backdrop */
-  --surface: #0f172a; /* slate-900 app surface */
-  --foreground: #e2e8f0; /* slate-200 */
+  --background: #0a0d12;
+  --surface: #12161d;
+  --foreground: #e7ebf0;
 
-  --brand-50: #1e1b4b;
-  --brand-100: #312e81;
-  --brand-500: #818cf8;
-  --brand-600: #6366f1;
-  --brand-700: #4f46e5;
+  /* Same hue as light mode, shifted brighter/more saturated the same way
+     the old indigo scale already did (dark-700 lands near light-600's
+     lightness, etc.) — proven pattern, just repalette'd. */
+  --brand-50: #15222b;
+  --brand-100: #1b2e3a;
+  --brand-300: #5a9ac0;
+  --brand-400: #6fb3d8;
+  --brand-500: #4a86a8;
+  --brand-600: #3d7ea3;
+  --brand-700: #2f6a8c;
+
+  /* A black-based shadow barely reads against an already-dark surface —
+     these lean on a faint light-edge instead (a soft inner highlight
+     plus a real blur), the standard trick for elevation on a dark
+     theme. */
+  --elevation-soft: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 10px 24px -12px rgba(0, 0, 0, 0.5);
+  --elevation-raised: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 24px 48px -16px rgba(0, 0, 0, 0.65);
 
   --bp-paper: #070a12;
   --bp-ink: #e7ecf7;
@@ -53,9 +95,9 @@
   --bp-line: #1e293f;
   --bp-line-strong: #2a3a57;
   --bp-muted: #8592ad;
-  --bp-accent: #6366f1;
-  --bp-accent-soft: #191a3a;
-  --bp-accent-2: #38bdf8;
+  --bp-accent: #6fb3d8;
+  --bp-accent-soft: #15222b;
+  --bp-accent-2: #4a86a8;
   --bp-good: #34d399;
 }
 
@@ -65,11 +107,15 @@
   --color-foreground: var(--foreground);
   --color-brand-50: var(--brand-50);
   --color-brand-100: var(--brand-100);
+  --color-brand-300: var(--brand-300);
+  --color-brand-400: var(--brand-400);
   --color-brand-500: var(--brand-500);
   --color-brand-600: var(--brand-600);
   --color-brand-700: var(--brand-700);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --shadow-soft: var(--elevation-soft);
+  --shadow-raised: var(--elevation-raised);
 
   --color-bp-paper: var(--bp-paper);
   --color-bp-ink: var(--bp-ink);

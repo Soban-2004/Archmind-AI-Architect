@@ -87,7 +87,7 @@ export function ArchNodeCard({ data, selected }: NodeProps) {
         // using the box-shadow slot — the two compose instead of one
         // silently overwriting the other. Previously selection was just
         // "shadow-md", indistinguishable from the existing hover shadow.
-        selected ? "shadow-md outline outline-2 outline-offset-2 outline-brand-500 dark:outline-indigo-400" : ""
+        selected ? "shadow-md outline outline-2 outline-offset-2 outline-brand-500 dark:outline-brand-400" : ""
       }`}
     >
       {badge && (

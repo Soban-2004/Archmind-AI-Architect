@@ -225,7 +225,7 @@ export function NodeDetailCard({ node, load, finding, onClose, onSave, onDelete,
     // bottom-left, and this card was sitting directly on top of them
     // (and, once added, the simulation dock's bottom-center bar too) —
     // top-left is the one corner nothing else on the canvas claims.
-    <div className="animate-fade-in absolute left-4 top-4 z-10 w-72 rounded-xl border border-slate-200 bg-white/95 p-4 shadow-lg backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
+    <div className="animate-fade-in absolute left-4 top-4 z-10 w-72 rounded-xl bg-surface/95 p-4 shadow-raised backdrop-blur dark:bg-slate-900/95">
       <div className="flex items-start justify-between">
         <div className="flex min-w-0 items-center gap-2.5">
           <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800 ${meta.accent}`}>
@@ -237,7 +237,7 @@ export function NodeDetailCard({ node, load, finding, onClose, onSave, onDelete,
                 autoFocus
                 value={draft.name ?? ""}
                 onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
-                className="w-full rounded border border-brand-300 bg-white px-1.5 py-0.5 text-sm font-semibold dark:border-indigo-500/50 dark:bg-slate-800 dark:text-slate-100"
+                className="w-full rounded border border-brand-300 bg-white px-1.5 py-0.5 text-sm font-semibold dark:border-brand-500/50 dark:bg-slate-800 dark:text-slate-100"
               />
             ) : (
               <p className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{node.name}</p>
@@ -319,8 +319,8 @@ export function NodeDetailCard({ node, load, finding, onClose, onSave, onDelete,
         // state.py's Service.rationale) — shown ahead of the generic
         // componentInfo.ts reference text below, and never truncated: it's
         // usually one or two sentences, short enough to just show in full.
-        <div className="mt-3 rounded-lg border border-brand-100 bg-brand-50/60 p-2.5 dark:border-indigo-500/20 dark:bg-indigo-500/10">
-          <p className="text-[10px] font-medium uppercase tracking-wide text-brand-600 dark:text-indigo-300">Why this is here</p>
+        <div className="mt-3 rounded-lg border border-brand-100 bg-brand-50/60 p-2.5 dark:border-brand-500/20 dark:bg-brand-500/10">
+          <p className="text-[10px] font-medium uppercase tracking-wide text-brand-600 dark:text-brand-300">Why this is here</p>
           <p className="mt-1 text-xs leading-relaxed text-slate-700 dark:text-slate-200">{rationale}</p>
         </div>
       )}

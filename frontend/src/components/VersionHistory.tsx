@@ -92,7 +92,7 @@ export function VersionHistory({ projectId, activeVersionId, refreshKey, onSelec
                 key={v.id}
                 onClick={() => (compareMode ? toggleSelected(v.id) : onSelect(v.id))}
                 className={`relative mb-0.5 flex w-full items-start gap-2.5 rounded-lg px-1.5 py-2 text-left transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 active:scale-[0.98] dark:hover:bg-slate-800/60 ${
-                  isSelected ? "bg-brand-50 dark:bg-indigo-500/10" : ""
+                  isSelected ? "bg-brand-50 dark:bg-brand-500/10" : ""
                 }`}
               >
                 <div
@@ -103,7 +103,7 @@ export function VersionHistory({ projectId, activeVersionId, refreshKey, onSelec
                   <Icon size={13} />
                 </div>
                 <div className="min-w-0 pt-1">
-                  <div className={`truncate text-xs font-medium ${isSelected ? "text-brand-700 dark:text-indigo-300" : "text-slate-700 dark:text-slate-300"}`}>
+                  <div className={`truncate text-xs font-medium ${isSelected ? "text-brand-700 dark:text-brand-300" : "text-slate-700 dark:text-slate-300"}`}>
                     v{i + 1} · {meta.label}
                     {v.label ? ` · ${v.label}` : ""}
                   </div>

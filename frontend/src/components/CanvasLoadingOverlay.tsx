@@ -34,7 +34,7 @@ export function CanvasLoadingOverlay({ active, fullscreen = false }: Props) {
       }`}
     >
       <div className="relative flex h-16 w-16 items-center justify-center">
-        <div className="animate-spin-slow absolute inset-0 rounded-full border-2 border-dashed border-brand-300 dark:border-indigo-500/40" />
+        <div className="animate-spin-slow absolute inset-0 rounded-full border-2 border-dashed border-brand-300 dark:border-brand-500/40" />
         <div className="flex h-10 w-10 animate-pulse items-center justify-center rounded-full bg-brand-600 text-white shadow-lg shadow-brand-600/30">
           <Sparkles size={18} />
         </div>
@@ -51,7 +51,7 @@ export function CanvasLoadingOverlay({ active, fullscreen = false }: Props) {
         )}
       </div>
       <div className="h-1 w-40 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
-        <div className="animate-sweep h-full w-1/3 rounded-full bg-brand-500 dark:bg-indigo-400" />
+        <div className="animate-sweep h-full w-1/3 rounded-full bg-brand-500 dark:bg-brand-400" />
       </div>
     </div>
   );

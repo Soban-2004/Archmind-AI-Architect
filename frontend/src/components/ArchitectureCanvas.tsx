@@ -528,7 +528,7 @@ function CanvasBody({
           className="absolute right-3.5 top-3.5 z-10 border border-slate-200 bg-white/90 shadow-sm backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/90"
           title={minimapVisible ? "Hide minimap" : "Show minimap"}
         >
-          <Map size={14} className={minimapVisible ? "text-brand-600 dark:text-indigo-400" : ""} />
+          <Map size={14} className={minimapVisible ? "text-brand-600 dark:text-brand-400" : ""} />
         </IconButton>
       )}
       {selectedNode && (
@@ -553,7 +553,7 @@ function CanvasBody({
         // Same top-left slot NodeDetailCard uses — mutually exclusive
         // with it (selecting an edge clears the node selection and vice
         // versa), so there's never a collision.
-        <div className="animate-fade-in absolute left-4 top-4 z-10 w-72 rounded-xl border border-slate-200 bg-white/95 p-4 shadow-lg backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
+        <div className="animate-fade-in absolute left-4 top-4 z-10 w-72 rounded-xl bg-surface/95 p-4 shadow-raised backdrop-blur dark:bg-slate-900/95">
           <div className="flex items-start justify-between gap-2">
             <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">
               Remove the connection from{" "}
@@ -599,7 +599,7 @@ function CanvasBody({
         // directly at that point instead of falling back to the
         // incremental layout's guess.
         <div
-          className="animate-fade-in absolute z-40 rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900"
+          className="animate-fade-in absolute z-40 rounded-xl bg-surface shadow-raised dark:bg-slate-900"
           style={{ left: contextMenu.localX, top: contextMenu.localY }}
           onMouseDown={(e) => e.stopPropagation()}
         >
