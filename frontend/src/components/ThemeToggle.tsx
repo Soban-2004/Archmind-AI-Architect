@@ -29,7 +29,7 @@ export function ThemeToggle() {
 
   return (
     <IconButton onClick={toggle} aria-label="Toggle theme" title="Toggle theme">
-      <span key={theme} className="animate-fade-in">
+      <span key={theme} className="animate-icon-pop inline-flex">
         {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
       </span>
     </IconButton>

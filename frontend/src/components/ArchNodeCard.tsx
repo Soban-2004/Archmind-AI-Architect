@@ -9,11 +9,12 @@ import type { ArchNode, DiffStatus, LoadStatus, NodeKind } from "@/lib/types";
 // as one coherent instrument panel; five different full-card tints reads
 // as five different products). Each hue is still deliberately distinct so
 // a chip is a real at-a-glance kind indicator, not decoration.
-export const KIND_STYLE: Record<NodeKind, { bg: string; border: string; icon: string; label: string; Icon: typeof Server }> = {
+export const KIND_STYLE: Record<NodeKind, { bg: string; border: string; icon: string; solid: string; label: string; Icon: typeof Server }> = {
   service: {
     bg: "bg-blue-50 dark:bg-blue-500/15",
     border: "border-blue-200 dark:border-blue-500/30",
     icon: "text-blue-600 dark:text-blue-300",
+    solid: "bg-blue-500 dark:bg-blue-400", // the card's left accent edge — see ArchNodeCard
     label: "Service",
     Icon: Server,
   },
@@ -24,6 +25,7 @@ export const KIND_STYLE: Record<NodeKind, { bg: string; border: string; icon: st
     bg: "bg-yellow-50 dark:bg-yellow-500/15",
     border: "border-yellow-200 dark:border-yellow-500/30",
     icon: "text-yellow-600 dark:text-yellow-300",
+    solid: "bg-yellow-500 dark:bg-yellow-400",
     label: "Database",
     Icon: Database,
   },
@@ -31,6 +33,7 @@ export const KIND_STYLE: Record<NodeKind, { bg: string; border: string; icon: st
     bg: "bg-emerald-50 dark:bg-emerald-500/15",
     border: "border-emerald-200 dark:border-emerald-500/30",
     icon: "text-emerald-600 dark:text-emerald-300",
+    solid: "bg-emerald-500 dark:bg-emerald-400",
     label: "Queue",
     Icon: Layers,
   },
@@ -38,13 +41,15 @@ export const KIND_STYLE: Record<NodeKind, { bg: string; border: string; icon: st
     bg: "bg-info-400/10 dark:bg-info-500/15",
     border: "border-info-400/30 dark:border-info-500/30",
     icon: "text-info-600 dark:text-info-400",
+    solid: "bg-info-400 dark:bg-info-500",
     label: "External",
     Icon: Globe,
   },
   infra_node: {
-    bg: "bg-slate-100 dark:bg-slate-500/15",
-    border: "border-slate-300 dark:border-slate-500/30",
-    icon: "text-slate-500 dark:text-slate-400",
+    bg: "bg-cyan-50 dark:bg-cyan-500/15",
+    border: "border-cyan-200 dark:border-cyan-500/30",
+    icon: "text-cyan-600 dark:text-cyan-300",
+    solid: "bg-cyan-500 dark:bg-cyan-400",
     label: "Infra",
     Icon: Cloud,
   },
@@ -88,13 +93,20 @@ export function ArchNodeCard({ data, selected }: NodeProps) {
 
   return (
     <div
-      className={`relative w-[224px] cursor-grab rounded-xl border bg-surface-2 px-3.5 py-3 shadow-soft backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-raised active:cursor-grabbing ${
+      className={`relative w-[224px] cursor-grab overflow-hidden rounded-xl border bg-surface-2 px-3.5 py-3 pl-4 shadow-soft backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-raised active:cursor-grabbing ${
         // A flat, solid-colored border for the selected node — no glow.
         // Two full px wider than the default 1px border so it still reads
         // as "the one thing you're looking at" without a colored halo.
         selected ? "border-2 border-brand-400" : "border-slate-200 dark:border-slate-800"
       } ${ring}`}
     >
+      {/* A real, always-visible color presence per node kind — not just
+          the small icon chip — without going back to a flat full-card
+          tint (found live: that read as "five different products", see
+          KIND_STYLE's comment). A 3px solid edge is color you register at
+          a glance across a whole diagram, while the card body itself
+          stays the same neutral surface for every kind. */}
+      <span className={`absolute inset-y-0 left-0 w-[3px] ${style.solid}`} />
       {badge && (
         <span className={`absolute -top-2.5 -right-2 rounded-md px-1.5 py-0.5 text-[8.5px] font-semibold uppercase tracking-wide shadow-soft ${badge.className}`}>
           {badge.text}

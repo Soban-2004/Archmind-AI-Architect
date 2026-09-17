@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { AlertTriangle, DollarSign, SendHorizontal, Wrench, X } from "lucide-react";
+import { AlertTriangle, Cog, DollarSign, Eye, Gauge, Lock, SendHorizontal, ShieldCheck, TrendingUp, Wrench, X } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Category, Finding, Scorecard, Severity } from "@/lib/types";
 import { ChatMarkdown, IconButton, ProgressBar, ScoreRing, Spinner } from "./ui";
@@ -40,6 +40,21 @@ const CATEGORY_LABEL: Record<Category, string> = {
   observability: "Observability",
   performance: "Performance",
   maintainability: "Maintainability",
+};
+
+// Each of the 7 categories gets a real, distinct hue — icon, left accent
+// edge, and a faint tinted wash on the icon chip — instead of all seven
+// rendering as identical slate cards distinguished only by a text label.
+// Picked to stay legible in both themes and not collide with the severity
+// chips (amber/red) or the brand violet, which stays reserved for actions.
+const CATEGORY_STYLE: Record<Category, { Icon: typeof Gauge; text: string; bg: string; edge: string }> = {
+  scalability: { Icon: TrendingUp, text: "text-blue-600 dark:text-blue-300", bg: "bg-blue-50 dark:bg-blue-500/15", edge: "bg-blue-500 dark:bg-blue-400" },
+  reliability: { Icon: ShieldCheck, text: "text-emerald-600 dark:text-emerald-300", bg: "bg-emerald-50 dark:bg-emerald-500/15", edge: "bg-emerald-500 dark:bg-emerald-400" },
+  security: { Icon: Lock, text: "text-rose-600 dark:text-rose-300", bg: "bg-rose-50 dark:bg-rose-500/15", edge: "bg-rose-500 dark:bg-rose-400" },
+  cost: { Icon: DollarSign, text: "text-amber-600 dark:text-amber-300", bg: "bg-amber-50 dark:bg-amber-500/15", edge: "bg-amber-500 dark:bg-amber-400" },
+  observability: { Icon: Eye, text: "text-cyan-600 dark:text-cyan-300", bg: "bg-cyan-50 dark:bg-cyan-500/15", edge: "bg-cyan-500 dark:bg-cyan-400" },
+  performance: { Icon: Gauge, text: "text-brand-600 dark:text-brand-300", bg: "bg-brand-50 dark:bg-brand-500/15", edge: "bg-brand-500 dark:bg-brand-400" },
+  maintainability: { Icon: Cog, text: "text-fuchsia-600 dark:text-fuchsia-300", bg: "bg-fuchsia-50 dark:bg-fuchsia-500/15", edge: "bg-fuchsia-500 dark:bg-fuchsia-400" },
 };
 
 const SEVERITY_STYLE: Record<Severity, string> = {
@@ -118,8 +133,33 @@ export function AnalyzerPanel({ projectId, versionId, onExit, onFixInChat }: Pro
       <div className="flex-1 overflow-y-auto px-4 py-3">
         {loadError && <p className="text-xs text-red-600 dark:text-red-400">⚠️ {loadError}</p>}
         {!scorecard && !loadError && (
-          <div className="flex items-center gap-2 py-6 text-xs text-slate-400 dark:text-slate-500">
-            <Spinner className="h-4 w-4" /> Scoring…
+          <div className="space-y-2">
+            <div className="mb-2 flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500">
+              <Spinner className="h-4 w-4" /> Scoring…
+            </div>
+            {/* Skeleton of the 7 category cards about to arrive, rather than
+                a bare spinner — reuses the same sweep keyframe already
+                built for CanvasLoadingOverlay's loading bar instead of
+                introducing a second shimmer treatment. */}
+            {(Object.keys(CATEGORY_LABEL) as Category[]).map((cat, i) => {
+              const catStyle = CATEGORY_STYLE[cat];
+              return (
+                <div
+                  key={cat}
+                  className="animate-fade-in relative overflow-hidden rounded-xl bg-surface pl-4 pr-3.5 py-2.5 shadow-soft dark:bg-slate-800/50"
+                  style={{ animationDelay: `${i * 50}ms`, animationFillMode: "backwards" }}
+                >
+                  <span className={`absolute inset-y-0 left-0 w-[3px] ${catStyle.edge} opacity-50`} />
+                  <div className="flex items-center justify-between">
+                    <div className="h-3 w-24 rounded bg-slate-100 dark:bg-slate-700" />
+                    <div className="h-3 w-6 rounded bg-slate-100 dark:bg-slate-700" />
+                  </div>
+                  <div className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                    <div className={`animate-sweep h-full w-1/3 rounded-full ${catStyle.edge}`} />
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -130,7 +170,7 @@ export function AnalyzerPanel({ projectId, versionId, onExit, onFixInChat }: Pro
                 <DollarSign size={13} /> Estimated cost
               </span>
               <span
-                className={`text-sm font-bold ${
+                className={`font-display text-sm font-bold ${
                   scorecard.budget_monthly_usd !== null && scorecard.estimated_monthly_cost_usd > scorecard.budget_monthly_usd
                     ? "text-red-600 dark:text-red-400"
                     : "text-slate-700 dark:text-slate-200"
@@ -181,14 +221,24 @@ export function AnalyzerPanel({ projectId, versionId, onExit, onFixInChat }: Pro
         )}
 
         <div className="space-y-2">
-          {scorecard?.categories.map((cat) => (
+          {scorecard?.categories.map((cat, i) => {
+            const catStyle = CATEGORY_STYLE[cat.category];
+            const CatIcon = catStyle.Icon;
+            return (
             <div
               key={cat.category}
-              className="rounded-xl bg-surface px-3.5 py-2.5 shadow-soft transition-shadow hover:shadow-raised dark:bg-slate-800/50"
+              className="animate-fade-in relative overflow-hidden rounded-xl bg-surface pl-4 pr-3.5 py-2.5 shadow-soft transition-all duration-200 hover:-translate-y-0.5 hover:shadow-raised dark:bg-slate-800/50"
+              style={{ animationDelay: `${i * 50}ms`, animationFillMode: "backwards" }}
             >
+              <span className={`absolute inset-y-0 left-0 w-[3px] ${catStyle.edge}`} />
               <div className="flex items-center justify-between">
-                <span className="text-[13px] font-medium text-slate-700 dark:text-slate-200">{CATEGORY_LABEL[cat.category]}</span>
-                <span className={`text-sm font-bold ${scoreTextColor(cat.score)}`}>{cat.score}</span>
+                <span className="flex items-center gap-1.5 text-[13px] font-medium text-slate-700 dark:text-slate-200">
+                  <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md ${catStyle.bg} ${catStyle.text}`}>
+                    <CatIcon size={11} strokeWidth={2.25} />
+                  </span>
+                  {CATEGORY_LABEL[cat.category]}
+                </span>
+                <span className={`font-display text-sm font-bold ${scoreTextColor(cat.score)}`}>{cat.score}</span>
               </div>
               <div className="mt-1.5">
                 <ProgressBar pct={cat.score} colorClassName={scoreBarColor(cat.score)} />
@@ -213,7 +263,8 @@ export function AnalyzerPanel({ projectId, versionId, onExit, onFixInChat }: Pro
                 </ul>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
 
         {qa.length > 0 && (

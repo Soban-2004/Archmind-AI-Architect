@@ -30,7 +30,7 @@ export function Button({
     // gradient here (and nowhere else — not on cards, not on backgrounds)
     // is what keeps it reading as a choice instead of a decoration.
     primary:
-      "border border-brand-700/40 bg-gradient-to-b from-brand-400 to-brand-600 text-white hover:brightness-105 shadow-soft dark:border-brand-300/20 dark:text-[#1a0d05] dark:font-semibold",
+      "ease-spring border border-brand-700/40 bg-gradient-to-b from-brand-400 to-brand-600 text-white hover:-translate-y-0.5 hover:brightness-105 shadow-soft dark:border-brand-300/20 dark:text-[#1a0d05] dark:font-semibold",
     secondary: "border border-slate-200 bg-surface-2 text-slate-700 shadow-soft hover:bg-slate-50 dark:border-slate-800 dark:text-slate-200 dark:hover:bg-surface-3",
     ghost: "text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-surface-3 dark:hover:text-slate-200",
     danger: "border border-red-700 bg-red-600 text-white hover:bg-red-700 shadow-soft",
@@ -106,7 +106,7 @@ export function ScoreRing({ score, size = 56 }: { score: number; size?: number }
           style={{ transition: "stroke-dashoffset 0.5s ease" }}
         />
       </svg>
-      <div className="absolute inset-0 flex items-center justify-center text-sm font-bold text-slate-800 dark:text-slate-100">{score}</div>
+      <div className="font-display absolute inset-0 flex items-center justify-center text-sm font-bold text-slate-800 dark:text-slate-100">{score}</div>
     </div>
   );
 }

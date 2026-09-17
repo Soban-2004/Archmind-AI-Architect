@@ -64,19 +64,35 @@ const HOW_IT_WORKS = [
 // README): scale-aware cost.py v2, Phase 3 tiering, the simulator,
 // registry validation, Phase 5 evidence grounding, and the Analyzer's
 // citation-checked Q&A.
+//
+// Each feature carries its own hue now (cycled from FEATURE_COLORS below),
+// not one flat muted gray across all 11 — the whole point of this grid is
+// to make 11 genuinely different capabilities feel distinct at a glance,
+// which a single color can't do. Colors are still hand-picked per item
+// (not auto-cycled 0..n) so related items — e.g. the three evidence/
+// grounding features — can intentionally share a hue.
 const FEATURES = [
-  { icon: ShieldCheck, label: "Structurally validated", detail: "Bad edge directions, duplicate nodes, and bypassed load balancers are rejected before they reach the canvas." },
-  { icon: GitCompare, label: "Fully versioned", detail: "Every edit, tier, and import is a real version — browse, diff, and branch from any point in history." },
-  { icon: Waves, label: "Simulated, not assumed", detail: "A deterministic capacity model shows which components buckle first under real load or a killed dependency." },
-  { icon: Wallet, label: "Cost tied to real load", detail: "Instance counts — and the monthly estimate — scale from actual simulated traffic against declared capacity, not a flat guess per component type." },
-  { icon: Layers, label: "Tiered alternatives", detail: "Ask for a $0 student version or a production tier for 1M users and get a fresh, constraint-grounded architecture, not a resize." },
-  { icon: ScanSearch, label: "Evidence-grounded imports", detail: "Reconstructing an existing repo cites the exact import, route, or compose file behind every proposed component." },
-  { icon: Sparkles, label: "Deterministic where it counts", detail: "Scores, diffs, and capacity math are computed by rules, not the model — re-running them never changes the answer." },
-  { icon: MessageSquare, label: "Grounded explanations", detail: "Ask why a score is what it is and get an answer that can only cite findings that actually fired." },
-  { icon: Search, label: "Grounded in live data", detail: "A time-sensitive question — current pricing, whether something's still maintained — triggers a real web search, cited inline, instead of a guess from stale training data." },
-  { icon: Hand, label: "Build it by hand, too", detail: "Add, edit, connect, or delete components straight on the canvas — the exact same validated command path a chat edit uses, no separate rules for a human-drawn change." },
-  { icon: Wrench, label: "Every node explains itself", detail: "Click a component and see why this project specifically needs it — the actual requirement it serves, not a generic definition of what the component type does." },
+  { icon: ShieldCheck, label: "Structurally validated", detail: "Bad edge directions, duplicate nodes, and bypassed load balancers are rejected before they reach the canvas.", color: "violet" as const },
+  { icon: GitCompare, label: "Fully versioned", detail: "Every edit, tier, and import is a real version — browse, diff, and branch from any point in history.", color: "blue" as const },
+  { icon: Waves, label: "Simulated, not assumed", detail: "A deterministic capacity model shows which components buckle first under real load or a killed dependency.", color: "cyan" as const },
+  { icon: Wallet, label: "Cost tied to real load", detail: "Instance counts — and the monthly estimate — scale from actual simulated traffic against declared capacity, not a flat guess per component type.", color: "amber" as const },
+  { icon: Layers, label: "Tiered alternatives", detail: "Ask for a $0 student version or a production tier for 1M users and get a fresh, constraint-grounded architecture, not a resize.", color: "emerald" as const },
+  { icon: ScanSearch, label: "Evidence-grounded imports", detail: "Reconstructing an existing repo cites the exact import, route, or compose file behind every proposed component.", color: "pink" as const },
+  { icon: Sparkles, label: "Deterministic where it counts", detail: "Scores, diffs, and capacity math are computed by rules, not the model — re-running them never changes the answer.", color: "violet" as const },
+  { icon: MessageSquare, label: "Grounded explanations", detail: "Ask why a score is what it is and get an answer that can only cite findings that actually fired.", color: "blue" as const },
+  { icon: Search, label: "Grounded in live data", detail: "A time-sensitive question — current pricing, whether something's still maintained — triggers a real web search, cited inline, instead of a guess from stale training data.", color: "pink" as const },
+  { icon: Hand, label: "Build it by hand, too", detail: "Add, edit, connect, or delete components straight on the canvas — the exact same validated command path a chat edit uses, no separate rules for a human-drawn change.", color: "emerald" as const },
+  { icon: Wrench, label: "Every node explains itself", detail: "Click a component and see why this project specifically needs it — the actual requirement it serves, not a generic definition of what the component type does.", color: "amber" as const },
 ];
+
+const FEATURE_COLORS = {
+  violet: { icon: "text-violet-600 dark:text-violet-300", bar: "bg-violet-500 dark:bg-violet-400", wash: "hover:bg-violet-50 dark:hover:bg-violet-500/10" },
+  blue: { icon: "text-blue-600 dark:text-blue-300", bar: "bg-blue-500 dark:bg-blue-400", wash: "hover:bg-blue-50 dark:hover:bg-blue-500/10" },
+  cyan: { icon: "text-cyan-600 dark:text-cyan-300", bar: "bg-cyan-500 dark:bg-cyan-400", wash: "hover:bg-cyan-50 dark:hover:bg-cyan-500/10" },
+  amber: { icon: "text-amber-600 dark:text-amber-300", bar: "bg-amber-500 dark:bg-amber-400", wash: "hover:bg-amber-50 dark:hover:bg-amber-500/10" },
+  emerald: { icon: "text-emerald-600 dark:text-emerald-300", bar: "bg-emerald-500 dark:bg-emerald-400", wash: "hover:bg-emerald-50 dark:hover:bg-emerald-500/10" },
+  pink: { icon: "text-pink-600 dark:text-pink-300", bar: "bg-pink-500 dark:bg-pink-400", wash: "hover:bg-pink-50 dark:hover:bg-pink-500/10" },
+} satisfies Record<string, { icon: string; bar: string; wash: string }>;
 
 /**
  * The drafting-sheet frame (corner ticks, bordered plate) around a
@@ -91,7 +107,7 @@ const FEATURES = [
  */
 function Figure({ children }: { children: ReactNode }) {
   return (
-    <div className="relative rounded-[10px] border border-bp-line-strong bg-bp-surface p-4 before:pointer-events-none before:absolute before:-left-px before:-top-px before:h-2.5 before:w-2.5 before:border-l-[1.5px] before:border-t-[1.5px] before:border-bp-line-strong after:pointer-events-none after:absolute after:-bottom-px after:-right-px after:h-2.5 after:w-2.5 after:border-b-[1.5px] after:border-r-[1.5px] after:border-bp-line-strong">
+    <div className="group relative rounded-[10px] border border-bp-line-strong bg-bp-surface p-4 transition-shadow duration-300 hover:shadow-[var(--shadow-raised)] before:pointer-events-none before:absolute before:-left-px before:-top-px before:h-2.5 before:w-2.5 before:border-l-[1.5px] before:border-t-[1.5px] before:border-bp-line-strong before:transition-colors before:duration-300 group-hover:before:border-bp-accent after:pointer-events-none after:absolute after:-bottom-px after:-right-px after:h-2.5 after:w-2.5 after:border-b-[1.5px] after:border-r-[1.5px] after:border-bp-line-strong after:transition-colors after:duration-300 group-hover:after:border-bp-accent">
       <div className="overflow-hidden rounded-md border border-bp-line">{children}</div>
     </div>
   );
@@ -126,6 +142,19 @@ export function Landing({ onNewProject, onImportRepo, busy, existingProject, onC
     // cap with nothing to center within, showing up as a real empty gap
     // on the right of any viewport wider than that. Found live.
     <div className="relative flex h-full w-full flex-col overflow-y-auto bg-bp-paper font-plex-sans text-bp-ink">
+      {/* Soft color mesh behind the grid — two large, low-opacity radial
+          washes (violet + the pink info-accent, both existing tokens) so
+          the hero has real color presence even before the diagram loads,
+          not just a monochrome grid. Blurred and faint enough that the
+          grid and text stay the dominant read. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-[640px] opacity-40 dark:opacity-30"
+        style={{
+          backgroundImage:
+            "radial-gradient(560px 380px at 8% 0%, var(--bp-accent), transparent 70%), radial-gradient(520px 360px at 92% 15%, var(--info-400), transparent 70%)",
+        }}
+      />
       {/* Blueprint grid backdrop — fades out before the "how it works"
           section so it reads as a hero treatment, not wallpaper for the
           whole page. */}
@@ -171,7 +200,17 @@ export function Landing({ onNewProject, onImportRepo, busy, existingProject, onC
           <h1 className="mt-5 text-[2.6rem] font-bold leading-[1.05] tracking-tight text-balance sm:text-5xl">
             System architecture,
             <br />
-            <span className="text-bp-accent">actually validated.</span>
+            {/* The one gradient spent on running text in the whole page —
+                violet into the pink info-accent, both already real tokens
+                (globals.css), not a new color. Reserved for exactly this
+                one line so it reads as the page's single loudest moment,
+                not a recurring treatment. */}
+            <span
+              className="bg-clip-text text-transparent"
+              style={{ backgroundImage: "linear-gradient(90deg, var(--bp-accent), var(--info-400))" }}
+            >
+              actually validated.
+            </span>
           </h1>
 
           <p className="mt-5 max-w-md text-[15px] leading-relaxed text-bp-muted">
@@ -184,7 +223,7 @@ export function Landing({ onNewProject, onImportRepo, busy, existingProject, onC
             <button
               onClick={onNewProject}
               disabled={busy}
-              className="group flex items-center justify-center gap-2 rounded-lg bg-bp-accent px-5 py-3.5 text-sm font-semibold text-white shadow-lg shadow-bp-accent/25 transition hover:-translate-y-0.5 hover:shadow-xl disabled:pointer-events-none disabled:opacity-75"
+              className="ease-spring group flex items-center justify-center gap-2 rounded-lg bg-bp-accent px-5 py-3.5 text-sm font-semibold text-white shadow-lg shadow-bp-accent/25 transition duration-300 hover:-translate-y-1 hover:shadow-xl disabled:pointer-events-none disabled:opacity-75"
             >
               {busy ? (
                 <>
@@ -200,7 +239,7 @@ export function Landing({ onNewProject, onImportRepo, busy, existingProject, onC
             <button
               onClick={onImportRepo}
               disabled={busy}
-              className="flex items-center justify-center gap-2 rounded-lg border border-bp-line-strong bg-bp-surface px-5 py-3.5 text-sm font-semibold text-bp-ink shadow-sm transition hover:-translate-y-0.5 hover:shadow-md disabled:pointer-events-none disabled:opacity-50"
+              className="ease-spring flex items-center justify-center gap-2 rounded-lg border border-bp-line-strong bg-bp-surface px-5 py-3.5 text-sm font-semibold text-bp-ink shadow-sm transition duration-300 hover:-translate-y-1 hover:border-bp-accent/50 hover:shadow-md disabled:pointer-events-none disabled:opacity-50"
             >
               <FolderUp size={15} /> Import an existing repo
             </button>
@@ -226,8 +265,8 @@ export function Landing({ onNewProject, onImportRepo, busy, existingProject, onC
             than boxed away in a corner. No custom maxZoom either (default
             caps at 1, real 1:1 node size — legible cards matter more than
             hitting an exact ratio here). At the 60/40 split above, a
-            5-column left-to-right flow lands around 150-190px-wide cards
-            on a typical laptop-width window, climbing to the full 200px
+            5-column left-to-right flow lands around 170-210px-wide cards
+            on a typical laptop-width window, climbing to the full 224px
             real size on a wide monitor. showBackground={false}: unlike
             the boxed scenario diagrams below, this one already floats
             directly over the page's own blueprint dot-grid backdrop — a
@@ -253,9 +292,13 @@ export function Landing({ onNewProject, onImportRepo, busy, existingProject, onC
         <div className="mt-16 border-t border-bp-line pt-10">
           <h2 className="font-plex-mono text-[11px] uppercase tracking-[0.12em] text-bp-muted">How it works — a three-stage pipeline</h2>
           <div className="mt-6 grid grid-cols-1 divide-y divide-bp-line overflow-hidden rounded-[10px] border border-bp-line sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-            {HOW_IT_WORKS.map(({ step, title, detail }) => (
-              <div key={step} className="bg-bp-surface p-6">
-                <p className="font-plex-mono text-[11px] tracking-wide text-bp-accent">{step}</p>
+            {HOW_IT_WORKS.map(({ step, title, detail }, i) => (
+              <div
+                key={step}
+                className="animate-fade-in group relative bg-bp-surface p-6 transition-colors duration-200 hover:bg-bp-accent-soft"
+                style={{ animationDelay: `${i * 60}ms`, animationFillMode: "backwards" }}
+              >
+                <p className="font-plex-mono text-[11px] tracking-wide text-bp-accent transition-transform duration-200 group-hover:translate-x-0.5">{step}</p>
                 <p className="mt-2.5 text-[15px] font-semibold tracking-tight">{title}</p>
                 <p className="mt-1.5 text-[13px] leading-relaxed text-bp-muted">{detail}</p>
               </div>
@@ -267,24 +310,26 @@ export function Landing({ onNewProject, onImportRepo, busy, existingProject, onC
         <div className="mt-14 border-t border-bp-line pt-10">
           <h2 className="font-plex-mono text-[11px] uppercase tracking-[0.12em] text-bp-muted">What makes this different</h2>
           <div className="mt-6 grid grid-cols-1 border-t border-bp-line sm:grid-cols-2">
-            {FEATURES.map(({ icon: Icon, label, detail }, i) => {
+            {FEATURES.map(({ icon: Icon, label, detail, color }, i) => {
               // An odd-length list (currently 11) leaves one item stranded
               // alone in the last row — instead of a dangling sm:border-r
               // with nothing to its right, that one item spans both
               // columns and drops the right border/padding it would
               // otherwise get from the i%2 pairing below.
               const isStrandedLast = FEATURES.length % 2 === 1 && i === FEATURES.length - 1;
+              const palette = FEATURE_COLORS[color];
               return (
                 <div
                   key={label}
-                  className={`flex gap-3.5 border-b border-bp-line py-5 ${
+                  className={`animate-fade-in group flex gap-3.5 border-b border-bp-line py-5 px-3 -mx-3 transition-colors duration-200 ${palette.wash} ${
                     isStrandedLast ? "sm:col-span-2" : i % 2 === 0 ? "sm:border-r sm:pr-7" : "sm:pl-7"
                   }`}
+                  style={{ animationDelay: `${i * 40}ms`, animationFillMode: "backwards" }}
                 >
-                  <span className="mt-0.5 h-full w-[3px] shrink-0 rounded-full bg-bp-accent-2" />
+                  <span className={`mt-0.5 h-full w-[3px] shrink-0 rounded-full ${palette.bar}`} />
                   <div>
                     <div className="flex items-center gap-2">
-                      <Icon size={13} className="text-bp-muted" />
+                      <Icon size={13} className={`shrink-0 transition-transform duration-200 group-hover:scale-110 ${palette.icon}`} />
                       <p className="text-[13.5px] font-semibold">{label}</p>
                     </div>
                     <p className="mt-1 text-[12.5px] leading-relaxed text-bp-muted">{detail}</p>

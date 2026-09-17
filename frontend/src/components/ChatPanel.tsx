@@ -131,9 +131,16 @@ export function ChatPanel({ messages, onSend, busy, busyStage, onConsumeAnimatio
         ) : (
           <div className="space-y-3">
             {messages.map((m, i) => (
-              <div key={i} className={`group flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div key={i} className={`animate-fade-in group flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
                 {m.role === "assistant" && (
-                  <div className="mr-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-brand-100 text-brand-600 dark:border dark:border-brand-400/25 dark:bg-surface-3 dark:text-brand-400">
+                  // A fixed violet->pink gradient (plain Tailwind hues, not
+                  // the theme-flipped --brand-*/--info-* vars used for
+                  // buttons) — those invert to a PALE tint in dark mode
+                  // specifically so a dark-text button stays readable,
+                  // which would leave the white icon here badly low-
+                  // contrast. This gradient stays the same dark-enough
+                  // stops in both themes on purpose.
+                  <div className="mr-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-pink-500 text-white shadow-soft">
                     <MessageSquare size={13} />
                   </div>
                 )}
@@ -207,7 +214,7 @@ export function ChatPanel({ messages, onSend, busy, busyStage, onConsumeAnimatio
                         <button
                           key={reply}
                           onClick={() => handleQuickReply(reply)}
-                          className="rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-medium text-brand-700 transition hover:bg-brand-100 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-300 dark:hover:bg-brand-500/20"
+                          className="rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-medium text-brand-700 transition duration-150 hover:-translate-y-0.5 hover:bg-brand-100 hover:shadow-soft active:scale-95 active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-300 dark:hover:bg-brand-500/20"
                         >
                           {reply}
                         </button>
@@ -216,7 +223,7 @@ export function ChatPanel({ messages, onSend, busy, busyStage, onConsumeAnimatio
                   )}
                 </div>
                 {m.role === "user" && (
-                  <div className="ml-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-300">
+                  <div className="ml-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-400 to-cyan-400 text-white shadow-soft">
                     <User size={13} />
                   </div>
                 )}
@@ -248,7 +255,7 @@ export function ChatPanel({ messages, onSend, busy, busyStage, onConsumeAnimatio
         <button
           type="submit"
           disabled={busy || !draft.trim()}
-          className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-lg bg-brand-600 text-white shadow-soft transition duration-150 hover:bg-brand-700 active:scale-95 disabled:opacity-40 disabled:active:scale-100"
+          className="ease-spring flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-lg bg-brand-600 text-white shadow-soft transition duration-300 hover:-translate-y-0.5 hover:bg-brand-700 active:scale-95 active:translate-y-0 disabled:opacity-40 disabled:hover:translate-y-0 disabled:active:scale-100"
         >
           <SendHorizontal size={17} />
         </button>
