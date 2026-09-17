@@ -7,7 +7,7 @@ import type { ArchitectureState } from "./types";
 // build on (a version's very first render). Incremental edits use
 // incrementalLayout.ts instead, so existing nodes don't jump around.
 
-export const NODE_WIDTH = 200;
+export const NODE_WIDTH = 224;
 export const NODE_HEIGHT = 68;
 
 // Real, constant size of the synthetic "Users" traffic-source marker
