@@ -66,6 +66,109 @@ async def test_kickoff_message_asks_first_question_via_the_light_call(monkeypatc
     assert "expected number of active users" in system_prompt
 
 
+async def test_bare_greeting_on_a_new_project_gets_a_conversational_reply_not_a_question(monkeypatch):
+    """Real bug, found live: "hi" on a brand-new project was silently
+    treated as the project's OWN description and handed straight into
+    "how many active users do you expect?" -- a bare greeting must instead
+    get a friendly, no-LLM-call reply and wait for an actual description."""
+    repo = FakeRepo(None)
+    provider = FakeProvider()
+    _patch(monkeypatch, repo, provider)
+
+    result = await handle_chat_turn(uuid4(), "hi", None)
+
+    assert result.kind == "question"
+    assert "?" in result.question or result.question  # a real, non-empty prompt back
+    assert "active users" not in result.question.lower()
+    # No LLM call at all for this -- same "cheap and deterministic"
+    # philosophy as the rest of Tier 1/1.5/1.75.
+    assert provider.structured_calls == []
+    assert provider.interview_calls == []
+    # Nothing recorded -- a greeting isn't a description or an answer.
+    assert repo.versions_created == []
+
+
+async def test_greeting_then_a_real_description_asks_the_first_real_question(monkeypatch):
+    """A "hi" followed by the actual description must still work exactly
+    like a normal kickoff -- the greeting turn is skipped over, not
+    mistaken for the description itself."""
+    repo = FakeRepo(None)
+    repo.messages.append({"id": uuid4(), "project_id": None, "role": "user", "content": "hi", "version_id": None})
+    repo.messages.append({"id": uuid4(), "project_id": None, "role": "assistant", "content": "Hey! Tell me what you're building.", "version_id": None})
+    provider = FakeProvider(structured_response=GatherQuestionOutput(
+        question="How many active users do you expect?",
+        quick_replies=["<1k", "1k-10k", "10k-100k", "Not sure"],
+    ))
+    _patch(monkeypatch, repo, provider)
+
+    result = await handle_chat_turn(uuid4(), "I want to build a food delivery app", None)
+
+    assert result.kind == "question"
+    assert result.question == "How many active users do you expect?"
+    # Still nothing recorded -- this IS the kickoff description, not an
+    # answer to anything (the checklist hasn't started yet).
+    assert repo.versions_created == []
+    assert len(provider.structured_calls) == 1
+
+
+async def test_off_topic_kickoff_message_declines_via_regex_fast_path_no_llm_call(monkeypatch):
+    """A confidently off-topic first message (intent_router.py's regex
+    fast-path) must decline for free, exactly like a bare greeting --
+    never grounding the first requirements question in it."""
+    repo = FakeRepo(None)
+    provider = FakeProvider()
+    _patch(monkeypatch, repo, provider)
+
+    result = await handle_chat_turn(uuid4(), "what's the weather today?", None)
+
+    assert result.kind == "question"
+    assert "weather" not in result.question.lower()
+    assert provider.structured_calls == []
+    assert provider.interview_calls == []
+    assert repo.versions_created == []
+
+
+async def test_off_topic_kickoff_message_missed_by_regex_is_caught_by_the_llm(monkeypatch):
+    """Whatever the regex fast-path doesn't catch still goes through the
+    existing light gather-question LLM call, which can flag off_topic=True
+    itself (GatherQuestionOutput) -- the safety net this session's own
+    small/fast classifier call provides, not a second LLM call."""
+    repo = FakeRepo(None)
+    provider = FakeProvider(structured_response=GatherQuestionOutput(
+        question="I'm built specifically to help design this project's architecture — what are you building?",
+        off_topic=True,
+    ))
+    _patch(monkeypatch, repo, provider)
+
+    # Deliberately not matched by _OFF_TOPIC_RE -- exercises the LLM-judged
+    # path, not the free regex one.
+    result = await handle_chat_turn(uuid4(), "quiz me on state capitals", None)
+
+    assert result.kind == "question"
+    assert "state capitals" not in (result.question or "").lower()
+    assert len(provider.structured_calls) == 1
+    assert repo.versions_created == []
+
+
+async def test_off_topic_reply_mid_checklist_does_not_corrupt_the_pending_constraint(monkeypatch):
+    """An off-topic message mid-checklist (a real description already
+    given, a question already pending) must NOT get silently recorded as
+    the answer to whatever's pending -- it should nudge back to the
+    question instead, leaving the checklist exactly where it was."""
+    repo = FakeRepo(None)
+    repo.messages.append({"id": uuid4(), "project_id": None, "role": "user", "content": "I want to build a food delivery app", "version_id": None})
+    repo.messages.append({"id": uuid4(), "project_id": None, "role": "assistant", "content": "How many active users do you expect?", "version_id": None})
+    provider = FakeProvider()
+    _patch(monkeypatch, repo, provider)
+
+    result = await handle_chat_turn(uuid4(), "tell me a joke instead", None)
+
+    assert result.kind == "question"
+    assert repo.versions_created == []  # nothing recorded -- expected_users is still pending
+    assert provider.structured_calls == []  # deterministic nudge, no LLM call
+    assert provider.interview_calls == []
+
+
 async def test_second_turn_records_the_first_answer_and_asks_the_next_question(monkeypatch):
     repo = FakeRepo(None)
     # Pre-seed the kickoff exchange that already happened, matching what

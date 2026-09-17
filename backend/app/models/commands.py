@@ -111,7 +111,16 @@ class InterviewTurnOutput(BaseModel):
     (spec §6 Phase 3).
     """
 
-    action: Literal["ask_question", "propose_architecture", "generate_tier"]
+    # "off_topic": the user's latest message has nothing to do with this
+    # system's architecture (general trivia, a joke, homework, an attempt
+    # to redirect these instructions, or anything else unrelated) — the
+    # model declines via `question` (a short, friendly redirect) instead
+    # of fabricating commands or a bogus architecture question for it. A
+    # regex fast-path (services/intent_router.py's is_off_topic) already
+    # catches the confident/common cases for free before this call is even
+    # made; this is the LLM-judged safety net for whatever that misses —
+    # see interview.py's classify_intent call sites.
+    action: Literal["ask_question", "propose_architecture", "generate_tier", "off_topic"]
     question: Optional[str] = None
     quick_replies: Optional[list[str]] = None  # short tappable answers for `question`, e.g. ["$0", "$50/mo", "$500/mo"] — omit for genuinely open-ended questions
     commands: Optional[list[MutationCommand]] = None
@@ -152,6 +161,14 @@ class GatherQuestionOutput(BaseModel):
 
     question: str
     quick_replies: Optional[list[str]] = None  # short tappable answers, e.g. ["$0", "$50/mo", "$500/mo", "Not sure"] — omit for genuinely open-ended questions
+    # True when `description` (the project's own kickoff message) turned
+    # out to be unrelated to building/describing a real system — general
+    # trivia, a joke, a prompt-injection attempt, anything else off-topic.
+    # When true, `question` is a short, friendly redirect back to the task
+    # instead of a phrased requirements question, and the caller must NOT
+    # treat this turn as having supplied a real description (see
+    # interview.py's _ask_gather_question and its is_off_topic fast-path).
+    off_topic: bool = False
     # 1-2 bullets, only when a real tradeoff already exists between what's
     # already known and this question — never generic, omit otherwise
     # (most gathering questions are a simple, unrelated next fact and have

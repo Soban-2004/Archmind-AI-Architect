@@ -74,6 +74,13 @@ surfaced, and how it got found and fixed. This file is the overview.
   projects are genuinely only visible to you, not every other visitor,
   via a private per-browser identity. See [DEVLOG.md](./DEVLOG.md)'s
   last two sections for exactly how, and its one honest limitation.
+- **Stays on task.** A greeting or a genuinely unrelated question
+  ("what's the weather?", a joke, a prompt-injection attempt) gets a
+  short, friendly redirect instead of being forced into a requirements
+  question or a hallucinated edit — a free regex fast-path for the
+  common cases, backed by the same LLM calls this app already makes as
+  the general-purpose classifier for everything else. See
+  [DEVLOG.md](./DEVLOG.md)'s last section.
 
 ## Project layout
 

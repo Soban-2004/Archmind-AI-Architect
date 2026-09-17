@@ -17,7 +17,7 @@ from app.models.state import ADR, ArchitectureState, ConstraintType, TriggeredBy
 from app.services.adr import build_templated_decision
 from app.services.deterministic import try_deterministic_command
 from app.services.diff import diff_states
-from app.services.intent_router import classify_intent, extract_multiplier, needs_web_grounding
+from app.services.intent_router import classify_intent, extract_multiplier, is_greeting_only, is_off_topic, needs_web_grounding
 from app.services.mutation_engine import apply_commands
 from app.services.simulator import run_simulation
 from app.services.web_search import search_web
@@ -46,6 +46,24 @@ REQUIRED_CONSTRAINT_ORDER: list[ConstraintType] = [
     ConstraintType.consistency_requirement,
     ConstraintType.budget_monthly_usd,
 ]
+
+# A fixed, no-LLM-call reply for a bare greeting on a brand-new project —
+# same "cheap and deterministic" philosophy as intent_router.py's other
+# checks. Deliberately doesn't ask a REQUIRED_CONSTRAINT_ORDER question
+# yet: it has no project description to ground one in (see
+# handle_chat_turn's kickoff-turn handling below), so it just prompts for
+# one instead of guessing.
+GREETING_REPLY = "Hey! 👋 Tell me what you're building — e.g. \"a food delivery app for a college campus\" — and I'll start asking the right questions to design it."
+GREETING_QUICK_REPLIES = ["A food delivery app for a college campus", "A real-time chat app", "An e-commerce store"]
+
+# Same deterministic, no-LLM-call reply for a message intent_router.py's
+# regex fast-path confidently recognized as unrelated to this project's
+# architecture (see is_off_topic) — used only on an EXISTING project's
+# turn (Tier 1.5 below); a brand-new project's kickoff turn instead goes
+# through _ask_gather_question, whose GatherQuestionOutput.off_topic field
+# carries the LLM-judged version of the same decline, since that call
+# already has the project's own description as context to reference.
+OFF_TOPIC_REPLY = "I'm built specifically to help design this project's architecture — is there something about it I can help with?"
 
 
 def _next_required_constraint(state: ArchitectureState) -> ConstraintType | None:
@@ -373,6 +391,17 @@ async def _ask_gather_question(
     except Exception as e:
         return ChatTurnResult(kind="error", error=_friendly_provider_error(e))
 
+    # LLM-judged safety net for whatever intent_router.py's regex
+    # fast-path missed (see its call site right before this function is
+    # invoked) — `description` turned out not to be a real project
+    # description after all, so decline instead of phrasing a
+    # requirements question grounded in nothing. No version, no
+    # constraint recorded — the caller's next turn will see this exact
+    # same situation again and can re-try with a real description.
+    if turn.off_topic:
+        await repo.add_message(project_id, "assistant", turn.question, version_id=parent_id)
+        return ChatTurnResult(kind="question", question=turn.question, usage=getattr(provider, "last_usage", None))
+
     await repo.add_message(project_id, "assistant", turn.question, version_id=parent_id)
     return ChatTurnResult(
         kind="question",
@@ -457,6 +486,9 @@ async def handle_chat_turn(
             return await _handle_advisory(project_id, user_message, current_state, parent_id, on_stage=on_stage)
         if intent == "analysis":
             return await _handle_analysis(project_id, user_message, current_state, parent_id, on_stage=on_stage)
+        if intent == "off_topic":
+            await repo.add_message(project_id, "assistant", OFF_TOPIC_REPLY, version_id=parent_id)
+            return ChatTurnResult(kind="question", question=OFF_TOPIC_REPLY)
 
     # --- Tier 1.75: deterministic requirements-gathering checklist ---------
     # Only relevant before a first design exists (no nodes yet) — once a
@@ -468,21 +500,61 @@ async def handle_chat_turn(
         pending_type = _next_required_constraint(current_state)
         if pending_type is not None:
             branch_history = await repo.get_branch_history(project_id, parent_id)
-            description = branch_history[0]["content"] if branch_history else user_message
-            # More than one message in the branch means an assistant
-            # question already went out before this reply came in — this
-            # message is answering `pending_type` (whatever the checklist
-            # hasn't recorded yet, since nothing is persisted until the
-            # FIRST answer — the kickoff turn itself creates no version at
-            # all). Exactly one message (just the user_message add_message
-            # call above) means THIS is that very first message — the
-            # kickoff description, nothing to record yet. Deliberately not
-            # `parent_id is None` for this check: that stays None through
-            # BOTH the kickoff turn and the turn right after it (nothing
-            # persists until an answer is actually recorded), so it can't
-            # tell those two turns apart — a real bug caught before it
-            # ever shipped, by the first test written against this.
-            if len(branch_history) > 1:
+            # Every user turn strictly before this one — used to tell a
+            # genuine kickoff description apart from a reply ANSWERING
+            # pending_type, and to find the real description even if it
+            # wasn't literally the first message (someone can say "hi"
+            # first). Bare greetings are filtered out of both checks below
+            # so a "hi" (or several) before the real description never
+            # gets treated as the description itself, and never advances
+            # the requirements checklist.
+            prior_user_messages = [m for m in branch_history if m["role"] == "user"][:-1]
+            # Bare greetings AND confidently-off-topic messages (regex
+            # fast-path, see intent_router.py) are both filtered out here
+            # — neither counts as "a real prior message", so either one
+            # (or several, in any mix) preceding the actual description
+            # never gets mistaken for it, and never advances the
+            # checklist. A message this fast path doesn't catch is still
+            # safety-netted below (_ask_gather_question's off_topic
+            # field) for THIS turn, though a rare one that slips through
+            # untagged would be treated as a real prior message here too
+            # — an accepted, narrow tradeoff for staying free/instant on
+            # the common case rather than an LLM call on every turn.
+            real_prior_messages = [m for m in prior_user_messages if not is_greeting_only(m["content"]) and not is_off_topic(m["content"])]
+
+            if not real_prior_messages:
+                if is_greeting_only(user_message):
+                    # Small talk, nothing real said yet on either side —
+                    # reply in kind and wait for an actual description
+                    # instead of grounding the first requirements question
+                    # in "hi".
+                    await repo.add_message(project_id, "assistant", GREETING_REPLY, version_id=parent_id)
+                    return ChatTurnResult(kind="question", question=GREETING_REPLY, quick_replies=GREETING_QUICK_REPLIES)
+                if is_off_topic(user_message):
+                    await repo.add_message(project_id, "assistant", OFF_TOPIC_REPLY, version_id=parent_id)
+                    return ChatTurnResult(kind="question", question=OFF_TOPIC_REPLY)
+
+            description = real_prior_messages[0]["content"] if real_prior_messages else user_message
+            # A real prior message means an assistant question already
+            # went out before this reply came in — this message is
+            # answering `pending_type` (whatever the checklist hasn't
+            # recorded yet, since nothing is persisted until the FIRST
+            # answer — the kickoff turn itself creates no version at
+            # all). No real prior message means THIS is the kickoff
+            # description (whether or not small talk/off-topic messages
+            # preceded it), nothing to record yet.
+            if real_prior_messages:
+                if is_greeting_only(user_message) or is_off_topic(user_message):
+                    # Mid-checklist, but this reply doesn't actually answer
+                    # `pending_type` — recording it as-is would silently
+                    # corrupt that constraint with a greeting or an
+                    # unrelated question. Nudge back to the pending
+                    # question instead of guessing; nothing recorded, so
+                    # the same question is still pending next turn.
+                    nudge = "That doesn't look like an answer to the question above — could you give me that, or tell me more about what you're building?"
+                    await repo.add_message(project_id, "assistant", nudge, version_id=parent_id)
+                    return ChatTurnResult(kind="question", question=nudge)
+
                 await _emit(on_stage, "Recording your answer…")
                 result = apply_commands(current_state, [SetConstraintCommand(type=pending_type, value=user_message.strip())])
                 assert result.ok and result.state is not None  # a bare set_constraint can never fail structural validation
@@ -594,6 +666,14 @@ async def handle_chat_turn(
             return ChatTurnResult(kind="error", error=_friendly_provider_error(e))
 
         _add_usage(getattr(provider, "last_usage", None))
+
+        if turn.action == "off_topic":
+            # LLM-judged safety net for whatever intent_router.py's regex
+            # fast-path missed — see is_off_topic's call site above and
+            # InterviewTurnOutput's own doc comment. No commands, no new
+            # version: this turn changes nothing about the architecture.
+            await repo.add_message(project_id, "assistant", turn.question or "", version_id=parent_id)
+            return ChatTurnResult(kind="question", question=turn.question, usage=total_usage)
 
         if turn.action == "ask_question":
             await repo.add_message(project_id, "assistant", turn.question or "", version_id=parent_id)

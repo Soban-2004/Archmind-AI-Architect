@@ -121,6 +121,40 @@ async def test_what_if_is_simulator_backed(monkeypatch, base_version, fake_repo)
     assert "10x traffic" in system_prompt
 
 
+async def test_off_topic_message_declines_via_regex_fast_path_no_llm_call(monkeypatch, base_version, fake_repo):
+    """A confidently off-topic message on an EXISTING project must decline
+    for free (intent_router.py's regex fast-path) instead of burning a
+    heavy interview_turn call trying to interpret "tell me a joke" as an
+    architecture edit."""
+    provider = FakeProvider()
+    patch_provider(monkeypatch, provider)
+
+    result = await handle_chat_turn(base_version["project_id"], "tell me a joke", base_version["id"])
+
+    assert result.kind == "question"
+    assert fake_repo.versions_created == []
+    assert provider.structured_calls == []
+    assert provider.interview_calls == []
+
+
+async def test_off_topic_message_missed_by_regex_is_declined_by_the_full_pipeline(monkeypatch, base_version, fake_repo):
+    """Whatever the regex fast-path doesn't catch still reaches the full
+    Tier 2 pipeline (classify_intent returns None for it, same as any
+    ambiguous message) -- InterviewTurnOutput's own action="off_topic"
+    is the real, general-purpose classifier's safety net, so this must
+    decline cleanly rather than hallucinating an edit."""
+    turn = InterviewTurnOutput(action="off_topic", question="I'm built specifically to help design this project's architecture — is there something about it I can help with?")
+    provider = FakeProvider(interview_response=turn)
+    patch_provider(monkeypatch, provider)
+
+    result = await handle_chat_turn(base_version["project_id"], "quiz me on state capitals", base_version["id"])
+
+    assert result.kind == "question"
+    assert "state capitals" not in (result.question or "").lower()
+    assert fake_repo.versions_created == []
+    assert len(provider.interview_calls) == 1
+
+
 async def test_explicit_edit_uses_full_pipeline_and_creates_a_version(monkeypatch, base_version, fake_repo):
     commands = [
         AddNodeCommand(ref="be2", node_type="service", name="Backend 2", attributes={"type": "service"}),

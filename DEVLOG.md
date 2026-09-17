@@ -1212,4 +1212,94 @@ as before, a cross-owner write attempt is rejected with a clean error
 (not a crash), and the real, pre-existing "Stock Hinge" project stays
 reachable regardless of which token — or no token — asks for it. Full
 backend suite: 181 passed (was 177). `tsc`/`eslint`/`next build` all
-clean. Disposable test projects cleaned up after verification.
+clean.
+
+## Color and interaction pass on the editor, and the landing page
+
+The landing page had a deliberate "blueprint" identity from the start;
+the actual product behind it — the chat panel, canvas, and Analyzer —
+didn't, and it showed: hover states were either absent or the same flat
+`transition duration-150` on every button and card regardless of
+importance, the Analyzer's 7 category cards were all identical slate
+regardless of category, and canvas nodes carried color only in a small
+icon chip (a deliberate earlier call to avoid "five tinted products" —
+see ArchNodeCard.tsx's own comment — that had swung too far toward no
+color at all).
+
+Two passes, in response to two different rounds of feedback. First,
+interaction polish: a real spring easing (`cubic-bezier(0.34, 1.56, 0.64,
+1)`) reserved for the one or two genuinely primary actions per screen
+(the landing hero CTAs, the chat send button) rather than spread
+everywhere; a rotating icon-pop for the theme toggle's sun/moon swap
+instead of a flat opacity fade; stagger-in delays (`animationDelay:
+i * Nms`) on the feature grid, chat messages, and Analyzer category
+cards so a list of things arrives as a cascade, not one flat block; a
+shimmer skeleton for the Analyzer's loading state, reusing the sweep
+keyframe already built for `CanvasLoadingOverlay` instead of adding a
+second one.
+
+Second, real color — "the UI should do the talking, not just the copy,"
+which interaction polish alone doesn't deliver. `ArchNodeCard` gained a
+solid 3px left-edge accent per node kind (service/database/queue/
+external/infra), always visible across a diagram, without going back to
+a flat full-card tint; infra nodes moved off dull slate onto cyan so all
+five kinds read as genuinely distinct at a glance. The Analyzer's 7
+category cards are now color-coded (scalability=blue, reliability=
+emerald, security=rose, cost=amber, observability=cyan, performance=
+violet, maintainability=fuchsia) with their own icon and left edge,
+including in the loading skeleton. The landing page's 11 features moved
+from one muted gray (three exceptions) to a hand-picked 6-hue palette
+across all of them, plus a violet→pink gradient on the hero's "actually
+validated." and a soft two-color radial mesh behind the hero grid. Chat
+avatars became gradient chips (violet→pink assistant, blue→cyan user)
+instead of flat circles. Every color is either an existing token
+(`--bp-accent`, `--info-400`) or a standard Tailwind hue picked to stay
+legible in both themes — nothing new invented, dark mode unaffected.
+`tsc`/`eslint` clean on both passes.
+
+## A bare "hi" (or any unrelated question) on a brand-new project
+
+Found live, directly reported: typing "hi" into a fresh project
+immediately produced "How many active users do you expect?" — the
+kickoff turn in `services/interview.py` treated *any* first message as
+the project's own description, with no check for whether it actually
+was one. The same gap existed mid-checklist (an off-topic reply would
+silently get recorded as the literal value of whatever constraint was
+pending) and on an existing project (an unrelated message would fall
+through every tier into the heavy edit pipeline, burning a real LLM call
+trying to interpret "tell me a joke" as an architecture edit).
+
+Fixed in two layers, deliberately not just one. A free, regex-based fast
+path (`is_greeting_only`/`is_off_topic` in `services/intent_router.py`)
+catches the confident, common cases — bare greetings, general trivia,
+jokes/poems/stories, weather, math, translation, recipes, questions
+about the assistant itself, prompt-injection attempts — for zero latency
+and zero token cost, and is wired into all three points above: the
+kickoff turn, the mid-checklist answer-recording step (nudges back to
+the pending question instead of recording garbage), and Tier 1.5 routing
+for an existing project. Regex can't enumerate "any kind of question"
+though, so the second layer reuses the LLM calls that were already
+happening anyway as the real, general-purpose classifier: `GatherQuestion
+Output` gained an `off_topic` field (the kickoff-question call already
+has the description as context to judge), and `InterviewTurnOutput`
+gained a fourth mode, `action="off_topic"`, alongside ask_question/
+propose_architecture/generate_tier, so the full edit pipeline declines
+cleanly instead of hallucinating an edit. No new LLM call was added
+anywhere.
+
+One accepted, documented tradeoff: `real_prior_messages` (the check that
+tells a genuine kickoff description apart from an answer to a pending
+question) only filters out messages the regex layer catches, not ones
+only the LLM safety net caught on their own turn — a message that slips
+past the regex, gets correctly declined by the LLM in the moment, and is
+then immediately followed by the real description could in a rare case
+still be mistaken for that description on the *next* turn. Fixing this
+fully would mean persisting a "description confirmed" flag rather than
+inferring it from message content each time; left as a known, narrow
+edge case rather than adding schema for it.
+
+48 new tests (`test_intent_router.py`, `test_gather_checklist.py`,
+`test_interview_routing.py`) cover the regex predicates directly and all
+three interception points end to end, including the "regex misses it,
+the LLM catches it" fallback path for both the kickoff and existing-
+project routes. Full backend suite: 261 passed (was 213). Disposable test projects cleaned up after verification.

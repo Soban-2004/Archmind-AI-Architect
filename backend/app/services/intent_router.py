@@ -25,7 +25,7 @@ from __future__ import annotations
 import re
 from typing import Literal
 
-RouterIntent = Literal["advisory", "analysis"]
+RouterIntent = Literal["advisory", "analysis", "off_topic"]
 
 # Any of these anywhere in the message means "this could plausibly be an
 # edit" — and an edit-shaped message is NEVER diverted, even if it also
@@ -99,6 +99,84 @@ _ADVISORY_RE = re.compile(
     re.IGNORECASE,
 )
 
+# A bare greeting/small-talk opener with no real content — "hi", "hey
+# there!", "good morning" — never a project description. Deliberately
+# anchored to the WHOLE message (only trailing punctuation/whitespace
+# allowed around it), not just present-anywhere like the other patterns
+# in this module: "hi, I want to build a food delivery app" has to fall
+# through and be treated as a real description, not get swallowed here
+# just because it happens to start with "hi". See interview.py's one call
+# site (the brand-new-project kickoff turn) for why this exists — before
+# it, "hi" was silently treated as the project's own description and
+# handed straight into "how many active users do you expect?".
+_GREETING_RE = re.compile(
+    r"^\s*(hi+|hello+|hey+|hiya|yo|sup|howdy|greetings|good (morning|afternoon|evening))\s*[!.?~]*\s*$",
+    re.IGNORECASE,
+)
+
+
+def is_greeting_only(message: str) -> bool:
+    """True for a bare greeting/small-talk opener with nothing else in the
+    message — see _GREETING_RE above."""
+    return bool(_GREETING_RE.match(message))
+
+
+# A free, zero-latency first pass for the CONFIDENT, common shapes of a
+# message that has nothing to do with system architecture — general
+# trivia, creative-writing requests, weather/time, math homework,
+# translation, recipes, questions about the assistant itself, and
+# prompt-injection attempts. Deliberately not exhaustive (an open-ended
+# "any kind of question" can't be fully enumerated by regex) — this is
+# only the fast path. The two places that actually call an LLM anyway for
+# the surrounding turn (GatherQuestionOutput's off_topic field, and
+# InterviewTurnOutput's action="off_topic") carry the real, general-
+# purpose judgment call as a safety net for whatever this misses; see
+# their call sites in interview.py. A false negative here just means that
+# safety net (or, on the one deterministic-only path — recording a
+# checklist answer — a possibly-wrong literal value) handles it instead;
+# a false positive would wrongly refuse a real architecture question, so
+# every pattern here is picked to be unambiguous.
+_OFF_TOPIC_RE = re.compile(
+    r"("
+    # general trivia / world knowledge — anchored to subjects that are
+    # never plausible architecture questions
+    r"\bwhat('s| is) the (weather|time|date|capital of)\b|"
+    r"\bwho (is|was) the (president|prime minister|ceo of \w+)\b|"
+    r"\bwho (won|invented|discovered)\b|"
+    r"\bwhat year (did|was)\b|"
+    r"\bhow (many|much) (people|population)\b|"
+    # creative-writing / entertainment requests
+    r"\btell me (a |an )?(joke|poem|story|song|riddle)\b|"
+    r"\bwrite (me )?(a |an )?(joke|poem|story|song|essay|riddle)\b|"
+    r"\bmake me laugh\b|"
+    # homework / unrelated computation, translation, cooking
+    r"\bsolve (for|this)\b|"
+    r"\btranslate\b.{0,20}\b(to|into)\b|"
+    r"\b(recipe|how (do|to) (i |you )?cook)\b|"
+    # meta questions about the assistant itself, not the project
+    r"\bwho (made|created|built|trained) you\b|"
+    r"\bwhat('s| is) your name\b|"
+    r"\bare you (a |an )?(chatgpt|gpt|conscious|sentient|real)\b|"
+    r"\bwhat (model|llm) are you\b|"
+    # prompt-injection / jailbreak attempts
+    r"\bignore (all |the )?(previous|above|prior) instructions\b|"
+    r"\bdisregard (all |the )?(previous|above|prior)\b|"
+    r"\byou are now\b|"
+    r"\bpretend (to be|you('re| are))\b|"
+    r"\breveal your (system )?prompt\b"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def is_off_topic(message: str) -> bool:
+    """True for a confident, common off-topic phrasing — see _OFF_TOPIC_RE
+    above. Deliberately conservative; see its own comment for why a "no"
+    here doesn't mean the message IS on-topic, just that this fast path
+    isn't sure."""
+    return bool(_OFF_TOPIC_RE.search(message))
+
+
 _MULTIPLIER_RE = re.compile(r"(\d+(?:\.\d+)?)\s*x\b", re.IGNORECASE)
 
 # Genuinely time-sensitive phrasing only — "current pricing", "is X still
@@ -133,14 +211,20 @@ DEFAULT_ANALYSIS_MULTIPLIER = 5.0
 
 def classify_intent(message: str) -> RouterIntent | None:
     """Returns "advisory" (question/recommendation), "analysis" (what-if,
-    simulator-backed), or None — the safe default for anything ambiguous
-    or edit-shaped, meaning "use the existing full edit pipeline"."""
+    simulator-backed), "off_topic" (confidently unrelated to this
+    system's architecture — see is_off_topic), or None — the safe default
+    for anything ambiguous or edit-shaped, meaning "use the existing full
+    edit pipeline" (which, for an off-topic message this fast path
+    doesn't catch, still declines via InterviewTurnOutput's own
+    action="off_topic" — see interview.py)."""
     if _EDIT_VERB_RE.search(message):
         return None
     if _ANALYSIS_RE.search(message):
         return "analysis"
     if _ADVISORY_RE.search(message):
         return "advisory"
+    if is_off_topic(message):
+        return "off_topic"
     return None
 
 
