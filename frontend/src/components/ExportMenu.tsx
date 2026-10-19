@@ -13,7 +13,7 @@ interface Props {
   projectName: string;
   /** Omitted on the read-only shared view — nothing to build a share link
    * to from there (it already IS the shared view). */
-  onShare?: () => void;
+  onShare?: () => string;
   /** Present exactly when there's a real project+version to export a
    * starter kit from (omitted on the read-only shared view and the
    * compare view, same as onShare) — enables "Download starter kit". */
@@ -39,6 +39,7 @@ export function ExportMenu({ flowElementRef, projectName, onShare, projectId, ve
   const [busy, setBusy] = useState<Busy>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [shareLink, setShareLink] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -47,7 +48,9 @@ export function ExportMenu({ flowElementRef, projectName, onShare, projectId, ve
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
     }
     window.addEventListener("mousedown", onClickOutside);
-    return () => window.removeEventListener("mousedown", onClickOutside);
+    function onEscape(event: KeyboardEvent) { if (event.key === "Escape") { setOpen(false); rootRef.current?.querySelector("button")?.focus(); } }
+    window.addEventListener("keydown", onEscape);
+    return () => { window.removeEventListener("mousedown", onClickOutside); window.removeEventListener("keydown", onEscape); };
   }, [open]);
 
   async function handleExport(kind: "png" | "pdf") {
@@ -92,15 +95,22 @@ export function ExportMenu({ flowElementRef, projectName, onShare, projectId, ve
     }
   }
 
-  function handleShare() {
-    onShare?.();
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
+  async function handleShare() {
+    const url = onShare?.();
+    if (!url) return;
+    setCopied(false);
+    try {
+      await navigator.clipboard.writeText(url);
+      setShareLink(null);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch { setShareLink(url); }
   }
 
   return (
     <div ref={rootRef} className="relative">
       <IconButton
+        aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
         className="border border-slate-200 bg-surface/90 shadow-soft backdrop-blur-sm dark:border-slate-700 dark:bg-surface/90"
         title="Export or share"
@@ -158,6 +168,7 @@ export function ExportMenu({ flowElementRef, projectName, onShare, projectId, ve
               {error}
             </p>
           )}
+          {shareLink && <div role="status" className="border-t border-slate-200 px-3 py-3 text-xs dark:border-slate-800"><label htmlFor="read-only-share-link">Clipboard unavailable. Copy this link:</label><input id="read-only-share-link" readOnly value={shareLink} onFocus={(event) => event.target.select()} className="mt-2 w-full rounded border border-slate-300 bg-surface p-2 text-foreground" /></div>}
         </div>
       )}
     </div>

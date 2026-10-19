@@ -57,7 +57,7 @@ export function ComparePanel({ result, onExit }: Props) {
             </p>
           </div>
         </div>
-        <IconButton onClick={onExit}>
+        <IconButton onClick={onExit} title="Close comparison">
           <X size={16} />
         </IconButton>
       </div>

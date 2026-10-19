@@ -1,0 +1,27 @@
+name: shared-gateway
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      ARCHMIND_ADDRESS: ${ARCHMIND_ADDRESS:?Set ARCHMIND_ADDRESS in gateway.env}
+      DEFAULT_SNI: ${DEFAULT_SNI:?Set DEFAULT_SNI in gateway.env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - gateway
+
+networks:
+  gateway:
+    external: true
+    name: shared-gateway
+
+volumes:
+  caddy-data:
+  caddy-config:

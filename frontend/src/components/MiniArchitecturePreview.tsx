@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Background, BackgroundVariant, ReactFlow, ReactFlowProvider, type Edge, type EdgeTypes, type Node, type NodeTypes } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { toFlowElements } from "@/lib/diffView";
+import { architectureRevealDelays } from "@/lib/architectureMotion";
 import { applySimulation, TRAFFIC_SOURCE_ID } from "@/lib/simView";
 import type { ArchitectureState, SimulationResult } from "@/lib/types";
 import { NODE_HEIGHT, NODE_WIDTH, TRAFFIC_SOURCE_HEIGHT, TRAFFIC_SOURCE_WIDTH, type LayoutMap } from "@/lib/layout";
@@ -17,7 +18,6 @@ const edgeTypes: EdgeTypes = { flow: FlowEdge };
 const PADDING = 24; // px of breathing room around the diagram on every side
 const DEFAULT_MAX_ZOOM = 1; // never render a node bigger than its real on-canvas size, by default
 const MIN_ZOOM = 0.32;
-const REVEAL_ROW_STEP_MS = 140; // gap between one row's reveal and the next
 const REVEAL_EDGE_EXTRA_MS = 90; // an edge reveals slightly after its later endpoint, not simultaneously
 
 function nodeSize(n: Node): { width: number; height: number } {
@@ -43,9 +43,7 @@ function combineAnimation(existing: unknown, addition: string): string {
  * already use to set stroke color inline — nothing here needs a CSS class.
  */
 function withStaggerReveal(nodes: Node[], edges: Edge[]) {
-  const rowYs = Array.from(new Set(nodes.map((n) => Math.round(n.position.y)))).sort((a, b) => a - b);
-  const rowIndex = new Map(rowYs.map((y, i) => [y, i]));
-  const delayForY = (y: number) => (rowIndex.get(Math.round(y)) ?? 0) * REVEAL_ROW_STEP_MS;
+  const delayByNodeId = architectureRevealDelays(nodes, edges);
 
   const revealedNodes = nodes.map((n) => ({
     ...n,
@@ -53,11 +51,10 @@ function withStaggerReveal(nodes: Node[], edges: Edge[]) {
       ...n.style,
       opacity: 0,
       animation: combineAnimation(n.style?.animation, "node-in 0.5s ease-out both"),
-      animationDelay: `${delayForY(n.position.y)}ms`,
+      animationDelay: `${delayByNodeId.get(n.id) ?? 0}ms`,
     },
   }));
 
-  const delayByNodeId = new Map(nodes.map((n) => [n.id, delayForY(n.position.y)]));
   const revealedEdges = edges.map((e) => {
     const delay = Math.max(delayByNodeId.get(e.source) ?? 0, delayByNodeId.get(e.target) ?? 0) + REVEAL_EDGE_EXTRA_MS;
     return {

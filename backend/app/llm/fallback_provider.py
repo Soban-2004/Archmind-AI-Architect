@@ -32,21 +32,31 @@ class FallbackProvider(LLMProvider):
         # `last_usage` reports, so interview.py's real-usage tracking
         # stays correct regardless of which one ran.
         self._active: LLMProvider = providers[0]
+        self._last_usage: dict[str, int] | None = None
 
     @property
     def last_usage(self) -> dict[str, int] | None:
-        return getattr(self._active, "last_usage", None)
+        return self._last_usage
 
     async def _with_fallback(self, method: str, *args, **kwargs):
         last_exc: Exception | None = None
+        total_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         for provider in self._providers:
             try:
                 result = await getattr(provider, method)(*args, **kwargs)
                 self._active = provider
+                usage = getattr(provider, "last_usage", None) or {}
+                for key in total_usage:
+                    total_usage[key] += usage.get(key, 0)
+                self._last_usage = total_usage
                 return result
             except Exception as e:
+                usage = getattr(provider, "last_usage", None) or {}
+                for key in total_usage:
+                    total_usage[key] += usage.get(key, 0)
                 logger.warning("LLM provider %s failed on %s, trying the next one: %s", type(provider).__name__, method, e)
                 last_exc = e
+        self._last_usage = total_usage if total_usage["total_tokens"] else None
         assert last_exc is not None  # providers is never empty (checked in __init__)
         raise last_exc
 

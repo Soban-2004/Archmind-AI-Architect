@@ -21,7 +21,7 @@ export function TrafficSourceNode({ data }: NodeProps) {
         <Users size={15} strokeWidth={2.25} />
       </div>
       <div className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">Users</div>
-      {rps !== undefined && <div className="text-[10px] text-slate-400 dark:text-slate-500">{Math.round(rps)} req/s in</div>}
+      {rps !== undefined && <div className="text-[10px] text-slate-500 dark:text-slate-400">{Math.round(rps)} req/s in</div>}
     </div>
   );
 }

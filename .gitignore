@@ -16,6 +16,7 @@ dist/
 .env.local
 *.env
 !*.env.example
+archmind-deploy.tgz
 
 # OS
 .DS_Store

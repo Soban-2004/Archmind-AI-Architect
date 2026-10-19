@@ -296,6 +296,7 @@ export function AnalyzerPanel({ projectId, versionId, onExit, onFixInChat }: Pro
         />
         <button
           type="submit"
+          aria-label="Send analysis question"
           disabled={asking || !question.trim() || !scorecard}
           className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-lg bg-brand-600 text-white transition duration-150 hover:bg-brand-700 active:scale-95 disabled:opacity-40 disabled:active:scale-100"
         >

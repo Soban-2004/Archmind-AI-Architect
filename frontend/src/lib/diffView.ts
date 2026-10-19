@@ -1,6 +1,7 @@
 import type { Edge, Node } from "@xyflow/react";
 import type { LayoutMap } from "./layout";
 import type { ArchEdge, ArchitectureState, ArchNode, DiffStatus, VersionDiff } from "./types";
+import { architectureRevealDelays } from "./architectureMotion";
 
 /**
  * Build a displayable state that still shows removed nodes/edges as ghosts,
@@ -39,12 +40,13 @@ export function toFlowElements(
 ): { nodes: Node[]; edges: Edge[] } {
   const nodeStatusById = new Map<string, DiffStatus>((diff?.nodes ?? []).map((d) => [d.id, d.status]));
   const edgeStatusByKey = new Map<string, DiffStatus>((diff?.edges ?? []).map((d) => [d.key, d.status]));
+  const revealDelays = architectureRevealDelays(state.nodes, state.edges.map((edge) => ({ source: edge.from_id, target: edge.to_id })));
 
   const nodes: Node[] = state.nodes.map((n) => ({
     id: n.id,
     type: "archNode",
     position: layout[n.id] ?? { x: 0, y: 0 },
-    data: { archNode: n, diffStatus: nodeStatusById.get(n.id) },
+    data: { archNode: n, diffStatus: nodeStatusById.get(n.id), revealDelay: revealDelays.get(n.id) },
     // ghost (removed) nodes shouldn't be draggable/selectable as if they were real
     draggable: nodeStatusById.get(n.id) !== "removed",
   }));
@@ -59,7 +61,7 @@ export function toFlowElements(
       target: e.to_id,
       label: e.protocol,
       animated: flowing,
-      data: { flowing },
+      data: { flowing, revealDelay: Math.max(revealDelays.get(e.from_id) ?? 0, revealDelays.get(e.to_id) ?? 0) + 90 },
       style: edgeStyle(status),
       labelStyle: { fontSize: 11 },
     };

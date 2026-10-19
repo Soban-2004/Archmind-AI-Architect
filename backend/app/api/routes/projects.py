@@ -63,6 +63,14 @@ async def list_versions(project_id: UUID, x_guest_token: Optional[str] = Header(
     return await repo.list_versions(project_id, x_guest_token)
 
 
+@router.get("/{project_id}/messages")
+async def list_messages(project_id: UUID, x_guest_token: Optional[str] = Header(default=None)):
+    # Conversation text is private project data: check ownership before reading it.
+    if await repo.get_project(project_id, x_guest_token) is None:
+        raise HTTPException(404, "project not found")
+    return await repo.get_messages(project_id)
+
+
 @router.get("/{project_id}/versions/{version_id}")
 async def get_version(project_id: UUID, version_id: UUID, x_guest_token: Optional[str] = Header(default=None)):
     version = await repo.get_version(version_id, x_guest_token)

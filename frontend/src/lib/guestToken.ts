@@ -14,13 +14,28 @@ const GUEST_TOKEN_KEY = "ai-architect-guest-token";
 
 let cached: string | null = null;
 
+function createGuestToken(): string {
+  // randomUUID() is restricted to secure contexts, so it is unavailable
+  // during an IP-only HTTP deployment. getRandomValues() remains available
+  // there and gives us the same opaque, high-entropy browser identity.
+  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+
+  // Very old browsers only: preserve functionality until the site is moved
+  // to HTTPS, where the Web Crypto API is guaranteed to be available.
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+}
+
 export function getGuestToken(): string {
   if (cached) return cached;
   if (typeof window === "undefined") return ""; // SSR/build-time guard — never actually sent from there
   try {
     let token = localStorage.getItem(GUEST_TOKEN_KEY);
     if (!token) {
-      token = crypto.randomUUID();
+      token = createGuestToken();
       localStorage.setItem(GUEST_TOKEN_KEY, token);
     }
     cached = token;
@@ -30,6 +45,6 @@ export function getGuestToken(): string {
     // random token rather than throwing. This means such a visitor's
     // projects won't persist as "theirs" across reloads, which is the
     // best this mechanism can honestly offer without storage access.
-    return crypto.randomUUID();
+    return createGuestToken();
   }
 }

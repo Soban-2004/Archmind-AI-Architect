@@ -9,7 +9,7 @@ from app.llm.prompts import RETRY_SUFFIX
 from app.llm.rest_client import post_chat_completion
 from app.models.commands import InterviewTurnOutput
 
-MAX_RETRIES = 3
+MAX_RETRIES = 2
 BASE_URL = "https://openrouter.ai/api/v1"
 T = TypeVar("T", bound=BaseModel)
 
@@ -37,6 +37,8 @@ class OpenRouterProvider(LLMProvider):
 
     async def _json_completion(self, messages: list[dict], schema_model: type[T], seed_error: str | None = None) -> T:
         last_error = seed_error
+        self.last_usage = None
+        total_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
         for _attempt in range(MAX_RETRIES):
             turn_messages = list(messages)
@@ -49,15 +51,13 @@ class OpenRouterProvider(LLMProvider):
             # note doesn't fix a 429/500, it just wastes an attempt — let
             # it propagate straight out so FallbackProvider moves on to
             # the next provider in the chain instead.
-            data = await post_chat_completion(BASE_URL, settings.openrouter_api_key, settings.openrouter_model, turn_messages)
+            data = await post_chat_completion(BASE_URL, settings.openrouter_api_key, settings.openrouter_model, turn_messages, max_tokens=settings.llm_max_output_tokens)
 
             usage = data.get("usage") or {}
             if usage:
-                self.last_usage = {
-                    "prompt_tokens": usage.get("prompt_tokens", 0),
-                    "completion_tokens": usage.get("completion_tokens", 0),
-                    "total_tokens": usage.get("total_tokens", 0),
-                }
+                for key in total_usage:
+                    total_usage[key] += usage.get(key, 0)
+                self.last_usage = dict(total_usage)
             raw = data["choices"][0]["message"]["content"]
 
             try:

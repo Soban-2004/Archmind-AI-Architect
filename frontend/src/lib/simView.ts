@@ -21,13 +21,14 @@ export const TRAFFIC_SOURCE_ID = "__traffic_source__";
 export function applySimulation(nodes: Node[], edges: Edge[], sim: SimulationResult | null): { nodes: Node[]; edges: Edge[] } {
   if (!sim) return { nodes, edges };
 
+  const loadByNode = new Map(sim.loads.map((load) => [load.node_id, load]));
   const statusByNode = new Map(sim.loads.map((l) => [l.node_id, l.status]));
   const rpsByNode = new Map(sim.loads.map((l) => [l.node_id, l.incoming_rps]));
   const rpsByEdge = new Map(sim.edge_loads.map((e) => [e.edge_id, e.rps]));
 
   const simNodes = nodes.map((n) => ({
     ...n,
-    data: { ...n.data, simStatus: statusByNode.get(n.id) },
+    data: { ...n.data, simStatus: statusByNode.get(n.id), simLoad: loadByNode.get(n.id) },
   }));
 
   const simEdges = edges.map((e) => {
@@ -51,7 +52,7 @@ export function applySimulation(nodes: Node[], edges: Edge[], sim: SimulationRes
       label: rps !== undefined ? `${Math.round(rps)} rps` : e.label,
       style: simEdgeStyle(targetStatus),
       labelStyle: { fontSize: 11, fontWeight: 600 },
-      data: { ...e.data, flowing, flowSpeed: intensity.speed, flowCount: intensity.count },
+      data: { ...e.data, flowing, flowSpeed: intensity.speed, flowCount: intensity.count, congested: targetStatus === "overloaded" },
     };
   });
 
@@ -93,7 +94,7 @@ export function applySimulation(nodes: Node[], edges: Edge[], sim: SimulationRes
       selectable: false,
       style: simEdgeStyle(status),
       labelStyle: { fontSize: 11, fontWeight: 600 },
-      data: { flowing, flowSpeed: intensity.speed, flowCount: intensity.count },
+      data: { flowing, flowSpeed: intensity.speed, flowCount: intensity.count, congested: status === "overloaded" },
     };
   });
 

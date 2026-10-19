@@ -45,7 +45,7 @@ async def test_first_provider_success_never_touches_the_rest():
     assert first.calls == 1
     assert second.calls == 0
     assert third.calls == 0
-    assert provider.last_usage == {"total_tokens": 5}
+    assert provider.last_usage == {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 5}
 
 
 async def test_first_failure_falls_through_to_the_second():
@@ -61,7 +61,7 @@ async def test_first_failure_falls_through_to_the_second():
     assert second.calls == 1
     assert third.calls == 0
     # last_usage reflects whichever provider actually served the call.
-    assert provider.last_usage == {"total_tokens": 9}
+    assert provider.last_usage == {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 9}
 
 
 async def test_first_two_failing_falls_through_to_the_third():
@@ -74,7 +74,7 @@ async def test_first_two_failing_falls_through_to_the_third():
 
     assert result.question == "from Mistral"
     assert third.calls == 1
-    assert provider.last_usage == {"total_tokens": 3}
+    assert provider.last_usage == {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 3}
 
 
 async def test_every_provider_failing_propagates_the_last_ones_real_error():

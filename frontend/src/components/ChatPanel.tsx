@@ -1,11 +1,27 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { ArrowDown, Check, Copy, ExternalLink, Lightbulb, MessageSquare, SendHorizontal, Sparkles, User } from "lucide-react";
 import { relativeTime } from "@/lib/format";
 import { useThinkingStatus } from "@/lib/useThinkingStatus";
+import { readChatDraft, subscribeChatDraft, writeChatDraft } from "@/lib/chatDraft";
 import type { ChatMessage } from "@/lib/types";
-import { EmptyState, IconButton, Spinner, TypewriterText } from "./ui";
+import { IconButton, Spinner, TypewriterText } from "./ui";
+
+const STARTER_BRIEFS = [
+  {
+    label: "SaaS product",
+    prompt: "Design a multi-tenant SaaS application for small teams. Start with the questions you need answered about users, traffic, data, budget, and availability.",
+  },
+  {
+    label: "Real-time system",
+    prompt: "Design a real-time notification platform. Ask me about delivery channels, peak throughput, ordering, retries, latency, and regional requirements.",
+  },
+  {
+    label: "AI / RAG app",
+    prompt: "Design a production-ready RAG application. Ask me about data sources, update frequency, users, latency, model providers, privacy, and cost limits.",
+  },
+];
 
 function formatElapsed(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
@@ -60,15 +76,19 @@ function CopyButton({ text }: { text: string }) {
     }
   }
   return (
-    <IconButton onClick={handleCopy} className="h-5 w-5 opacity-0 group-hover:opacity-100" title="Copy">
+    <IconButton onClick={handleCopy} className="h-7 w-7 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100" title="Copy">
       {copied ? <Check size={11} className="text-green-500" /> : <Copy size={11} />}
     </IconButton>
   );
 }
 
 interface Props {
+  projectId: string;
+  hasArchitecture?: boolean;
+  historyError?: boolean;
+  onRetryHistory?: () => void;
   messages: ChatMessage[];
-  onSend: (message: string) => Promise<void>;
+  onSend: (message: string) => Promise<boolean>;
   busy: boolean;
   /** Real live pipeline stage text (see ThinkingBubble above) — omit or
    * pass null/undefined to fall back to the cosmetic rotating status. */
@@ -76,17 +96,27 @@ interface Props {
   onConsumeAnimation: (index: number) => void;
 }
 
-export function ChatPanel({ messages, onSend, busy, busyStage, onConsumeAnimation }: Props) {
-  const [draft, setDraft] = useState("");
+export function ChatPanel({ projectId, hasArchitecture, historyError, onRetryHistory, messages, onSend, busy, busyStage, onConsumeAnimation }: Props) {
+  const draft = useSyncExternalStore(subscribeChatDraft, () => readChatDraft(projectId), () => "");
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const composer = composerRef.current;
+    if (!composer) return;
+    composer.style.height = "0px";
+    composer.style.height = `${Math.min(composer.scrollHeight, 144)}px`;
+  }, [draft]);
 
   // Force-scroll to the newest message every time one arrives, regardless
   // of where the user had scrolled to — matches how the composer being
   // focused always keeps the conversation moving forward.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    if (!showJumpToLatest) bottomRef.current?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "end" });
+    // The latest-button state must not itself trigger scrolling away from older replies.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages.length, busy]);
 
   // Surface a "jump to latest" affordance while the user has deliberately
@@ -101,15 +131,15 @@ export function ChatPanel({ messages, onSend, busy, busyStage, onConsumeAnimatio
   }
 
   function jumpToLatest() {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    bottomRef.current?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "end" });
   }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!draft.trim() || busy) return;
     const message = draft;
-    setDraft("");
-    await onSend(message);
+    writeChatDraft(projectId, "");
+    if (!await onSend(message)) writeChatDraft(projectId, message);
   }
 
   async function handleQuickReply(reply: string) {
@@ -117,36 +147,61 @@ export function ChatPanel({ messages, onSend, busy, busyStage, onConsumeAnimatio
     await onSend(reply);
   }
 
+  function applyStarterBrief(prompt: string) {
+    writeChatDraft(projectId, prompt);
+    requestAnimationFrame(() => {
+      composerRef.current?.focus();
+      composerRef.current?.setSelectionRange(prompt.length, prompt.length);
+    });
+  }
+
   const lastAssistantIndex = [...messages].map((m) => m.role).lastIndexOf("assistant");
 
   return (
     <div className="relative flex h-full flex-col">
+      {historyError && <div role="alert" className="flex items-center justify-between gap-2 border-b border-slate-200 px-4 py-3 text-xs dark:border-slate-800"><span>Conversation history couldn’t load.</span><button onClick={onRetryHistory} disabled={busy} className="font-medium text-brand-600 underline dark:text-brand-300">Retry history</button></div>}
       <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-4 py-4">
         {messages.length === 0 ? (
-          <EmptyState
-            icon={<Sparkles size={22} />}
-            title="Describe what you want to build"
-            description={'e.g. "I want to build a stock trading app for college students"'}
-          />
+          <div className="flex min-h-full flex-col items-center justify-center px-5 py-8 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full border border-bp-line bg-surface-2 text-brand-600 dark:text-brand-400">
+              <Sparkles size={21} />
+            </div>
+            <h2 className="font-display mt-4 text-base font-semibold text-bp-ink">
+              {hasArchitecture ? "Refine the architecture" : "Start with a product brief"}
+            </h2>
+            <p className="mt-1.5 max-w-[290px] text-xs leading-relaxed text-bp-muted">
+              {hasArchitecture
+                ? "Ask about a component, explore a trade-off, or describe the outcome you want."
+                : "Include the users, expected traffic, important data, budget, and reliability needs you already know."}
+            </p>
+            {!hasArchitecture && (
+              <div className="mt-5 grid w-full max-w-[300px] gap-2" aria-label="Starter briefs">
+                {STARTER_BRIEFS.map((starter) => (
+                  <button
+                    key={starter.label}
+                    type="button"
+                    onClick={() => applyStarterBrief(starter.prompt)}
+                    className="group flex items-center justify-between rounded-lg border border-bp-line bg-surface px-3 py-2.5 text-left text-xs font-medium text-bp-ink transition hover:border-brand-300 hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 dark:hover:bg-brand-500/10"
+                  >
+                    {starter.label}
+                    <span className="text-bp-muted transition-transform group-hover:translate-x-0.5" aria-hidden="true">→</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         ) : (
           <div className="space-y-3">
             {messages.map((m, i) => (
               <div key={i} className={`animate-fade-in group flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
                 {m.role === "assistant" && (
-                  // A fixed violet->pink gradient (plain Tailwind hues, not
-                  // the theme-flipped --brand-*/--info-* vars used for
-                  // buttons) — those invert to a PALE tint in dark mode
-                  // specifically so a dark-text button stays readable,
-                  // which would leave the white icon here badly low-
-                  // contrast. This gradient stays the same dark-enough
-                  // stops in both themes on purpose.
-                  <div className="mr-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-pink-500 text-white shadow-soft">
+                  <div className="mr-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-brand-600 text-white shadow-soft">
                     <MessageSquare size={13} />
                   </div>
                 )}
                 <div className={`flex max-w-[82%] flex-col gap-1 ${m.role === "user" ? "items-end" : "items-start"}`}>
                   <div
-                    className={`rounded-2xl px-3.5 py-2 text-[13px] leading-relaxed ${
+                    className={`rounded-2xl px-3.5 py-2 text-sm leading-relaxed ${
                       m.role === "user"
                         ? "whitespace-pre-wrap rounded-br-sm bg-surface-3 text-slate-800 shadow-soft dark:text-slate-100"
                         : "rounded-bl-sm bg-surface text-slate-700 shadow-soft dark:bg-surface-2 dark:text-slate-200"
@@ -173,7 +228,7 @@ export function ChatPanel({ messages, onSend, busy, busyStage, onConsumeAnimatio
                     // prompts.py). Deliberately its own small block, not
                     // folded into the chat bubble's prose above, so it
                     // reads as "here's why", not as more of the answer.
-                    <div className="flex w-full flex-col gap-1 rounded-r-lg border-l-2 border-amber-400/60 bg-amber-50/50 py-1.5 pl-2.5 pr-3 dark:border-amber-400/40 dark:bg-amber-500/[0.05]">
+                    <div className="flex w-full flex-col gap-1 rounded-lg border border-amber-200/80 bg-amber-50/50 px-3 py-2 dark:border-amber-400/20 dark:bg-amber-500/[0.05]">
                       <div className="flex items-center gap-1.5 text-[10.5px] font-medium text-amber-700 dark:text-amber-400">
                         <Lightbulb size={11} /> Why
                       </div>
@@ -223,7 +278,7 @@ export function ChatPanel({ messages, onSend, busy, busyStage, onConsumeAnimatio
                   )}
                 </div>
                 {m.role === "user" && (
-                  <div className="ml-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-400 to-cyan-400 text-white shadow-soft">
+                  <div className="ml-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-3 text-slate-700 dark:text-slate-200 shadow-soft">
                     <User size={13} />
                   </div>
                 )}
@@ -244,21 +299,34 @@ export function ChatPanel({ messages, onSend, busy, busyStage, onConsumeAnimatio
         </button>
       )}
 
-      <form onSubmit={handleSubmit} className="flex gap-2 border-t border-slate-200 bg-surface p-3 dark:border-slate-800">
-        <input
-          className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm placeholder:text-slate-400 focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:bg-slate-800 dark:focus:ring-brand-500/20"
-          placeholder="Type a message…"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          disabled={busy}
-        />
-        <button
-          type="submit"
-          disabled={busy || !draft.trim()}
-          className="ease-spring flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-lg bg-brand-600 text-white shadow-soft transition duration-300 hover:-translate-y-0.5 hover:bg-brand-700 active:scale-95 active:translate-y-0 disabled:opacity-40 disabled:hover:translate-y-0 disabled:active:scale-100"
-        >
-          <SendHorizontal size={17} />
-        </button>
+      <form onSubmit={handleSubmit} className="border-t border-slate-200 bg-surface p-3 dark:border-slate-800">
+        <div className="flex items-end gap-2">
+          <textarea
+            ref={composerRef}
+            aria-label="Message the architect"
+            rows={1}
+            className="max-h-36 min-h-[42px] flex-1 resize-none overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm leading-5 placeholder:text-slate-400 focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:bg-slate-800 dark:focus:ring-brand-500/20"
+            placeholder="Describe the product, constraints, or change…"
+            value={draft}
+            onChange={(e) => writeChatDraft(projectId, e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                e.currentTarget.form?.requestSubmit();
+              }
+            }}
+            disabled={busy}
+          />
+          <button
+            aria-label="Send message"
+            type="submit"
+            disabled={busy || !draft.trim()}
+            className="ease-spring flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-lg bg-brand-600 text-white shadow-soft transition duration-300 hover:-translate-y-0.5 hover:bg-brand-700 active:scale-95 active:translate-y-0 disabled:opacity-40 disabled:hover:translate-y-0 disabled:active:scale-100"
+          >
+            <SendHorizontal size={17} />
+          </button>
+        </div>
+        <p className="mt-1.5 px-0.5 text-[10px] text-bp-muted">Enter to send · Shift + Enter for a new line</p>
       </form>
     </div>
   );

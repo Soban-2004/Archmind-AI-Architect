@@ -1,132 +1,84 @@
 @import "tailwindcss";
-
-/* Class-based dark mode (Tailwind v4 CSS-first config) so a manual toggle
-   works independently of the OS preference. */
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --background: #f4f1fb; /* soft lavender-white — a tint OF the brand violet, not neutral paper */
-  --surface: #ffffff;
-  --surface-2: #f6f2fc; /* one step up from the page: a card sitting ON the page */
-  --surface-3: #ece2fa; /* the raised/active/selected layer — one step past surface-2, not identical to it */
-  --foreground: #1c1730; /* deep violet-black, not neutral slate */
-
-  /* "Neon Grid" identity, v2: violet as the ONE action accent (send
-     button, primary CTA, selection), a deliberately separate pink for
-     informational moments — picked flat and specific (no glow/blur
-     anywhere, removed from every component that had it) rather than the
-     softer amber/cyanotype pairs tried earlier. Light mode uses a deeper,
-     more saturated violet than dark mode (#8b5cf6-family, not #b490ff)
-     since the bright dark-mode violet doesn't have enough contrast on a
-     light ground. Same variable names as before (brand-*) so every
-     existing `bg-brand-600`/`text-brand-500`/etc. across the app
-     repalettes for free. */
-  --brand-50: #f1ecfd;
-  --brand-100: #e2d7fb;
-  --brand-300: #a97ef2;
-  --brand-400: #8b5cf6;
-  --brand-500: #7c3aed;
-  --brand-600: #6d28d9;
-  --brand-700: #5b21b6;
-
-  /* The second, DELIBERATELY separate accent — pink, reserved only for
-     informational/explanatory moments (a "why" callout, a citation),
-     never for actions. Keeping it out of brand-* is intentional: an
-     action color and an information color that looked the same would
-     undo the whole point of having two. */
-  --info-400: #ec4899;
-  --info-500: #db2777;
-  --info-600: #be185d;
-
-  --rf-dot-color: #ddd2f2;
-
-  /* A real elevation system, in place of "border + shadow-lg on
-     everything". `soft` is the default for a floating surface (dropdown,
-     tile, a card that's part of the page); `raised` is reserved for
-     something genuinely modal/critical (a confirm dialog, an actively-
-     edited detail panel). No accent-glow token anymore — found live that
-     a colored halo read as decoration, not signal; a selected node now
-     gets a flat, solid-colored border instead (see ArchNodeCard.tsx). */
-  --elevation-soft: 0 1px 2px rgba(28, 23, 48, 0.05), 0 10px 24px -14px rgba(28, 23, 48, 0.18);
-  --elevation-raised: 0 2px 6px rgba(28, 23, 48, 0.09), 0 24px 48px -18px rgba(28, 23, 48, 0.3);
-
-  /* "Blueprint" identity — shares the SAME accent as the rest of the app
-     now, so the landing page and the product read as one identity. */
-  --bp-paper: #f6f3fc;
-  --bp-ink: #1c1730;
-  --bp-surface: #ffffff;
-  --bp-line: #e2d7f2;
-  --bp-line-strong: #c9b8e6;
-  --bp-muted: #726a8c;
-  --bp-accent: #6d28d9;
-  --bp-accent-soft: #f1ecfd;
-  --bp-accent-2: #7c3aed;
-  --bp-good: #1f7a5c;
+  color-scheme: light;
+  --background: #eef1ed;
+  --surface: #fbfcf8;
+  --surface-2: #e5eae4;
+  --surface-3: #d7dfd7;
+  --foreground: #17221d;
+  --brand-50: #fbe9e4;
+  --brand-100: #f8d4ca;
+  --brand-200: #f2ad9c;
+  --brand-300: #eb866d;
+  --brand-400: #e46649;
+  --brand-500: #d65335;
+  --brand-600: #c4472c;
+  --brand-700: #9f3621;
+  --info-400: #1f9e8a;
+  --info-500: #147d70;
+  --info-600: #0d665c;
+  --rf-dot-color: #c6d0c8;
+  --elevation-soft: 0 2px 4px rgb(23 34 29 / 4%), 0 8px 24px -12px rgb(23 34 29 / 18%);
+  --elevation-raised: 0 14px 42px -14px rgb(23 34 29 / 26%), 0 4px 12px rgb(23 34 29 / 7%);
+  --bp-paper: var(--background);
+  --bp-ink: var(--foreground);
+  --bp-surface: var(--surface);
+  --bp-line: #d8dfd8;
+  --bp-line-strong: #adb9af;
+  --bp-muted: #59685f;
+  --bp-accent: #c4472c;
+  --bp-accent-soft: #fbe9e4;
+  --bp-accent-2: #9f3621;
+  --bp-good: #147d70;
+  --motion-out: cubic-bezier(.16, 1, .3, 1);
 }
 
 .dark {
-  --rf-dot-color: #241d36;
-  --background: #0d0a16; /* violet-tinted near-black — a dark shade OF the accent hue, not neutral black */
-  --surface: #120e1d; /* the base panel layer — header, side rails */
-  --surface-2: #171224; /* one step up — node cards, message bubbles */
-  --surface-3: #1e182e; /* two steps up — hover/active/selected state */
-  --foreground: #f3f0fa;
-
-  /* The specified neon-violet action color, full saturation, pushed
-     bright against the violet-black ground. */
-  --brand-50: #1f1733;
-  --brand-100: #2b2147;
-  --brand-300: #a184f0;
-  --brand-400: #b490ff;
-  --brand-500: #c2a3ff;
-  --brand-600: #cfb8ff;
-  --brand-700: #ddccff;
-
-  --info-400: #ff5fa8;
-  --info-500: #ff7fbb;
-  --info-600: #ff9ecb;
-
-  /* A black-based shadow barely reads against an already-dark surface —
-     these lean on a faint light-edge instead (a soft inner highlight plus
-     a real blur), the standard trick for elevation on a dark theme. */
-  --elevation-soft: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 10px 24px -12px rgba(0, 0, 0, 0.55);
-  --elevation-raised: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 24px 48px -16px rgba(0, 0, 0, 0.7);
-
-  --bp-paper: #0d0a16;
-  --bp-ink: #f3f0fa;
-  --bp-surface: #120e1d;
-  --bp-line: #2a2340;
-  --bp-line-strong: #3a3155;
-  --bp-muted: #8f87a8;
-  --bp-accent: #b490ff;
-  --bp-accent-soft: #1f1733;
-  --bp-accent-2: #c2a3ff;
-  --bp-good: #4ade95;
+  color-scheme: dark;
+  --background: #0c1411;
+  --surface: #111c17;
+  --surface-2: #182720;
+  --surface-3: #22362c;
+  --foreground: #edf4ef;
+  --brand-50: #351813;
+  --brand-100: #4d2119;
+  --brand-200: #713124;
+  --brand-300: #ffb19e;
+  --brand-400: #ff8d71;
+  --brand-500: #e9694c;
+  --brand-600: #c4472c;
+  --brand-700: #b83f29;
+  --info-400: #55d2bd;
+  --info-500: #32b49f;
+  --info-600: #83e2d2;
+  --rf-dot-color: #293d33;
+  --elevation-soft: 0 2px 4px rgb(0 0 0 / 12%), 0 10px 28px -12px rgb(0 0 0 / 40%);
+  --elevation-raised: 0 16px 48px -12px rgb(0 0 0 / 60%);
+  --bp-line: #293c33;
+  --bp-line-strong: #465e51;
+  --bp-muted: #a4b6aa;
+  --bp-accent: #e9694c;
+  --bp-accent-soft: #351813;
+  --bp-accent-2: #ff9b83;
+  --bp-good: #55d2bd;
+  --color-slate-400: #a4b6aa;
+  --color-slate-500: #879b8f;
 }
 
-/* Every panel/card/button in the app (ui.tsx, AppShell, ChatPanel,
-   AnalyzerPanel, NodeDetailCard, ...) is built on Tailwind's stock
-   `slate-*` scale for borders/text/neutral fills — hundreds of call
-   sites, never going to be worth rewriting one-by-one to bespoke tokens.
-   Overriding the scale's own values here reskins all of them at once:
-   same lightness at every one of the 11 stops as Tailwind's real slate
-   (so every existing text/bg contrast pair is exactly as legible as
-   before — this is a hue change, not a lightness one), just rotated
-   toward violet instead of default Tailwind's cool blue-gray — so
-   borders/muted text/hover fills all sit in the same world as the brand
-   accent instead of fighting it. */
 @theme {
-  --color-slate-50: #f8f6fc;
-  --color-slate-100: #efebf7;
-  --color-slate-200: #ddd6ee;
-  --color-slate-300: #c3b8dd;
-  --color-slate-400: #9186ab;
-  --color-slate-500: #71638c;
-  --color-slate-600: #554870;
-  --color-slate-700: #3d3252;
-  --color-slate-800: #241d36;
-  --color-slate-900: #17111f;
-  --color-slate-950: #0e0a16;
+  --color-slate-50: #f5f7f3;
+  --color-slate-100: #e9eee9;
+  --color-slate-200: #d6ded7;
+  --color-slate-300: #b7c3b9;
+  --color-slate-400: #718078;
+  --color-slate-500: #59685f;
+  --color-slate-600: #48564e;
+  --color-slate-700: #36443c;
+  --color-slate-800: #25342c;
+  --color-slate-900: #17221d;
+  --color-slate-950: #0c1411;
 }
 
 @theme inline {
@@ -137,6 +89,7 @@
   --color-foreground: var(--foreground);
   --color-brand-50: var(--brand-50);
   --color-brand-100: var(--brand-100);
+  --color-brand-200: var(--brand-200);
   --color-brand-300: var(--brand-300);
   --color-brand-400: var(--brand-400);
   --color-brand-500: var(--brand-500);
@@ -145,21 +98,11 @@
   --color-info-400: var(--info-400);
   --color-info-500: var(--info-500);
   --color-info-600: var(--info-600);
-  /* The app used to fork into two typefaces: IBM Plex for the landing
-     page's deliberate identity, and Geist — the literal default of every
-     unstyled Next.js app — for the actual product once you clicked in.
-     That's backwards: the product itself is where a distinct identity
-     matters most, and Geist is the single strongest "this is a generic
-     AI-generated app" tell there is. Plex Sans is now the app's UI
-     typeface everywhere; Space Grotesk is layered in for a few display
-     moments (see .font-display below) where the plain UI face reads too
-     neutral — headings that should carry some personality, not run text. */
   --font-sans: var(--font-plex-sans);
   --font-mono: var(--font-plex-mono);
-  --font-display: var(--font-space-grotesk);
+  --font-display: var(--font-syne);
   --shadow-soft: var(--elevation-soft);
   --shadow-raised: var(--elevation-raised);
-
   --color-bp-paper: var(--bp-paper);
   --color-bp-ink: var(--bp-ink);
   --color-bp-surface: var(--bp-surface);
@@ -170,95 +113,123 @@
   --color-bp-accent-soft: var(--bp-accent-soft);
   --color-bp-accent-2: var(--bp-accent-2);
   --color-bp-good: var(--bp-good);
-  --font-plex-sans: var(--font-plex-sans);
-  --font-plex-mono: var(--font-plex-mono);
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-}
+body { background: var(--background); color: var(--foreground); }
+::selection { background: var(--brand-100); color: var(--foreground); }
+input, textarea { caret-color: var(--brand-400); }
+button, a, input, textarea, select { -webkit-tap-highlight-color: transparent; }
+button:not(:disabled), a { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--brand-400); outline-offset: 3px; }
+* { scrollbar-width: thin; scrollbar-color: var(--bp-line-strong) transparent; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: var(--bp-line-strong); border-radius: 6px; }
 
-/* Thin, theme-aware scrollbars — a small detail that reads as "polished"
-   on every scrollable panel at once. */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: #cdc7b6 transparent;
+.brand-mark {
+  color: #fbfcf8;
+  background: #17221d;
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 10px 10px 10px 3px;
+  box-shadow: inset 0 -2px 0 rgb(0 0 0 / 18%);
 }
-.dark * {
-  scrollbar-color: #333944 transparent;
+.brand-mark-signal { fill: #ff7456; }
+.brand-mark-node { fill: #fbfcf8; }
+.brand-mark-terminal { fill: var(--info-400); }
+.brand-mark-terminal {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: terminal-pulse 2.6s var(--motion-out) infinite;
 }
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+.app-frame { border-radius: 0; }
+@media (min-width: 640px) {
+  .app-frame { border-radius: 18px 18px 18px 5px; }
 }
-::-webkit-scrollbar-track {
-  background: transparent;
+.app-header { position: relative; }
+.app-header::after {
+  content: '';
+  position: absolute;
+  left: 16px;
+  bottom: -1px;
+  width: 48px;
+  height: 3px;
+  background: var(--brand-600);
 }
-::-webkit-scrollbar-thumb {
-  background-color: #cdc7b6;
-  border-radius: 999px;
+.landing-masthead { position: relative; }
+.landing-masthead::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 4px;
+  width: 5px;
+  height: 72px;
+  border-radius: 1px;
+  background: var(--brand-600);
+  transform-origin: top;
+  animation: redline-draw 720ms var(--motion-out) both;
 }
-.dark ::-webkit-scrollbar-thumb {
-  background-color: #333944;
-}
+.identity-period { color: var(--brand-600); }
+.identity-band { color: #fbfcf8; background: #17221d; }
+.dark .identity-band { background: #17251e; }
+.architecture-stage { background: var(--surface); }
 
-/* React Flow chrome, restyled to match the app rather than its defaults */
-.react-flow__attribution {
-  display: none;
+.react-flow__controls, .react-flow__minimap {
+  border-radius: 12px; overflow: hidden; border: 1px solid var(--bp-line);
+  box-shadow: var(--elevation-soft); background: var(--surface);
 }
-.react-flow__controls {
-  box-shadow: 0 1px 3px rgba(32, 29, 23, 0.08), 0 1px 2px rgba(32, 29, 23, 0.06);
-  border-radius: 10px;
-  overflow: hidden;
-  border: 1px solid #e4e0d5;
+.react-flow .react-flow__controls-button { border: 0; border-bottom: 1px solid var(--bp-line); background: var(--surface); color: var(--foreground); fill: var(--foreground); width: 32px; height: 32px; }
+.react-flow .react-flow__controls-button:hover { background: var(--surface-3); }
+.react-flow .react-flow__controls-button path { fill: var(--foreground); }
+.react-flow__edge-textbg { fill: var(--surface); }
+.react-flow__edge-text { fill: var(--foreground); font-size: 11px; }
+.react-flow__attribution { background: var(--surface); color: var(--bp-muted); font-size: 9px; border-radius: 4px; }
+.react-flow__edge:hover .react-flow__edge-path { stroke-width: 2.5; }
+.architecture-node { isolation: isolate; transition: border-color 160ms, box-shadow 200ms var(--motion-out), background-color 160ms; }
+.architecture-node:hover { box-shadow: var(--elevation-raised); }
+.architecture-node.is-selected { border-color: var(--brand-400); background: var(--brand-50); }
+.architecture-node.is-changed { animation: node-update 900ms var(--motion-out); }
+.architecture-node.is-warning::after,
+.architecture-node.is-overloaded::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: 15px;
 }
-.react-flow__controls-button {
-  border: none;
-  border-bottom: 1px solid #e4e0d5;
-  background: white;
-  fill: #5c5648;
+.architecture-node.is-warning::after {
+  border: 2px solid rgb(245 158 11 / 72%);
+  box-shadow: 0 4px 14px rgb(217 119 6 / 16%);
 }
-.react-flow__controls-button:hover {
-  background: #f2f0ea;
+.architecture-node.is-overloaded::after {
+  border: 2px solid rgb(239 68 68 / 82%);
+  box-shadow: 0 5px 18px rgb(220 38 38 / 24%);
+  animation: overload-pressure 1.45s ease-in-out infinite;
 }
-.react-flow__edge-textbg {
-  fill: #f2f0ea;
+.capacity-overflow {
+  background: repeating-linear-gradient(135deg, rgb(127 29 29) 0 3px, rgb(248 113 113) 3px 6px);
+  box-shadow: -2px 0 4px rgb(127 29 29 / 35%);
 }
-.react-flow__edge-text {
-  fill: #423e33;
-  font-size: 11px;
+.studio-demo { position: relative; overflow: hidden; border-radius: 18px 18px 18px 5px; background: var(--surface); border: 1px solid var(--bp-line); }
+.studio-demo::before { content: ''; position: absolute; inset: 0; pointer-events: none; background-image: linear-gradient(var(--bp-line) 1px, transparent 1px), linear-gradient(90deg, var(--bp-line) 1px, transparent 1px); background-size: 32px 32px; opacity: .38; }
+.studio-scan { animation: studio-scan 2.8s var(--motion-out) infinite; }
+.flow-particle { filter: drop-shadow(0 1px 2px rgb(0 0 0 / 20%)); }
+@media (max-width: 1023px) {
+  .react-flow .react-flow__panel.react-flow__controls { bottom: 126px; }
 }
-.react-flow__minimap {
-  border-radius: 10px;
-  overflow: hidden;
-  box-shadow: 0 1px 3px rgba(32, 29, 23, 0.08), 0 1px 2px rgba(32, 29, 23, 0.06);
-  border: 1px solid #e4e0d5;
+@keyframes node-update { 0%, 35% { background: var(--brand-100); } 100% { background: var(--surface); } }
+@keyframes overload-pressure {
+  0%, 100% { opacity: .64; box-shadow: 0 5px 14px rgb(220 38 38 / 16%); }
+  50% { opacity: 1; box-shadow: 0 7px 22px rgb(220 38 38 / 32%); }
 }
-
-.dark .react-flow__controls {
-  border-color: #23272e;
+@keyframes overload-impact {
+  0%, 100% { transform: translateX(0); }
+  28% { transform: translateX(-2px); }
+  58% { transform: translateX(2px); }
+  82% { transform: translateX(-1px); }
 }
-.dark .react-flow__controls-button {
-  background: #111317;
-  border-bottom-color: #23272e;
-  fill: #9aa0ab;
-}
-.dark .react-flow__controls-button:hover {
-  background: #1d2129;
-}
-.dark .react-flow__controls-button path {
-  fill: #9aa0ab;
-}
-.dark .react-flow__edge-textbg {
-  fill: #111317;
-}
-.dark .react-flow__edge-text {
-  fill: #c7d1d6;
-}
-.dark .react-flow__minimap {
-  border-color: #23272e;
-}
+@keyframes studio-scan { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+@keyframes redline-draw { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+@keyframes terminal-pulse { 0%, 72%, 100% { transform: scale(1); } 82% { transform: scale(1.5); } }
 
 @keyframes fade-in {
   from {
@@ -271,7 +242,7 @@ body {
   }
 }
 .animate-fade-in {
-  animation: fade-in 0.18s ease-out;
+  animation: fade-in 0.24s var(--motion-out);
 }
 
 @keyframes spin-slow {
@@ -339,7 +310,7 @@ body {
   }
 }
 .animate-icon-pop {
-  animation: icon-pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: icon-pop 0.35s var(--motion-out);
 }
 
 /* Reserved for the one or two genuinely primary actions per screen (the
@@ -348,5 +319,11 @@ body {
    every other button in the app already uses consistently. Not meant to
    spread everywhere; that would just make it the new flat default. */
 .ease-spring {
-  transition-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition-timing-function: var(--motion-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+  .react-flow__node, .react-flow__edge { opacity: 1 !important; }
+  .flow-particle { display: none; }
 }

@@ -6,6 +6,7 @@ load_dotenv()
 
 
 class Settings:
+    llm_max_output_tokens: int = int(os.environ.get("LLM_MAX_OUTPUT_TOKENS", "1800"))
     supabase_db_url: str = os.environ.get("SUPABASE_DB_URL", "")
     groq_api_key: str = os.environ.get("GROQ_API_KEY", "")
     groq_model: str = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")

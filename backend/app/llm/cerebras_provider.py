@@ -9,7 +9,7 @@ from app.llm.base import LLMProvider
 from app.llm.prompts import RETRY_SUFFIX
 from app.models.commands import InterviewTurnOutput
 
-MAX_RETRIES = 3
+MAX_RETRIES = 2
 T = TypeVar("T", bound=BaseModel)
 
 
@@ -35,6 +35,8 @@ class CerebrasProvider(LLMProvider):
 
     async def _json_completion(self, messages: list[dict], schema_model: type[T], seed_error: str | None = None) -> T:
         last_error = seed_error
+        self.last_usage = None
+        total_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
         for _attempt in range(MAX_RETRIES):
             turn_messages = list(messages)
@@ -47,6 +49,7 @@ class CerebrasProvider(LLMProvider):
                     messages=turn_messages,
                     response_format={"type": "json_object"},
                     temperature=0.3,
+                    max_tokens=settings.llm_max_output_tokens,
                 )
             except APIStatusError as e:
                 # Same server-side json_object rejection GroqProvider
@@ -60,11 +63,13 @@ class CerebrasProvider(LLMProvider):
                 continue
 
             if resp.usage:
-                self.last_usage = {
+                for key, value in {
                     "prompt_tokens": resp.usage.prompt_tokens,
                     "completion_tokens": resp.usage.completion_tokens,
                     "total_tokens": resp.usage.total_tokens,
-                }
+                }.items():
+                    total_usage[key] += value
+                self.last_usage = dict(total_usage)
             raw = resp.choices[0].message.content
 
             try:

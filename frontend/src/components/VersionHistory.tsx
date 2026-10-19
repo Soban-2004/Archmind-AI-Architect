@@ -26,19 +26,23 @@ export function VersionHistory({ projectId, activeVersionId, refreshKey, onSelec
   const [versions, setVersions] = useState<VersionSummary[]>([]);
   const [compareMode, setCompareMode] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
+  const [error, setError] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     api
       .listVersions(projectId)
       .then((v) => {
-        if (!cancelled) setVersions(v);
+        if (!cancelled) { setVersions(v); setError(false); }
       })
-      .catch(() => {});
+      .catch(() => { if (!cancelled) setError(true); })
+      .finally(() => { if (!cancelled) setLoading(false); });
     return () => {
       cancelled = true;
     };
-  }, [projectId, refreshKey]);
+  }, [projectId, refreshKey, retry]);
 
   function toggleCompareMode() {
     setCompareMode((v) => !v);
@@ -80,7 +84,9 @@ export function VersionHistory({ projectId, activeVersionId, refreshKey, onSelec
       )}
 
       <div className="flex-1 overflow-y-auto px-3 py-2">
-        {versions.length === 0 && <p className="px-1 py-3 text-xs text-slate-400 dark:text-slate-500">No versions yet.</p>}
+        {error && <div role="alert" className="px-1 py-3 text-xs text-red-700 dark:text-red-300"><p>Version history couldn’t load.</p><button disabled={loading} onClick={() => { setLoading(true); setRetry((v) => v + 1); }} className="mt-2 font-medium underline">Retry history</button></div>}
+        {loading && <p role="status" className="px-1 py-3 text-xs text-slate-500 dark:text-slate-400">Loading versions…</p>}
+        {!loading && !error && versions.length === 0 && <p className="px-1 py-3 text-xs text-slate-400 dark:text-slate-500">No versions yet.</p>}
         <div className="relative">
           {versions.length > 1 && <div className="absolute top-2 bottom-2 left-[15px] w-px bg-slate-200 dark:bg-slate-700" />}
           {versions.map((v, i) => {

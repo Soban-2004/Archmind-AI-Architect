@@ -29,15 +29,18 @@ export function CanvasLoadingOverlay({ active, fullscreen = false }: Props) {
 
   return (
     <div
+      role="status"
       className={`animate-fade-in absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 ${
         fullscreen ? "" : "bg-white/70 backdrop-blur-[2px] dark:bg-slate-950/60"
       }`}
     >
-      <div className="relative flex h-16 w-16 items-center justify-center">
-        <div className="animate-spin-slow absolute inset-0 rounded-full border-2 border-dashed border-brand-300 dark:border-brand-500/40" />
-        <div className="flex h-10 w-10 animate-pulse items-center justify-center rounded-full bg-brand-600 text-white shadow-soft">
-          <Sparkles size={18} />
-        </div>
+      <div aria-hidden="true" className="relative flex h-20 w-32 items-center justify-center overflow-hidden rounded-xl border border-brand-200 bg-surface">
+        <div className="absolute left-4 right-4 top-5 h-px bg-brand-200" />
+        <div className="absolute left-4 right-4 bottom-5 h-px bg-brand-200" />
+        <div className="absolute inset-y-5 left-8 w-px bg-brand-200" />
+        <div className="absolute inset-y-5 right-8 w-px bg-brand-200" />
+        <div className="studio-scan absolute inset-0 bg-gradient-to-r from-transparent via-brand-400/20 to-transparent" />
+        <div className="relative flex h-9 w-9 items-center justify-center rounded-lg bg-brand-600 text-white"><Sparkles size={17} /></div>
       </div>
       <div className="flex flex-col items-center gap-1.5 px-6 text-center">
         <p key={phrase} className="animate-fade-in text-sm font-medium text-slate-700 dark:text-slate-200">

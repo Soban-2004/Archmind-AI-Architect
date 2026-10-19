@@ -50,6 +50,9 @@ export const api = {
 
   getProject: (projectId: string) => request<Project>(`/projects/${projectId}`),
 
+  getMessages: (projectId: string) =>
+    request<{ role: "user" | "assistant"; content: string; created_at: string }[]>(`/projects/${projectId}/messages`),
+
   listVersions: (projectId: string) => request<VersionSummary[]>(`/projects/${projectId}/versions`),
 
   getVersion: (projectId: string, versionId: string) =>

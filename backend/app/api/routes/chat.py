@@ -18,7 +18,7 @@ def _result_payload(result: ChatTurnResult) -> dict:
     always agree on what a given ChatTurnResult looks like over the
     wire — one place, not two copies that could quietly drift apart."""
     if result.kind == "error":
-        return {"kind": "error", "error": result.error}
+        return {"kind": "error", "error": result.error, "usage": result.usage}
     if result.kind == "question":
         return {
             "kind": "question",

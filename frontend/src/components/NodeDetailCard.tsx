@@ -234,6 +234,7 @@ export function NodeDetailCard({ node, load, finding, onClose, onSave, onDelete,
           <div className="min-w-0">
             {editing ? (
               <input
+                aria-label="Component name"
                 autoFocus
                 value={draft.name ?? ""}
                 onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
@@ -258,7 +259,7 @@ export function NodeDetailCard({ node, load, finding, onClose, onSave, onDelete,
               <Trash2 size={12} />
             </IconButton>
           )}
-          <IconButton onClick={onClose} className="h-6 w-6">
+          <IconButton onClick={onClose} className="h-6 w-6" title="Close component details">
             <X size={13} />
           </IconButton>
         </div>
@@ -381,9 +382,10 @@ export function NodeDetailCard({ node, load, finding, onClose, onSave, onDelete,
         <div className="mt-3 space-y-2 border-t border-slate-100 pt-3 dark:border-slate-800">
           {editableFields.map((f) => (
             <div key={f.key}>
-              <label className="text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500">{FIELD_LABEL[f.key]}</label>
+              <label htmlFor={`node-field-${node.id}-${f.key}`} className="text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500">{FIELD_LABEL[f.key]}</label>
               {f.select ? (
                 <select
+                  id={`node-field-${node.id}-${f.key}`}
                   value={draft[f.key] ?? ""}
                   onChange={(e) => setDraft((d) => ({ ...d, [f.key]: e.target.value }))}
                   className="mt-0.5 w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
@@ -397,6 +399,7 @@ export function NodeDetailCard({ node, load, finding, onClose, onSave, onDelete,
                 </select>
               ) : f.multiline ? (
                 <textarea
+                  id={`node-field-${node.id}-${f.key}`}
                   rows={3}
                   value={draft[f.key] ?? ""}
                   onChange={(e) => setDraft((d) => ({ ...d, [f.key]: e.target.value }))}
@@ -404,6 +407,7 @@ export function NodeDetailCard({ node, load, finding, onClose, onSave, onDelete,
                 />
               ) : (
                 <input
+                  id={`node-field-${node.id}-${f.key}`}
                   type={f.numeric ? "number" : "text"}
                   min={f.numeric ? 0 : undefined}
                   value={draft[f.key] ?? ""}

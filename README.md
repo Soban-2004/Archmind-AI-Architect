@@ -1,201 +1,260 @@
-# AI Architect
+# ArchMind
 
-Describe a system in plain language — *"a stock trading app for college
-students"* — and get back a real, structured system architecture: a
-canvas of services, databases, queues, and infrastructure, versioned,
-cost-estimated, and load-tested, that you can keep editing by chat or by
-hand.
+**Design, validate, and pressure-test software architecture with AI.**
 
-**The core idea the whole project is built around: the LLM never draws
-the diagram.** It only ever emits a small set of validated *mutation
-commands* — add this node, connect these two, change this field — which
-are checked against real structural rules (connectivity, schema,
-duplicate nodes) before anything reaches the canvas. The diagram itself
-is always rendered deterministically from that checked state. This is
-also why the same guarantee holds no matter *who* proposes a change: a
-chat message, a manual drag-and-drop edit, or an imported repo all go
-through the identical validated pipeline — there's no separate, less-
-trusted path.
+[Live application](https://140.245.234.125) · [Product overview](./PRODUCT.md) · [Design system](./DESIGN.md) · [Production deployment](./deploy/README.md)
 
-See [AI_ARCHITECT_IMPLEMENTATION.md](./AI_ARCHITECT_IMPLEMENTATION.md)
-for the full original spec this was built against, and
-[DEVLOG.md](./DEVLOG.md) for the real, chronological build log — every
-bug a live run against a real model and a real database actually
-surfaced, and how it got found and fixed. This file is the overview.
+ArchMind turns a product idea or an existing repository into a structured system architecture. You can refine it through conversation or direct canvas edits, compare versions, inspect costs and risks, simulate load and failures, and export a starter kit for implementation.
 
-## What it does
+![ArchMind in dark mode](./docs/archmind-dark.png)
 
-- **Describe → build.** A short requirements interview (users, scale,
-  budget, availability) produces the first real architecture — never a
-  single LLM call guessing at a diagram, always the validated command
-  pipeline above.
-- **Keep talking to it.** Every edit is a new, diffed, versioned commit —
-  the canvas highlights exactly what changed. Ask for "the $0 student
-  version" or "production for 1M users" and get a fresh, grounded sibling
-  architecture, not a resize of the current one. Compare any two versions
-  and get a deterministic diff plus an LLM narration that can only
-  reference facts actually in that diff.
-- **Or build it by hand.** Add, connect, edit, or delete components
-  directly on the canvas — the exact same validated pipeline a chat edit
-  uses, with real undo/redo.
-- **Every component explains itself.** Not a generic textbook definition
-  — a real, project-specific reason *this* architecture needs *this*
-  node, tied to what you actually asked for.
-- **A real cost and capacity model**, not a flat guess: ~30 component
-  types across services, databases, queues, external dependencies, and
-  infrastructure, each with declared, versioned capacity/cost
-  assumptions that scale with compute size, storage, and the actual
-  engine you name (CockroachDB and Postgres are not priced the same;
-  neither are DynamoDB and Redis).
-- **Simulate load and failure.** Pick a traffic multiplier or kill a
-  component and watch a deterministic capacity-propagation model show
-  what breaks, in what order, and why — animated live on the canvas.
-- **A deterministic Analyzer** scores any version across 7 categories
-  (scalability, reliability, security, cost, observability, performance,
-  maintainability), citing the exact facts behind each finding — and a
-  one-click **"Fix it"** button hands a specific finding straight to the
-  architect agent to resolve.
-- **Import a real, existing repo** — upload a zip or just paste a GitHub
-  URL — and a deterministic discovery pipeline (imports, routes, ORM
-  models, SQL migrations, real third-party API calls, auth usage) hands
-  the LLM only discrete, source-attributed facts, never raw code, which
-  it reconstructs into a real architecture. Every proposed component is
-  checked against real citations before it's accepted — click a node to
-  see the exact file and line that justified it. Works across Python,
-  JS/TS, and the common frameworks/ORMs/BaaS platforms in each, not just
-  one stack.
-- **Export a real starter kit** — `ARCHITECTURE.md`, `AI_BRIEF.md` (a
-  dependency-ordered build plan meant to be handed straight to a coding
-  agent), a real `docker-compose.yml` with runnable images for every
-  component that has an honest local equivalent, and `.env.example` —
-  turning a validated design into an actual starting point, not just a
-  picture of one.
-- **Guest mode, with real privacy.** No login, no signup — but your
-  projects are genuinely only visible to you, not every other visitor,
-  via a private per-browser identity. See [DEVLOG.md](./DEVLOG.md)'s
-  last two sections for exactly how, and its one honest limitation.
-- **Stays on task.** A greeting or a genuinely unrelated question
-  ("what's the weather?", a joke, a prompt-injection attempt) gets a
-  short, friendly redirect instead of being forced into a requirements
-  question or a hallucinated edit — a free regex fast-path for the
-  common cases, backed by the same LLM calls this app already makes as
-  the general-purpose classifier for everything else. See
-  [DEVLOG.md](./DEVLOG.md)'s last section.
+The central rule is simple: **the LLM never draws or mutates the diagram directly.** It proposes typed mutation commands such as `add_node`, `add_edge`, and `update_node`. The backend validates those commands against the architecture schema and structural rules before creating a version. The frontend then renders the accepted state deterministically.
 
-## Project layout
+This same pipeline handles AI suggestions, manual canvas changes, and repository reconstruction. There is no separate unchecked editing path.
 
-```
-backend/   FastAPI + Pydantic — Architecture State schema, mutation engine,
-           the Groq/Gemini interview loop, deterministic Analyzer/Simulator,
-           repo-ingestion pipeline, per-visitor isolation
-frontend/  Next.js + React Flow + dagre — chat panel, the deterministic
-           canvas, manual editing, simulation playback
+## What ArchMind can do
+
+- **Requirements interview:** turns a short product description into an architecture after collecting the scale, budget, availability, and platform constraints that matter.
+- **Conversational refinement:** answers architecture questions, proposes targeted changes, and creates a new version only when the architecture actually changes.
+- **Direct canvas editing:** add, connect, edit, reposition, and delete components without spending LLM tokens. Manual changes still use the same validation and versioning engine.
+- **Version history:** branch from earlier versions, inspect diffs, compare any two designs, and keep architecture decisions traceable.
+- **Architecture Analyzer:** scores scalability, reliability, security, cost, observability, performance, and maintainability with deterministic findings and evidence.
+- **Load and failure simulation:** vary traffic, kill dependencies, and inspect propagated load, utilization, bottlenecks, and failure order on the canvas.
+- **Cost and capacity estimation:** applies declared assumptions for roughly 30 service, database, queue, dependency, and infrastructure types.
+- **Repository reconstruction:** upload a ZIP or paste a public GitHub repository URL. ArchMind extracts source-attributed evidence from supported Python and JavaScript/TypeScript projects before asking the model to reconstruct the system.
+- **Evidence and rationale:** inspect why a component exists and, for imported systems, which source files support it.
+- **Exports:** download diagrams or a starter-kit ZIP containing `ARCHITECTURE.md`, `AI_BRIEF.md`, `docker-compose.yml`, and `.env.example`.
+- **Guest projects:** no signup is required. A private per-browser token scopes project access.
+- **Responsive themes:** the Redline & Moss visual system includes light and dark modes, reduced-motion support, responsive workbench navigation, and accessible semantic states.
+
+## How it works
+
+```mermaid
+flowchart LR
+    A[Idea, question, or repo evidence] --> B[Intent router]
+    B -->|Question or advice| C[Compact advisory context]
+    B -->|Architecture change| D[Typed mutation commands]
+    B -->|Deterministic task| E[Non-LLM handler]
+    D --> F[Schema and structural validation]
+    E --> F
+    F --> G[Versioned PostgreSQL state]
+    G --> H[Deterministic React Flow canvas]
+    G --> I[Analyzer, simulator, compare, and export]
 ```
 
-## Setup
+The backend remains authoritative. Canvas coordinates, visual effects, and UI state never replace the stored architecture model.
 
-### 1. Supabase (database)
+## Token and reliability controls
 
-1. Create a free project at [supabase.com](https://supabase.com).
-2. Open the SQL Editor and run [`backend/app/db/schema.sql`](./backend/app/db/schema.sql).
-3. Project Settings → Database → Connection string → URI. Copy it.
+ArchMind is designed to avoid sending the entire session to an LLM on every turn.
 
-### 2. Groq (LLM)
+- Common greetings, checklist answers, and deterministic edits use zero-token paths where possible.
+- Intent routing separates mutations, advisory questions, analysis, and unrelated requests before choosing a prompt.
+- Advisory questions receive a compact topology instead of the mutation-capable full state.
+- Edit prompts omit accumulated ADR history and deterministically truncate verbose free-text fields while preserving IDs and structural facts.
+- Conversation context is branch-aware. A durable project brief and the most recent messages are retained; older messages are trimmed to a token budget.
+- User messages are capped at 6,000 characters, output defaults to 1,800 tokens, and a preflight estimate rejects requests that cannot safely fit.
+- Only one repair attempt is allowed, with a 12,000-token cumulative ceiling for a turn.
+- Actual provider usage is returned to the frontend and displayed as last-turn and cumulative session tokens.
+- Optional provider fallback reduces failures caused by one provider's quota or availability.
 
-1. Get a free API key at [console.groq.com](https://console.groq.com).
+These controls reduce token use without summarizing away node IDs, edges, constraints, or other facts required for safe mutations.
 
-### 3. Backend
+## Technology
+
+| Layer | Implementation |
+| --- | --- |
+| Frontend | Next.js 16, React 19, TypeScript, Tailwind CSS 4 |
+| Architecture canvas | React Flow and dagre |
+| Backend | FastAPI, Pydantic, asyncpg |
+| Database | PostgreSQL 16 |
+| Architect providers | OpenRouter when configured, then Groq, then optional Mistral fallback |
+| Optional review | Gemini structural judge |
+| Optional web grounding | Tavily for time-sensitive advisory questions |
+| Production | Docker Compose, Caddy, OCI Ampere A1 |
+
+## Repository layout
+
+```text
+backend/
+  app/api/          FastAPI routes
+  app/db/           PostgreSQL schema and repository
+  app/llm/          providers, prompts, token estimation, fallback
+  app/models/       architecture, commands, analysis, simulation
+  app/services/     interview, validation, ingestion, analysis, export
+  tests/            backend regression tests
+
+frontend/
+  src/app/          Next.js routes and global design tokens
+  src/components/   workbench, canvas, panels, landing, shared UI
+  src/lib/          API client, graph transforms, theme and state helpers
+
+deploy/             OCI, Caddy, backup, verification, and setup scripts
+compose.production.yml
+DESIGN.md           final Redline & Moss design system
+```
+
+## Local development
+
+### Prerequisites
+
+- Python 3.12+
+- Node.js 22+
+- PostgreSQL 16 or a Supabase PostgreSQL project
+- A Groq API key
+
+### 1. Configure PostgreSQL
+
+Create a database, then apply the schema:
+
+```bash
+psql "postgresql://USER:PASSWORD@HOST:5432/DATABASE" -f backend/app/db/schema.sql
+```
+
+The environment variable is still named `SUPABASE_DB_URL` for compatibility, but it accepts a standard PostgreSQL connection URL.
+
+### 2. Start the backend
 
 ```bash
 cd backend
 python -m venv .venv
-.venv/Scripts/activate        # (macOS/Linux: source .venv/bin/activate)
+```
+
+Activate the environment:
+
+```bash
+# macOS or Linux
+source .venv/bin/activate
+
+# Windows PowerShell
+.\.venv\Scripts\Activate.ps1
+```
+
+Install dependencies and configure the service:
+
+```bash
 pip install -r requirements.txt
-cp .env.example .env          # fill in SUPABASE_DB_URL and GROQ_API_KEY
+cp .env.example .env
+```
+
+At minimum, set these values in `backend/.env`:
+
+```env
+SUPABASE_DB_URL=postgresql://USER:PASSWORD@HOST:5432/DATABASE
+GROQ_API_KEY=gsk_...
+CORS_ORIGINS=http://localhost:3000
+```
+
+Then start FastAPI:
+
+```bash
 uvicorn app.main:app --reload --port 8000
 ```
 
-Visit `http://localhost:8000/health` to confirm it's up (this also confirms
-the DB connection, since the app fails fast on startup if `SUPABASE_DB_URL`
-is wrong).
+Verify it at [http://localhost:8000/health](http://localhost:8000/health).
 
-### 4. Frontend
+### 3. Start the frontend
+
+In a second terminal:
 
 ```bash
 cd frontend
 npm install
-cp .env.local.example .env.local   # defaults to http://localhost:8000, adjust if needed
+cp .env.local.example .env.local
 npm run dev
 ```
 
-Visit `http://localhost:3000`. Describe a project (e.g. *"I want to build a
-stock trading app for college students"*) — the system asks a few
-clarifying questions, then renders the first architecture on the canvas.
+Open [http://localhost:3000](http://localhost:3000).
 
-## Deployment
+## Environment variables
 
-The database is already hosted (it's the same Supabase project from Setup
-above) — deploying just means giving the frontend and backend a real,
-public home. Recommended pair: **Vercel** for the frontend (built by the
-Next.js team, zero-config), **Render** for the backend (a plain
-always-on Python process, no serverless cold-start weirdness for the
-in-memory rate limiter — see the note below).
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `SUPABASE_DB_URL` | Yes | PostgreSQL connection URL |
+| `GROQ_API_KEY` | Yes | Required architect provider |
+| `GROQ_MODEL` | No | Groq model override |
+| `LLM_MAX_OUTPUT_TOKENS` | No | Completion ceiling; defaults to `1800` |
+| `OPENROUTER_API_KEY` | No | First optional fallback provider |
+| `OPENROUTER_MODEL` | No | OpenRouter model override |
+| `MISTRAL_API_KEY` | No | Final optional fallback provider |
+| `MISTRAL_MODEL` | No | Mistral model override |
+| `GEMINI_API_KEY` | No | Enables the independent structural judge |
+| `GEMINI_MODEL` | No | Gemini judge model override |
+| `TAVILY_API_KEY` | No | Enables web-grounded current-information answers |
+| `CORS_ORIGINS` | Yes in production | Comma-separated allowed frontend origins |
+| `NEXT_PUBLIC_API_URL` | Yes for frontend | Backend origin locally; `/api` in the Docker deployment |
 
-### Backend → Render
+See [`backend/.env.example`](./backend/.env.example) and [`deploy/production.env.example`](./deploy/production.env.example) for the complete templates. Never commit populated environment files.
 
-1. [render.com](https://render.com) → sign in with GitHub → **New +** →
-   **Blueprint** → pick this repo. Render reads
-   [`backend/render.yaml`](./backend/render.yaml) and proposes one web
-   service (`ai-architect-backend`) — approve it.
-2. It'll pause on deploy asking for the env vars marked `sync: false` in
-   that file: `SUPABASE_DB_URL`, `GROQ_API_KEY`, optionally
-   `GEMINI_API_KEY`/`TAVILY_API_KEY`, and `CORS_ORIGINS` (leave this one
-   blank for now — circle back once the frontend has a real URL, step 3
-   below).
-3. No Blueprint file? Manual setup works identically: **New +** → **Web
-   Service** → this repo → **Root Directory**: `backend` → **Build
-   Command**: `pip install -r requirements.txt` → **Start Command**:
-   `uvicorn app.main:app --host 0.0.0.0 --port $PORT` → add the same env
-   vars by hand.
-4. Once deployed, Render gives you a URL like
-   `https://ai-architect-backend.onrender.com` — visit `/health` to
-   confirm it's actually up (same fail-fast-on-bad-DB-URL check as
-   local dev).
+## Validation
 
-**Stay on the free tier's single instance.** `rate_limit.py`'s per-IP
-counters are in-memory (documented in that module) — correct on exactly
-one process, silently too permissive across several. Don't turn on
-autoscaling later without first moving that to a Redis-backed store.
+Run the backend suite:
 
-### Frontend → Vercel
+```bash
+cd backend
+pytest
+```
 
-1. [vercel.com](https://vercel.com) → sign in with GitHub → **Add New** →
-   **Project** → pick this repo.
-2. **Root Directory**: `frontend` (this is the one setting that matters —
-   Vercel auto-detects Next.js and needs no other config for this repo).
-3. **Environment Variables** → add `NEXT_PUBLIC_API_URL` = the Render URL
-   from above (e.g. `https://ai-architect-backend.onrender.com`, no
-   trailing slash).
-4. Deploy. Vercel gives you a real URL, e.g.
-   `https://ai-architect-yourname.vercel.app`.
+Validate the frontend:
 
-### Close the loop
+```bash
+cd frontend
+npm run lint
+npm run build
+```
 
-Go back to Render → the backend service's environment variables → set
-`CORS_ORIGINS` to that real Vercel URL (comma-separated if you end up
-with more than one, e.g. a production and a preview domain) → save
-(Render redeploys automatically). Without this step the deployed
-frontend's requests get silently blocked by the browser's own CORS
-check — `CORS_ORIGINS` defaults to `localhost` only.
+Tests cover mutation validation, intent routing, context budgets, project isolation, provider fallback, repository evidence, analysis, comparison, sizing, simulation, and error handling.
 
-Visit the Vercel URL — that's the real, live app.
+## Production deployment
 
-## Learn more
+The live portfolio deployment runs on an OCI Ampere A1 instance using ARM64-compatible containers:
 
-- [AI_ARCHITECT_IMPLEMENTATION.md](./AI_ARCHITECT_IMPLEMENTATION.md) —
-  the original spec and phasing this project was built against.
-- [DEVLOG.md](./DEVLOG.md) — the real, chronological build log: every
-  bug a live run against a real Groq key, a real Supabase database, and
-  real repos surfaced, how it was found, and how it was fixed and
-  re-verified. This is the source of truth for *why* something works the
-  way it does, if you're curious.
+- Caddy owns public ports 80 and 443, redirects HTTP to HTTPS, and proxies `/api/*` to FastAPI.
+- Next.js and FastAPI are private Docker services.
+- PostgreSQL is reachable only on the private application network and persists in a named volume.
+- Ports 3000, 8000, and 5432 are not exposed publicly.
+- Caddy manages the HTTPS certificate for the public IP and can switch to a domain later.
+
+The server layout supports multiple projects behind the same gateway:
+
+```text
+/opt/apps/gateway
+/opt/apps/archmind
+/opt/apps/project-2
+/opt/apps/project-3
+```
+
+After configuring `deploy/production.env` and the shared gateway, deploy ArchMind with:
+
+```bash
+docker compose --env-file deploy/production.env -f compose.production.yml config --quiet
+docker compose --env-file deploy/production.env -f compose.production.yml up -d --build
+./deploy/verify.sh
+```
+
+Operational instructions, NSG rules, HTTPS setup, custom-domain steps, backups, and update commands are documented in [`deploy/README.md`](./deploy/README.md).
+
+Deployment is currently manual. Pushing to GitHub does **not** automatically update the OCI instance; the production Compose stack must be rebuilt after new source is transferred or pulled.
+
+## Security and current limitations
+
+- Guest ownership is based on a random token stored in browser local storage. Clearing site data loses the browser's reference to those projects. This is privacy isolation, not a full account system.
+- API routes are rate-limited per IP: general traffic defaults to 60 requests per minute, LLM endpoints to 20 per hour, and ingestion to 10 per hour.
+- Rate-limit counters use in-memory storage and reset when the backend restarts. A multi-instance deployment should move them to Redis.
+- Simulation and cost results are deterministic planning estimates based on declared assumptions. They are not benchmarks, cloud-provider quotes, or production guarantees.
+- Repository import supports the detected ecosystems documented in the UI; it does not claim complete language or framework coverage.
+- Provider quotas and free-model availability can change. Provider failures are surfaced as readable errors and optional fallbacks are attempted when configured.
+- The public portfolio deployment is intentionally a single-node system without high availability.
+
+## Additional documentation
+
+- [`PRODUCT.md`](./PRODUCT.md) — product scope and supported workflow
+- [`PRODUCT_WORKFLOW_REVIEW.md`](./PRODUCT_WORKFLOW_REVIEW.md) — product and engineering review
+- [`DESIGN.md`](./DESIGN.md) — final visual system, themes, typography, and motion rules
+- [`DEVLOG.md`](./DEVLOG.md) — chronological engineering decisions and live-test findings
+- [`AI_ARCHITECT_IMPLEMENTATION.md`](./AI_ARCHITECT_IMPLEMENTATION.md) — original implementation specification
+- [`deploy/README.md`](./deploy/README.md) — OCI production operations
+
+## License
+
+No license file is currently included. All rights are reserved by the repository owner unless a license is added.

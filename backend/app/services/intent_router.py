@@ -99,6 +99,17 @@ _ADVISORY_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Broad question fallback, but only when the message contains an explicit
+# architecture term and question mark. Edit verbs are checked first, so
+# "can you add a cache?" still mutates while "how does the cache work?"
+# avoids the expensive mutation schema and judge pass.
+_ARCHITECTURE_QUESTION_RE = re.compile(
+    r"\b(architecture|system|setup|frontend|backend|service|api|gateway|load balancer|"
+    r"database|postgres(?:ql)?|redis|cache|queue|kafka|storage|traffic|latency|availability|"
+    r"consistency|scal(?:e|ing|ability)|security|budget|cost)\b.*\?\s*$",
+    re.IGNORECASE | re.DOTALL,
+)
+
 # A bare greeting/small-talk opener with no real content — "hi", "hey
 # there!", "good morning" — never a project description. Deliberately
 # anchored to the WHOLE message (only trailing punctuation/whitespace
@@ -121,20 +132,36 @@ def is_greeting_only(message: str) -> bool:
     return bool(_GREETING_RE.match(message))
 
 
+_PROJECT_DESCRIPTION_RE = re.compile(
+    r"\b(architecture|app|application|website|web app|mobile app|platform|service|api|backend|frontend|"
+    r"system|software|saas|marketplace|e-?commerce|online store|dashboard|portal|chatbot|bot|game|"
+    r"pipeline|workflow|automation|rag|ai agent|microservice|database|product|project)\b|"
+    r"\b(build|create|develop|design|architect|deploy)\b.{0,80}\b(for|that|which|to|an?|the)\b",
+    re.IGNORECASE,
+)
+
+
+def is_project_description(message: str) -> bool:
+    """Confidently identifies a software product description.
+
+    This is a positive gate for the zero-token kickoff path. Unknown prose
+    is clarified instead of being treated as a project merely because it did
+    not match one of the finite off-topic patterns.
+    """
+    return bool(_PROJECT_DESCRIPTION_RE.search(message))
+
+
 # A free, zero-latency first pass for the CONFIDENT, common shapes of a
 # message that has nothing to do with system architecture — general
 # trivia, creative-writing requests, weather/time, math homework,
 # translation, recipes, questions about the assistant itself, and
 # prompt-injection attempts. Deliberately not exhaustive (an open-ended
 # "any kind of question" can't be fully enumerated by regex) — this is
-# only the fast path. The two places that actually call an LLM anyway for
-# the surrounding turn (GatherQuestionOutput's off_topic field, and
-# InterviewTurnOutput's action="off_topic") carry the real, general-
-# purpose judgment call as a safety net for whatever this misses; see
-# their call sites in interview.py. A false negative here just means that
-# safety net (or, on the one deterministic-only path — recording a
-# checklist answer — a possibly-wrong literal value) handles it instead;
-# a false positive would wrongly refuse a real architecture question, so
+# only the fast path. Later full architecture turns can still use
+# InterviewTurnOutput.action="off_topic" for broader judgment. During the
+# deterministic checklist, a false negative can be recorded as a literal
+# answer, so patterns stay deliberately conservative; a false positive would
+# wrongly refuse a real architecture question, so
 # every pattern here is picked to be unambiguous.
 _OFF_TOPIC_RE = re.compile(
     r"("
@@ -149,6 +176,7 @@ _OFF_TOPIC_RE = re.compile(
     r"\btell me (a |an )?(joke|poem|story|song|riddle)\b|"
     r"\bwrite (me )?(a |an )?(joke|poem|story|song|essay|riddle)\b|"
     r"\bmake me laugh\b|"
+    r"\bquiz me\b|"
     # homework / unrelated computation, translation, cooking
     r"\bsolve (for|this)\b|"
     r"\btranslate\b.{0,20}\b(to|into)\b|"
@@ -222,6 +250,8 @@ def classify_intent(message: str) -> RouterIntent | None:
     if _ANALYSIS_RE.search(message):
         return "analysis"
     if _ADVISORY_RE.search(message):
+        return "advisory"
+    if _ARCHITECTURE_QUESTION_RE.search(message):
         return "advisory"
     if is_off_topic(message):
         return "off_topic"

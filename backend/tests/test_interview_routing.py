@@ -147,7 +147,7 @@ async def test_off_topic_message_missed_by_regex_is_declined_by_the_full_pipelin
     provider = FakeProvider(interview_response=turn)
     patch_provider(monkeypatch, provider)
 
-    result = await handle_chat_turn(base_version["project_id"], "quiz me on state capitals", base_version["id"])
+    result = await handle_chat_turn(base_version["project_id"], "Give me travel advice for Tokyo", base_version["id"])
 
     assert result.kind == "question"
     assert "state capitals" not in (result.question or "").lower()
@@ -181,7 +181,7 @@ async def test_ambiguous_message_falls_back_to_edit_pipeline(monkeypatch, base_v
     returns None, so this must still reach the full Tier 2 pipeline
     (interview_turn), never the cheaper advisory lane, per the router's
     documented conservative default."""
-    turn = InterviewTurnOutput(
+    turn = InterviewTurnOutput.model_construct(
         action="propose_architecture",
         commands=[],
         summary="This is a simple frontend/backend/database setup behind a load balancer.",
@@ -219,7 +219,10 @@ async def test_empty_commands_from_full_pipeline_never_creates_a_version(monkeyp
     of the ambiguous-routing test above): even when the full edit pipeline
     is reached and the model answers with zero commands, no version is
     created and no judge-worthy mutation happens."""
-    turn = InterviewTurnOutput(action="propose_architecture", commands=[], summary="No change needed here.")
+    # Bypass Pydantic deliberately: the response model now rejects this at
+    # parse time, while the service keeps a final defensive guard in case a
+    # custom provider ever returns an unvalidated object.
+    turn = InterviewTurnOutput.model_construct(action="propose_architecture", commands=[], summary="No change needed here.")
     provider = FakeProvider(interview_response=turn)
     patch_provider(monkeypatch, provider)
 

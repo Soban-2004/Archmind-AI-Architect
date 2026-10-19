@@ -6,12 +6,14 @@ import type { ProjectSummary } from "@/lib/api";
 import { api } from "@/lib/api";
 import { relativeTime } from "@/lib/format";
 import { IconButton, Spinner } from "./ui";
+import { requestErrorMessage } from "@/lib/requestError";
 
 interface Props {
   projectId: string | null;
   projectName: string;
   onSwitch: (projectId: string) => void;
   onCreate: () => void;
+  onRename?: (projectId: string, name: string) => void;
   /** The project id page.tsx's handleSwitchProject is currently loading
    * (its real network round trip — fetch the project, then its latest
    * version), or null when nothing's in flight. Shows a spinner on that
@@ -30,7 +32,7 @@ interface Props {
  * built around one active project at a time, so switching should feel
  * like a quick jump, not a navigation.
  */
-export function ProjectSwitcher({ projectId, projectName, onSwitch, onCreate, switchingToId }: Props) {
+export function ProjectSwitcher({ projectId, projectName, onSwitch, onCreate, onRename, switchingToId }: Props) {
   const [open, setOpen] = useState(false);
   // null = never fetched yet (first open shows a spinner); every
   // subsequent open re-fetches in the background and swaps in fresh data
@@ -39,6 +41,11 @@ export function ProjectSwitcher({ projectId, projectName, onSwitch, onCreate, sw
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const mutationPending = useRef(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -47,15 +54,14 @@ export function ProjectSwitcher({ projectId, projectName, onSwitch, onCreate, sw
     api
       .listProjects()
       .then((list) => {
-        if (!cancelled) setProjects(list);
+        if (!cancelled) { setProjects(list); setError(null); }
       })
-      .catch(() => {
-        if (!cancelled) setProjects((prev) => prev ?? []);
-      });
+      .catch((error) => { if (!cancelled) setError(requestErrorMessage(error, "Couldn’t load projects")); })
+      .finally(() => { if (!cancelled) setLoading(false); });
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [open, reload]);
 
   useEffect(() => {
     if (!open) return;
@@ -67,36 +73,41 @@ export function ProjectSwitcher({ projectId, projectName, onSwitch, onCreate, sw
       }
     }
     window.addEventListener("mousedown", onClickOutside);
-    return () => window.removeEventListener("mousedown", onClickOutside);
+    function onEscape(e: KeyboardEvent) { if (e.key === "Escape") { setOpen(false); rootRef.current?.querySelector("button")?.focus(); } }
+    window.addEventListener("keydown", onEscape);
+    return () => { window.removeEventListener("mousedown", onClickOutside); window.removeEventListener("keydown", onEscape); };
   }, [open]);
 
   async function commitRename(id: string) {
     const name = renameDraft.trim();
-    setRenamingId(null);
-    if (!name) return;
+    if (!name || mutationPending.current) return;
+    mutationPending.current = true; setBusyId(id); setError(null);
     try {
       await api.renameProject(id, name);
       setProjects((prev) => prev && prev.map((p) => (p.id === id ? { ...p, name } : p)));
-    } catch {
-      // best-effort — the list will self-correct next time it's opened
-    }
+      setRenamingId(null);
+      onRename?.(id, name);
+    } catch (error) { setError(requestErrorMessage(error, "Couldn’t rename the project")); }
+    finally { mutationPending.current = false; setBusyId(null); }
   }
 
   async function handleDelete(id: string) {
-    setConfirmDeleteId(null);
+    if (mutationPending.current) return;
+    mutationPending.current = true; setBusyId(id); setError(null);
     try {
       await api.deleteProject(id);
       setProjects((prev) => prev && prev.filter((p) => p.id !== id));
+      setConfirmDeleteId(null);
       if (id === projectId) onCreate(); // deleted the active project — fall back to a fresh one
-    } catch {
-      // ignore — row just won't disappear until reopened
-    }
+    } catch (error) { setError(requestErrorMessage(error, "Couldn’t delete the project")); }
+    finally { mutationPending.current = false; setBusyId(null); }
   }
 
   return (
     <div ref={rootRef} className="relative">
       <button
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => { setOpen((v) => !v); if (!open) setLoading(true); }}
+        aria-expanded={open}
         className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-left transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 active:scale-[0.98] dark:hover:bg-slate-800"
       >
         <div className="leading-tight">
@@ -121,12 +132,13 @@ export function ProjectSwitcher({ projectId, projectName, onSwitch, onCreate, sw
           </div>
 
           <div className="max-h-80 overflow-y-auto">
-            {projects === null && (
+            {error && <div role="alert" className="px-3 py-3 text-xs text-red-700 dark:text-red-300"><p>{error}</p><button className="mt-2 font-medium underline" disabled={loading} onClick={() => { setError(null); setLoading(true); setReload((v) => v + 1); }}>Reload projects</button></div>}
+            {projects === null && !error && (
               <div className="flex items-center justify-center py-6 text-slate-400">
                 <Spinner className="h-4 w-4" />
               </div>
             )}
-            {projects !== null && projects.length === 0 && (
+            {!loading && !error && projects !== null && projects.length === 0 && (
               <p className="px-3 py-4 text-center text-xs text-slate-400 dark:text-slate-500">No projects yet.</p>
             )}
             {projects?.map((p) => (
@@ -142,7 +154,10 @@ export function ProjectSwitcher({ projectId, projectName, onSwitch, onCreate, sw
                     <Boxes size={14} className="shrink-0 text-slate-300 dark:text-slate-600" />
                   )}
                   {renamingId === p.id ? (
+                    <>
                     <input
+                      aria-label="Project name"
+                      disabled={busyId === p.id}
                       autoFocus
                       value={renameDraft}
                       onChange={(e) => setRenameDraft(e.target.value)}
@@ -150,13 +165,15 @@ export function ProjectSwitcher({ projectId, projectName, onSwitch, onCreate, sw
                         if (e.key === "Enter") commitRename(p.id);
                         if (e.key === "Escape") setRenamingId(null);
                       }}
-                      onBlur={() => commitRename(p.id)}
                       className="min-w-0 flex-1 rounded border border-brand-300 bg-white px-1.5 py-0.5 text-sm dark:border-brand-500/50 dark:bg-slate-800"
                     />
+                    <IconButton title="Save project name" disabled={!!busyId} onClick={() => void commitRename(p.id)}>{busyId === p.id ? <Spinner className="h-3 w-3" /> : <Check size={13} />}</IconButton>
+                    <IconButton title="Cancel rename" disabled={!!busyId} onClick={() => setRenamingId(null)}><X size={13} /></IconButton>
+                    </>
                   ) : (
                     <button
                       onClick={() => onSwitch(p.id)}
-                      disabled={!!switchingToId}
+                      disabled={!!switchingToId || !!busyId}
                       className="min-w-0 flex-1 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 disabled:cursor-default disabled:opacity-60"
                     >
                       <p className="truncate font-medium text-slate-700 dark:text-slate-200">{p.name}</p>
@@ -174,7 +191,7 @@ export function ProjectSwitcher({ projectId, projectName, onSwitch, onCreate, sw
 
                   {confirmDeleteId === p.id ? (
                     <div className="flex shrink-0 items-center gap-0.5">
-                      <IconButton onClick={() => handleDelete(p.id)} className="h-6 w-6 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10" title="Confirm delete">
+                      <IconButton disabled={!!busyId} onClick={() => handleDelete(p.id)} className="h-6 w-6 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10" title="Confirm delete">
                         <Check size={12} />
                       </IconButton>
                       <IconButton onClick={() => setConfirmDeleteId(null)} className="h-6 w-6" title="Cancel">
@@ -183,7 +200,7 @@ export function ProjectSwitcher({ projectId, projectName, onSwitch, onCreate, sw
                     </div>
                   ) : (
                     renamingId !== p.id && (
-                      <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                      <div className="flex shrink-0 items-center gap-0.5 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
                         <IconButton
                           onClick={() => {
                             setRenamingId(p.id);

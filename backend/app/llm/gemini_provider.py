@@ -10,7 +10,7 @@ from app.llm.base import LLMProvider
 from app.llm.prompts import RETRY_SUFFIX
 from app.models.commands import InterviewTurnOutput
 
-MAX_RETRIES = 3
+MAX_RETRIES = 2
 T = TypeVar("T", bound=BaseModel)
 
 
@@ -27,6 +27,8 @@ class GeminiProvider(LLMProvider):
 
     async def _json_completion(self, system_prompt: str, user_content: str, schema_model: type[T]) -> T:
         last_error: str | None = None
+        self.last_usage = None
+        total_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
         for _attempt in range(MAX_RETRIES):
             prompt = system_prompt
@@ -36,15 +38,18 @@ class GeminiProvider(LLMProvider):
             resp = await self._client.aio.models.generate_content(
                 model=settings.gemini_model,
                 contents=f"{prompt}\n\n{user_content}",
-                config=types.GenerateContentConfig(response_mime_type="application/json"),
+                config=types.GenerateContentConfig(response_mime_type="application/json", max_output_tokens=settings.llm_max_output_tokens),
             )
             usage = resp.usage_metadata
             if usage:
-                self.last_usage = {
+                values = {
                     "prompt_tokens": usage.prompt_token_count or 0,
                     "completion_tokens": usage.candidates_token_count or 0,
                     "total_tokens": usage.total_token_count or 0,
                 }
+                for key in total_usage:
+                    total_usage[key] += values[key]
+                self.last_usage = dict(total_usage)
 
             try:
                 parsed = json.loads(resp.text)

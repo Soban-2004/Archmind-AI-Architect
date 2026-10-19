@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, IBM_Plex_Mono, IBM_Plex_Sans, Space_Grotesk } from "next/font/google";
+import { Geist, Geist_Mono, IBM_Plex_Mono, IBM_Plex_Sans, Syne } from "next/font/google";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import "./globals.css";
 
@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 // The app's real UI typefaces (see globals.css's @theme inline block):
 // Plex Sans for running UI text, Plex Mono for real tabular/technical data
-// (capacity numbers, engine names — never decorative), Space Grotesk for
+// (capacity numbers, engine names — never decorative), Syne for
 // the handful of display moments (the app name, a panel's big number)
 // that should carry a bit more personality than the plain UI face. Geist
 // stays loaded but unused in app CSS — removing it outright would mean
@@ -32,22 +32,22 @@ const plexMono = IBM_Plex_Mono({
   weight: ["400", "500", "600"],
 });
 
-const spaceGrotesk = Space_Grotesk({
-  variable: "--font-space-grotesk",
+const syne = Syne({
+  variable: "--font-syne",
   subsets: ["latin"],
-  weight: ["500", "600", "700"],
+  weight: ["600", "700"],
 });
 
 export const metadata: Metadata = {
-  title: "AI Architect",
-  description: "An AI architecture intelligence engine",
+  title: "ArchMind — Architecture intelligence",
+  description: "Design, validate, and pressure-test software architecture.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} ${plexSans.variable} ${plexMono.variable} ${spaceGrotesk.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${plexSans.variable} ${plexMono.variable} ${syne.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <head>

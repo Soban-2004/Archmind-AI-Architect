@@ -27,7 +27,7 @@ def _ok_data(content: str) -> dict:
 
 @pytest.mark.parametrize("provider_cls,module", [(OpenRouterProvider, openrouter_provider), (MistralProvider, mistral_provider)])
 async def test_successful_call_records_real_usage(monkeypatch, provider_cls, module):
-    async def fake_post(base_url, api_key, model, messages, timeout=60.0):
+    async def fake_post(base_url, api_key, model, messages, timeout=60.0, max_tokens=1800):
         return _ok_data('{"value": "ok"}')
 
     monkeypatch.setattr(module, "post_chat_completion", fake_post)
@@ -43,7 +43,7 @@ async def test_successful_call_records_real_usage(monkeypatch, provider_cls, mod
 async def test_malformed_json_content_is_retried(monkeypatch, provider_cls, module):
     calls = {"n": 0}
 
-    async def fake_post(base_url, api_key, model, messages, timeout=60.0):
+    async def fake_post(base_url, api_key, model, messages, timeout=60.0, max_tokens=1800):
         calls["n"] += 1
         if calls["n"] == 1:
             return _ok_data("not valid json at all")
@@ -67,7 +67,7 @@ async def test_rest_api_error_is_not_retried_in_place(monkeypatch, provider_cls,
     provider in the chain instead."""
     calls = {"n": 0}
 
-    async def fake_post(base_url, api_key, model, messages, timeout=60.0):
+    async def fake_post(base_url, api_key, model, messages, timeout=60.0, max_tokens=1800):
         calls["n"] += 1
         raise RestAPIError("rate limited", status_code=429, body={"error": {"message": "rate limited", "code": "rate_limit_exceeded"}})
 
@@ -82,6 +82,7 @@ async def test_rest_api_error_is_not_retried_in_place(monkeypatch, provider_cls,
 
 async def test_rest_client_shapes_a_non_2xx_response_into_rest_api_error(monkeypatch):
     async def fake_post(self, url, headers=None, json=None):
+        assert json["max_tokens"] == 1800
         request = httpx.Request("POST", url)
         return httpx.Response(429, request=request, json={"error": {"message": "rate limited", "code": "rate_limit_exceeded"}})
 

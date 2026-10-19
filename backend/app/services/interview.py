@@ -7,24 +7,28 @@ from uuid import UUID
 
 from app.db import repository as repo
 from app.llm.factory import get_judge_provider, get_llm_provider
-from app.llm.prompts import build_advisory_prompt, build_analysis_prompt, build_gather_prompt, build_judge_prompt, build_system_prompt, state_for_edit_prompt
+from app.llm.prompts import build_advisory_prompt, build_analysis_prompt, build_judge_prompt, build_system_prompt, state_for_edit_prompt
 from app.llm.tokens import estimate_messages_tokens, estimate_tokens
 from app.models.advisory import AdvisoryAnswer, AnalysisAnswer, WebSource
-from app.models.commands import AnnotateDecisionCommand, GatherQuestionOutput, MutationCommand, SetConstraintCommand, UpdateNodeCommand
+from app.models.commands import AnnotateDecisionCommand, MutationCommand, SetConstraintCommand, UpdateNodeCommand
 from app.models.diff import VersionDiff
 from app.models.judge import JudgeVerdict
 from app.models.state import ADR, ArchitectureState, ConstraintType, TriggeredBy, empty_state, gen_id
 from app.services.adr import build_templated_decision
+from app.services.constraint_answers import is_constraint_question, parse_constraint_answer
 from app.services.deterministic import try_deterministic_command
 from app.services.diff import diff_states
-from app.services.intent_router import classify_intent, extract_multiplier, is_greeting_only, is_off_topic, needs_web_grounding
+from app.services.intent_router import classify_intent, extract_multiplier, is_greeting_only, is_off_topic, is_project_description, needs_web_grounding
 from app.services.mutation_engine import apply_commands
 from app.services.simulator import run_simulation
 from app.services.web_search import search_web
 
 logger = logging.getLogger(__name__)
 
-MAX_ENGINE_RETRIES = 2  # additional retries when mutation validation itself fails, or the judge rejects
+MAX_ENGINE_RETRIES = 1  # one repair attempt; more can multiply one user turn into tens of thousands of tokens
+MAX_TURN_TOKEN_SPEND = 12000  # cumulative architect/judge spend ceiling before another full-prompt retry
+MAX_USER_MESSAGE_CHARS = 6000
+MAX_PROJECT_BRIEF_CHARS = 800
 
 # The deterministic requirements-gathering checklist for a brand-new
 # project (see _next_required_constraint / the gathering block in
@@ -47,6 +51,40 @@ REQUIRED_CONSTRAINT_ORDER: list[ConstraintType] = [
     ConstraintType.budget_monthly_usd,
 ]
 
+# These questions are product logic, not creative generation. Keeping them
+# deterministic removes five repeated LLM calls from a normal first-design
+# session while preserving the same one-question-at-a-time UX.
+GATHER_QUESTIONS: dict[ConstraintType, tuple[str, list[str]]] = {
+    ConstraintType.expected_users: (
+        "How many active users do you expect?",
+        ["Under 1,000", "1k-10k", "10k-100k", "100k+", "Not sure"],
+    ),
+    ConstraintType.expected_rps: (
+        "What peak request rate should the system handle?",
+        ["Under 10 req/s", "10-100 req/s", "100-1,000 req/s", "1,000+ req/s", "Not sure"],
+    ),
+    ConstraintType.availability_target: (
+        "What availability target do you need?",
+        ["Best effort", "99.9%", "99.95%", "99.99%", "Not sure"],
+    ),
+    ConstraintType.consistency_requirement: (
+        "Which data-consistency tradeoff fits the product?",
+        ["Strong consistency", "Eventual consistency", "Mixed by feature", "Not sure"],
+    ),
+    ConstraintType.budget_monthly_usd: (
+        "What is the monthly infrastructure budget?",
+        ["$0–25", "$25–100", "$100–500", "$500+", "Not sure"],
+    ),
+}
+
+GATHER_EXPLANATIONS: dict[ConstraintType, str] = {
+    ConstraintType.expected_users: "Active-user volume sets the baseline for storage, traffic, and growth capacity.",
+    ConstraintType.expected_rps: "Peak request rate determines how much compute and traffic handling the design needs.",
+    ConstraintType.availability_target: "Higher uptime targets require more redundancy and usually cost more.",
+    ConstraintType.consistency_requirement: "Consistency determines whether every read must see the latest write or can briefly lag for better scale.",
+    ConstraintType.budget_monthly_usd: "The monthly budget limits which managed services, redundancy, and instance sizes are realistic.",
+}
+
 # A fixed, no-LLM-call reply for a bare greeting on a brand-new project —
 # same "cheap and deterministic" philosophy as intent_router.py's other
 # checks. Deliberately doesn't ask a REQUIRED_CONSTRAINT_ORDER question
@@ -55,14 +93,11 @@ REQUIRED_CONSTRAINT_ORDER: list[ConstraintType] = [
 # one instead of guessing.
 GREETING_REPLY = "Hey! 👋 Tell me what you're building — e.g. \"a food delivery app for a college campus\" — and I'll start asking the right questions to design it."
 GREETING_QUICK_REPLIES = ["A food delivery app for a college campus", "A real-time chat app", "An e-commerce store"]
+DESCRIPTION_REPLY = "Tell me what software you want to design and who it is for — for example, a food delivery app for a college campus."
 
 # Same deterministic, no-LLM-call reply for a message intent_router.py's
-# regex fast-path confidently recognized as unrelated to this project's
-# architecture (see is_off_topic) — used only on an EXISTING project's
-# turn (Tier 1.5 below); a brand-new project's kickoff turn instead goes
-# through _ask_gather_question, whose GatherQuestionOutput.off_topic field
-# carries the LLM-judged version of the same decline, since that call
-# already has the project's own description as context to reference.
+# conservative matcher recognizes as unrelated to architecture. It is used
+# both before and during the requirements checklist without spending tokens.
 OFF_TOPIC_REPLY = "I'm built specifically to help design this project's architecture — is there something about it I can help with?"
 
 
@@ -164,13 +199,43 @@ def _trim_history(history: list[dict], budget_tokens: int) -> tuple[list[dict], 
     kept: list[dict] = []
     used = 0
     for m in reversed(history):
-        t = estimate_tokens(m.get("content", "")) + 4
+        content = m.get("content", "")
+        t = estimate_tokens(content) + 4
+        # The newest message is the request being answered and must never
+        # disappear merely because the architecture consumed the soft
+        # history budget. MAX_USER_MESSAGE_CHARS bounds it; the hard
+        # pre-flight gate below rejects the turn if it still cannot fit.
         if kept and used + t > budget_tokens:
             break
         kept.append(m)
         used += t
     kept.reverse()
     return kept, len(history) - len(kept)
+
+
+def _project_brief(history: list[dict]) -> str | None:
+    """Keep the product's first meaningful description even after old chat
+    turns are trimmed. Constraints describe scale, not what is being built;
+    losing this sentence made later prompts structurally small but semantically
+    incomplete."""
+    for message in history:
+        content = (message.get("content") or "").strip()
+        if message.get("role") == "user" and content and not is_greeting_only(content) and not is_off_topic(content):
+            return content[:MAX_PROJECT_BRIEF_CHARS]
+    return None
+
+
+def _recent_decisions(state: ArchitectureState, limit: int = 5) -> str | None:
+    """ADRs are durable context but the full list grows without bound. Keep
+    only the recent decision/rationale pairs, with bounded prose."""
+    if not state.adrs:
+        return None
+    lines = []
+    for adr in state.adrs[-limit:]:
+        decision = adr.decision[:180]
+        rationale = adr.rationale[:220]
+        lines.append(f"- {decision}: {rationale}")
+    return "\n".join(lines)
 
 
 def _friendly_provider_error(e: Exception) -> str:
@@ -269,7 +334,7 @@ async def _handle_advisory(project_id: UUID, user_message: str, state: Architect
     try:
         raw = await provider.structured_json(prompt, user_message, AdvisoryAnswer)
     except Exception as e:
-        return ChatTurnResult(kind="error", error=_friendly_provider_error(e))
+        return ChatTurnResult(kind="error", error=_friendly_provider_error(e), usage=getattr(provider, "last_usage", None))
 
     await repo.add_message(project_id, "assistant", raw.answer, version_id=base_version_id)
     return ChatTurnResult(kind="answer", summary=raw.answer, usage=getattr(provider, "last_usage", None), sources=sources or None)
@@ -292,7 +357,7 @@ async def _handle_analysis(project_id: UUID, user_message: str, state: Architect
     try:
         raw = await provider.structured_json(prompt, user_message, AnalysisAnswer)
     except Exception as e:
-        return ChatTurnResult(kind="error", error=_friendly_provider_error(e))
+        return ChatTurnResult(kind="error", error=_friendly_provider_error(e), usage=getattr(provider, "last_usage", None))
 
     await repo.add_message(project_id, "assistant", raw.answer, version_id=base_version_id)
     return ChatTurnResult(kind="answer", summary=raw.answer, usage=getattr(provider, "last_usage", None))
@@ -373,43 +438,16 @@ async def _ask_gather_question(
     parent_id: UUID | None,
     constraint_type: ConstraintType,
     on_stage: OnStage | None = None,
+    lead: str | None = None,
 ) -> ChatTurnResult:
-    """Phrases the NEXT requirements-gathering question — deliberately the
-    cheapest possible LLM call, same philosophy as _handle_advisory:
-    GatherQuestionOutput's tiny schema, no InterviewTurnOutput/command
-    union, no attribute-shape/edit rulebook, no judge pass, no full
-    conversation history. Recording the PREVIOUS answer, and working out
-    `description` (the project's own kickoff message, so every question
-    can reference "your food delivery app" naturally instead of reading
-    as a generic form), both already happened in handle_chat_turn before
-    this is ever called — this only ever asks the next one."""
-    provider = get_llm_provider()
-    prompt = build_gather_prompt(constraint_type.value, description, state.constraints)
-    await _emit(on_stage, "Preparing the next question…")
-    try:
-        turn = await provider.structured_json(prompt, description, GatherQuestionOutput)
-    except Exception as e:
-        return ChatTurnResult(kind="error", error=_friendly_provider_error(e))
-
-    # LLM-judged safety net for whatever intent_router.py's regex
-    # fast-path missed (see its call site right before this function is
-    # invoked) — `description` turned out not to be a real project
-    # description after all, so decline instead of phrasing a
-    # requirements question grounded in nothing. No version, no
-    # constraint recorded — the caller's next turn will see this exact
-    # same situation again and can re-try with a real description.
-    if turn.off_topic:
-        await repo.add_message(project_id, "assistant", turn.question, version_id=parent_id)
-        return ChatTurnResult(kind="question", question=turn.question, usage=getattr(provider, "last_usage", None))
-
-    await repo.add_message(project_id, "assistant", turn.question, version_id=parent_id)
-    return ChatTurnResult(
-        kind="question",
-        question=turn.question,
-        quick_replies=turn.quick_replies,
-        usage=getattr(provider, "last_usage", None),
-        reasoning=turn.reasoning,
-    )
+    """Ask the next code-owned checklist question with zero LLM usage."""
+    del description, state  # retained in the signature to keep the call site explicit
+    await _emit(on_stage, "Preparing the next question?")
+    question, quick_replies = GATHER_QUESTIONS[constraint_type]
+    if lead:
+        question = f"{lead} {question}"
+    await repo.add_message(project_id, "assistant", question, version_id=parent_id)
+    return ChatTurnResult(kind="question", question=question, quick_replies=quick_replies)
 
 
 async def handle_chat_turn(
@@ -436,6 +474,17 @@ async def handle_chat_turn(
     which this function would otherwise read as "a brand-new project
     with nothing in it yet" and happily start building on someone
     else's project_id."""
+    if len(user_message) > MAX_USER_MESSAGE_CHARS:
+        return ChatTurnResult(
+            kind="error",
+            error=f"Message is too long ({len(user_message):,} characters). Keep one turn under {MAX_USER_MESSAGE_CHARS:,} characters and send the details in smaller steps.",
+        )
+    if not user_message.strip():
+        return ChatTurnResult(kind="error", error="Enter a message before sending.")
+    if any(ord(char) < 32 and char not in "\t\n\r" for char in user_message):
+        return ChatTurnResult(kind="error", error="The message contains unsupported control characters. Remove them and try again.")
+    user_message = user_message.strip()
+
     if await repo.get_project(project_id, owner_token) is None:
         return ChatTurnResult(kind="error", error="project not found")
 
@@ -509,18 +558,11 @@ async def handle_chat_turn(
             # gets treated as the description itself, and never advances
             # the requirements checklist.
             prior_user_messages = [m for m in branch_history if m["role"] == "user"][:-1]
-            # Bare greetings AND confidently-off-topic messages (regex
-            # fast-path, see intent_router.py) are both filtered out here
-            # — neither counts as "a real prior message", so either one
-            # (or several, in any mix) preceding the actual description
-            # never gets mistaken for it, and never advances the
-            # checklist. A message this fast path doesn't catch is still
-            # safety-netted below (_ask_gather_question's off_topic
-            # field) for THIS turn, though a rare one that slips through
-            # untagged would be treated as a real prior message here too
-            # — an accepted, narrow tradeoff for staying free/instant on
-            # the common case rather than an LLM call on every turn.
-            real_prior_messages = [m for m in prior_user_messages if not is_greeting_only(m["content"]) and not is_off_topic(m["content"])]
+            # Greetings and confidently off-topic messages do not count as
+            # the project description. Later checklist replies also pass
+            # through typed validation, so uncertain input is clarified and
+            # never written blindly to a constraint.
+            real_prior_messages = [m for m in prior_user_messages if is_project_description(m["content"])]
 
             if not real_prior_messages:
                 if is_greeting_only(user_message):
@@ -533,6 +575,9 @@ async def handle_chat_turn(
                 if is_off_topic(user_message):
                     await repo.add_message(project_id, "assistant", OFF_TOPIC_REPLY, version_id=parent_id)
                     return ChatTurnResult(kind="question", question=OFF_TOPIC_REPLY)
+                if not is_project_description(user_message):
+                    await repo.add_message(project_id, "assistant", DESCRIPTION_REPLY, version_id=parent_id)
+                    return ChatTurnResult(kind="question", question=DESCRIPTION_REPLY, quick_replies=GREETING_QUICK_REPLIES)
 
             description = real_prior_messages[0]["content"] if real_prior_messages else user_message
             # A real prior message means an assistant question already
@@ -555,9 +600,31 @@ async def handle_chat_turn(
                     await repo.add_message(project_id, "assistant", nudge, version_id=parent_id)
                     return ChatTurnResult(kind="question", question=nudge)
 
-                await _emit(on_stage, "Recording your answer…")
-                result = apply_commands(current_state, [SetConstraintCommand(type=pending_type, value=user_message.strip())])
-                assert result.ok and result.state is not None  # a bare set_constraint can never fail structural validation
+                if is_constraint_question(user_message):
+                    question, quick_replies = GATHER_QUESTIONS[pending_type]
+                    explanation = f"{GATHER_EXPLANATIONS[pending_type]} {question}"
+                    await repo.add_message(project_id, "assistant", explanation, version_id=parent_id)
+                    return ChatTurnResult(kind="question", question=explanation, quick_replies=quick_replies)
+
+                answering_type = pending_type
+                parsed = parse_constraint_answer(answering_type, user_message)
+                if not parsed.accepted or parsed.value is None or parsed.constraint_type is None:
+                    question, quick_replies = GATHER_QUESTIONS[answering_type]
+                    clarification = f"{parsed.error or 'Please give one clear value.'} {question}"
+                    await repo.add_message(project_id, "assistant", clarification, version_id=parent_id)
+                    return ChatTurnResult(kind="question", question=clarification, quick_replies=quick_replies)
+
+                target_type = parsed.constraint_type
+                existing = next((c for c in current_state.constraints if c.type is target_type), None)
+                if existing is not None and existing.value == parsed.value:
+                    return await _ask_gather_question(
+                        project_id, description, current_state, parent_id, answering_type,
+                        on_stage=on_stage, lead="That value is already recorded.",
+                    )
+
+                await _emit(on_stage, "Recording your answer...")
+                result = apply_commands(current_state, [SetConstraintCommand(type=target_type, value=parsed.value)])
+                assert result.ok and result.state is not None
                 version = await repo.create_version(
                     project_id, result.state, kind="initial" if parent_id is None else "edit", parent_version_id=parent_id
                 )
@@ -566,6 +633,13 @@ async def handle_chat_turn(
                 current_state = result.state
                 parent_id = version["id"]
                 pending_type = _next_required_constraint(current_state)
+
+                if target_type is not answering_type:
+                    target_label = target_type.value.replace("_", " ")
+                    return await _ask_gather_question(
+                        project_id, description, current_state, parent_id, pending_type or answering_type,
+                        on_stage=on_stage, lead=f"Updated {target_label}.",
+                    )
 
             if pending_type is not None:
                 return await _ask_gather_question(project_id, description, current_state, parent_id, pending_type, on_stage=on_stage)
@@ -584,6 +658,12 @@ async def handle_chat_turn(
 
     provider = get_llm_provider()
     system_prompt = build_system_prompt()
+    brief = _project_brief(history)
+    if brief:
+        system_prompt += f"\n\nProject brief (durable context):\n{brief}"
+    decisions = _recent_decisions(current_state)
+    if decisions:
+        system_prompt += f"\n\nRecent architecture decisions:\n{decisions}"
     # state_for_edit_prompt (llm/prompts.py) drops `adrs` entirely (history
     # never needed to correctly wire a new node/edge) and caps the two
     # free-text prose fields (responsibilities/notes) — everything else
@@ -613,8 +693,8 @@ async def handle_chat_turn(
     if dropped > 0:
         system_prompt += (
             f"\n\n({dropped} earlier message(s) in this conversation were omitted here to stay within "
-            "the LLM's context budget. The architecture state and its constraints/ADRs above already "
-            "capture the durable facts from them.)"
+            "the LLM's context budget. The project brief, structured architecture state, constraints, "
+            "node rationales, and recent decisions above carry the durable context.)"
         )
 
     # A hard pre-flight check, not just a trim: if even the fixed cost
@@ -663,7 +743,7 @@ async def handle_chat_turn(
             # to fetch" in the browser instead of a readable error —
             # mirrors the fallback-on-LLM-failure pattern already used in
             # compare.py/analyzer.py for the non-core-path LLM calls.
-            return ChatTurnResult(kind="error", error=_friendly_provider_error(e))
+            return ChatTurnResult(kind="error", error=_friendly_provider_error(e), usage=getattr(provider, "last_usage", None))
 
         _add_usage(getattr(provider, "last_usage", None))
 
@@ -705,9 +785,15 @@ async def handle_chat_turn(
                     + retry_note
                 )
             logger.info("validation failed on attempt %d: %s", attempt, retry_note)
-            if attempt < MAX_ENGINE_RETRIES:
+            if attempt < MAX_ENGINE_RETRIES and total_usage["total_tokens"] + projected_total <= MAX_TURN_TOKEN_SPEND:
                 continue
-            return ChatTurnResult(kind="error", error=f"Could not apply proposed architecture: {retry_note}")
+            if attempt < MAX_ENGINE_RETRIES:
+                return ChatTurnResult(
+                    kind="error",
+                    error="The proposed change needs another repair pass, but retrying the full architecture would exceed this turn's token budget. Please make the request more targeted.",
+                    usage=total_usage,
+                )
+            return ChatTurnResult(kind="error", error=f"Could not apply proposed architecture: {retry_note}", usage=total_usage)
 
         new_state = result.state
         assert new_state is not None
@@ -731,9 +817,15 @@ async def handle_chat_turn(
         if verdict is not None:
             _add_usage(getattr(get_judge_provider(), "last_usage", None))
             blocking = [i for i in verdict.issues if i.severity == "blocking"]
-            if blocking and attempt < MAX_ENGINE_RETRIES:
+            if blocking and attempt < MAX_ENGINE_RETRIES and total_usage["total_tokens"] + projected_total <= MAX_TURN_TOKEN_SPEND:
                 retry_note = "A structural review flagged: " + "; ".join(i.description for i in blocking)
                 continue
+            if blocking and attempt < MAX_ENGINE_RETRIES:
+                return ChatTurnResult(
+                    kind="error",
+                    error="The structural review requested another full repair, but retrying would exceed this turn's token budget. Please split the change into a smaller step.",
+                    usage=total_usage,
+                )
 
         summary = turn.summary or ("New tier generated." if is_tier else "Architecture updated.")
         model_provided_decision = any(isinstance(c, AnnotateDecisionCommand) for c in commands)

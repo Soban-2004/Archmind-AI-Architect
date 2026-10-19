@@ -26,17 +26,25 @@ export function FlowEdge({ id, source, target, style, markerEnd, data, label, la
   const flowing = Boolean((data as { flowing?: boolean } | undefined)?.flowing);
   const speed = (data as { flowSpeed?: number } | undefined)?.flowSpeed ?? 1.2;
   const count = (data as { flowCount?: number } | undefined)?.flowCount ?? 1;
+  const congested = Boolean((data as { congested?: boolean } | undefined)?.congested);
+  const revealDelay = (data as { revealDelay?: number } | undefined)?.revealDelay ?? 0;
   const color = (style as { stroke?: string } | undefined)?.stroke ?? "#94a3b8";
 
   return (
-    <>
+    <g style={{ animation: `node-in 260ms var(--motion-out) ${revealDelay}ms both` }}>
       <BaseEdge id={id} path={edgePath} style={style} markerEnd={markerEnd} label={label} labelStyle={labelStyle} labelBgBorderRadius={4} />
       {flowing &&
         Array.from({ length: count }).map((_, i) => (
-          <circle key={i} r={3} fill={color}>
-            <animateMotion dur={`${speed}s`} repeatCount="indefinite" path={edgePath} begin={`${(i * speed) / count}s`} />
+          <circle key={i} className="flow-particle" r={2.5} fill={color}>
+            <animateMotion
+              dur={`${speed}s`}
+              repeatCount="indefinite"
+              path={edgePath}
+              begin={`${(i * speed) / count}s`}
+              {...(congested ? { keyPoints: "0;0.78;0.92;1", keyTimes: "0;0.32;0.86;1", calcMode: "linear" } : {})}
+            />
           </circle>
         ))}
-    </>
+    </g>
   );
 }

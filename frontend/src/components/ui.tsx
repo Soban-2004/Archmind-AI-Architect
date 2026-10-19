@@ -16,21 +16,9 @@ export function Button({
   const base =
     "inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition duration-150 active:scale-[0.97] disabled:opacity-40 disabled:pointer-events-none disabled:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900";
   const sizes = { sm: "px-2.5 py-1 text-xs", md: "px-3.5 py-2 text-sm" };
-  // `secondary` used to be border+shadow-sm — the exact recipe repeated
-  // on every panel in the app regardless of importance. It's elevation-
-  // only now (shadow-soft, no border), so a button reads as "sitting on
-  // the surface" rather than boxed — the crisp edge is saved for
-  // `primary`'s own case (a solid fill genuinely benefits from one).
   const variants = {
-    // The one deliberately bold surface in the whole component set — a
-    // real two-stop gradient, not a flat fill, reserved for exactly this
-    // one role (see globals.css's comment on --brand-* for why amber). A
-    // flat single-color fill is the single most recognizable "unstyled
-    // component library" button recipe there is; spending one real
-    // gradient here (and nowhere else — not on cards, not on backgrounds)
-    // is what keeps it reading as a choice instead of a decoration.
     primary:
-      "ease-spring border border-brand-700/40 bg-gradient-to-b from-brand-400 to-brand-600 text-white hover:-translate-y-0.5 hover:brightness-105 shadow-soft dark:border-brand-300/20 dark:text-[#1a0d05] dark:font-semibold",
+      "border border-transparent bg-brand-600 text-white hover:bg-brand-700 shadow-soft",
     secondary: "border border-slate-200 bg-surface-2 text-slate-700 shadow-soft hover:bg-slate-50 dark:border-slate-800 dark:text-slate-200 dark:hover:bg-surface-3",
     ghost: "text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-surface-3 dark:hover:text-slate-200",
     danger: "border border-red-700 bg-red-600 text-white hover:bg-red-700 shadow-soft",
@@ -41,6 +29,7 @@ export function Button({
 export function IconButton({ className = "", ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
+      aria-label={props["aria-label"] ?? props.title}
       className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition duration-150 hover:bg-slate-100 hover:text-slate-600 active:scale-90 disabled:opacity-40 disabled:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 dark:text-slate-500 dark:hover:bg-surface-3 dark:hover:text-slate-300 dark:focus-visible:ring-offset-background ${className}`}
       {...props}
     />
@@ -65,18 +54,20 @@ export function Badge({ tone = "slate", children, className = "" }: { tone?: key
 
 export function Tabs<T extends string>({ tabs, active, onChange }: { tabs: { id: T; label: string; icon?: ReactNode }[]; active: T; onChange: (id: T) => void }) {
   return (
-    <div className="flex gap-1 rounded-lg bg-slate-100 p-1 dark:bg-surface">
+    <div role="tablist" className="flex gap-1 rounded-lg bg-slate-100 p-1 dark:bg-surface">
       {tabs.map((t) => (
         <button
           key={t.id}
+          role="tab"
           onClick={() => onChange(t.id)}
+          aria-selected={active === t.id}
           className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${
             active === t.id
               ? "bg-surface text-slate-800 shadow-soft dark:bg-surface-3 dark:text-slate-100"
               : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
           }`}
         >
-  {t.icon}
+          {t.icon}
           {t.label}
         </button>
       ))}

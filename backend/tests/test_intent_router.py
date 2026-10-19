@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.services.intent_router import DEFAULT_ANALYSIS_MULTIPLIER, classify_intent, extract_multiplier, is_greeting_only, is_off_topic, needs_web_grounding
+from app.services.intent_router import DEFAULT_ANALYSIS_MULTIPLIER, classify_intent, extract_multiplier, is_greeting_only, is_off_topic, is_project_description, needs_web_grounding
 
 
 @pytest.mark.parametrize("message", [
@@ -23,6 +23,9 @@ from app.services.intent_router import DEFAULT_ANALYSIS_MULTIPLIER, classify_int
     "so is one backend enough for this use case??",
     "well, do we need a queue?",
     "yeah but is a single instance really sufficient here",
+    "How does the cache work?",
+    "Can you walk me through the current architecture?",
+    "Will PostgreSQL be a bottleneck?",
 ])
 def test_classify_advisory(message):
     assert classify_intent(message) == "advisory"
@@ -110,6 +113,21 @@ def test_is_greeting_only_true(message):
 ])
 def test_is_greeting_only_false(message):
     assert is_greeting_only(message) is False
+
+
+@pytest.mark.parametrize("message", [
+    "I want to build a food delivery app",
+    "A RAG chatbot for internal documentation",
+    "Design an API for our mobile product",
+    "An e-commerce marketplace",
+])
+def test_is_project_description_true(message):
+    assert is_project_description(message) is True
+
+
+@pytest.mark.parametrize("message", ["I like turtles", "maybe later", "blue is my favorite color", "42"])
+def test_is_project_description_false_for_unstructured_prose(message):
+    assert is_project_description(message) is False
 
 
 @pytest.mark.parametrize("message", [

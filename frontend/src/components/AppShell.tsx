@@ -5,6 +5,7 @@ import { usePathname, useParams, useRouter } from "next/navigation";
 import { Activity, ArrowLeft, Boxes, ChevronLeft, ChevronRight, Gauge, History, MessageSquare, Zap } from "lucide-react";
 import { AnalyzerPanel } from "@/components/AnalyzerPanel";
 import { ArchitectureCanvas } from "@/components/ArchitectureCanvas";
+import { BrandMark } from "@/components/BrandMark";
 import { ChatPanel } from "@/components/ChatPanel";
 import { ComparePanel } from "@/components/ComparePanel";
 import { ImportRepoScreen } from "@/components/ImportRepoScreen";
@@ -20,6 +21,7 @@ import { buildDiffDisplayState } from "@/lib/diffView";
 import { computeIncrementalLayout } from "@/lib/incrementalLayout";
 import { computeDagreLayout, type LayoutMap } from "@/lib/layout";
 import { normalizeVersionEvidence } from "@/lib/types";
+import { requestErrorMessage } from "@/lib/requestError";
 import type { ArchitectureState, ChatMessage, ChatResponse, CompareResult, IngestResponse, MutationCommand, SimulationResult, VersionDiff, VersionEvidence, VersionRow } from "@/lib/types";
 
 type MobileView = "workspace" | "canvas" | "history";
@@ -125,6 +127,15 @@ export function AppShell() {
   // actually arrives, cleared between turns so a stale stage never lingers.
   const [busyStage, setBusyStage] = useState<string | null>(null);
   const [initError, setInitError] = useState<string | null>(null);
+  const [historyError, setHistoryError] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [layoutSaveStatus, setLayoutSaveStatus] = useState<"saved" | "saving" | "error">("saved");
+  const layoutSaveSequence = useRef(0);
+  const failedLayoutSave = useRef<{ projectId: string; versionId: string; layout: LayoutMap } | null>(null);
+  const projectLoadSequence = useRef(0);
+  const versionLoadSequence = useRef(0);
+  const currentProjectRef = useRef<string | null>(null);
+  const retryProjectAction = useRef<(() => Promise<void>) | null>(null);
   // True while handleCreateProject/handleSwitchProject's real network
   // round trip is in flight — surfaced on Landing's buttons (disabled +
   // a spinner) so a slow response (a cold Render instance waking up, in
@@ -143,9 +154,10 @@ export function AppShell() {
   // session status line. A turn the deterministic Tier-1 fast path
   // handled has no LLM usage to add, which is correct: it used none.
   const [sessionTokens, setSessionTokens] = useState(0);
+  const [lastTurnTokens, setLastTurnTokens] = useState(0);
 
-  const [panelWidth, setPanelWidth] = useState(380);
-  const [historyCollapsed, setHistoryCollapsed] = useState(false);
+  const [panelWidth, setPanelWidth] = useState(340);
+  const [historyCollapsed, setHistoryCollapsed] = useState(true);
   // Below `md` the three-pane layout (chat / canvas / history) can't just
   // shrink — there's no room for even two of them side by side — so it
   // becomes one panel at a time, switched here, instead of the desktop
@@ -184,14 +196,16 @@ export function AppShell() {
     // this one bails out immediately rather than racing it.
     setInitializing(false);
     if (routeProjectId) return;
-    const existing = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
+    let existing: string | null = null;
+    try { existing = localStorage.getItem(STORAGE_KEY); } catch { /* Storage is optional. */ }
     if (!existing) return;
     (async () => {
       try {
         const project = await api.getProject(existing);
         await openProject(project);
-      } catch {
-        localStorage.removeItem(STORAGE_KEY);
+      } catch (error) {
+        setInitError(requestErrorMessage(error, "Couldn’t reopen your project"));
+        retryProjectAction.current = () => handleSwitchProject(existing);
       }
     })();
     // Deliberately run once on mount only — openProject is a fresh
@@ -217,24 +231,22 @@ export function AppShell() {
         const project = await api.getProject(routeProjectId);
         await openProject(project);
         setView("app");
-      } catch {
+      } catch (error) {
         // Doesn't exist, or belongs to a different guest token than this
         // browser's — same 404 either way (see repository.py's owner_token
         // grandfather clause), so there's nothing more specific to tell
         // the user here. Bounce to the project list rather than stranding
         // them on a dead route.
-        router.replace("/");
+        setInitError(requestErrorMessage(error, "Couldn’t open this project"));
+        retryProjectAction.current = () => handleSwitchProject(routeProjectId);
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeProjectId]);
 
   /** Loads a project as the active one — used on first load, and by the
-   * project switcher. Resets every piece of per-project state (chat
-   * transcript included: the backend keeps the real message history, but
-   * this app has never reloaded it into the UI on open, same gap that
-   * already exists on a plain page refresh — switching projects isn't
-   * introducing a new inconsistency, just inheriting an existing one).
+   * project switcher. Restores the persisted conversation and resets
+   * transient per-project state. History failures remain retryable.
    * Also keeps the URL in sync: pushes /project/[id] if it isn't already
    * the current route, so every entry point that opens a project (the
    * switcher, "+ New", import, a direct /project/[id] visit) ends up at
@@ -254,10 +266,22 @@ export function AppShell() {
    * is the correct moment to show the empty state — there's really
    * nothing to display yet. */
   async function openProject(project: Project) {
-    localStorage.setItem(STORAGE_KEY, project.id);
+    const loadSequence = ++projectLoadSequence.current;
+    let history: ChatMessage[] = [];
+    let failedHistory = false;
+    try {
+      history = (await api.getMessages(project.id)).map((message) => ({ role: message.role, content: message.content, createdAt: message.created_at }));
+    } catch { failedHistory = true; }
+    if (loadSequence !== projectLoadSequence.current) return;
+    currentProjectRef.current = project.id;
+    try { localStorage.setItem(STORAGE_KEY, project.id); } catch { /* Keep the current session usable. */ }
     setProjectId(project.id);
     setProjectName(project.name);
-    setMessages([]);
+    setMessages(history);
+    setBusy(false);
+    setBusyStage(null);
+    setHistoryError(failedHistory);
+    setInitError(null);
     setMode("chat");
     setCompareResult(null);
     setSimulationResult(null);
@@ -276,6 +300,7 @@ export function AppShell() {
       setLatestVersionId(null);
       setRawState(null);
       setRawLayout({});
+      setLayoutSaveStatus("saved");
       setGhostLayoutHint({});
       setVersionEvidence({ evidence: [], citations: {} });
       setDiff(null);
@@ -283,7 +308,9 @@ export function AppShell() {
   }
 
   async function handleSwitchProject(id: string) {
-    if (id === projectId) return;
+    if (id === projectId && !initError) return;
+    setInitError(null);
+    retryProjectAction.current = () => handleSwitchProject(id);
     setProjectActionPending(true);
     setSwitchingToId(id);
     try {
@@ -291,21 +318,37 @@ export function AppShell() {
       await openProject(project);
       setView("app");
     } catch (e) {
-      setInitError(e instanceof Error ? e.message : String(e));
+      setInitError(requestErrorMessage(e, "Couldn’t open the project"));
     } finally {
       setProjectActionPending(false);
       setSwitchingToId(null);
     }
   }
 
+  async function retryConversationHistory() {
+    if (!projectId) return;
+    const targetId = projectId;
+    setHistoryLoading(true);
+    try {
+      const history = await api.getMessages(targetId);
+      if (currentProjectRef.current !== targetId) return;
+      setMessages(history.map((message) => ({ role: message.role, content: message.content, createdAt: message.created_at })));
+      setHistoryError(false);
+    } catch {
+      if (currentProjectRef.current === targetId) setHistoryError(true);
+    } finally { setHistoryLoading(false); }
+  }
+
   async function handleCreateProject() {
+    setInitError(null);
+    retryProjectAction.current = handleCreateProject;
     setProjectActionPending(true);
     try {
       const created = await api.createProject("New Project");
       await openProject({ ...created, latest_version: null });
       setView("app");
     } catch (e) {
-      setInitError(e instanceof Error ? e.message : String(e));
+      setInitError(requestErrorMessage(e, "Couldn’t create the project"));
     } finally {
       setProjectActionPending(false);
     }
@@ -320,6 +363,7 @@ export function AppShell() {
    * the URL matches what's on screen even if we got here from a
    * /project/[id] page. */
   function handleShowLanding() {
+    setInitError(null);
     // Found live: navigating from /project/[id] to "/" unmounts and
     // remounts AppShell (a different route segment, so every piece of
     // component state — including projectId itself — resets) — which
@@ -328,7 +372,7 @@ export function AppShell() {
     // a second later (the round trip of that background api.getProject
     // call). An explicit "go home" click has to actually clear that, not
     // just change what's on screen right now, or the remount undoes it.
-    localStorage.removeItem(STORAGE_KEY);
+    try { localStorage.removeItem(STORAGE_KEY); } catch { /* Storage is optional. */ }
     setView("landing");
     if (pathname !== "/") router.push("/");
   }
@@ -359,33 +403,47 @@ export function AppShell() {
    * handleUndo/handleRedo below even though both end up calling
    * loadVersion, because this one resets the undo/redo stacks instead of
    * consuming them (see undoStack's declaration for why). */
-  function handleSelectVersionFromHistory(versionId: string) {
+  async function handleSelectVersionFromHistory(versionId: string) {
     if (!projectId) return;
-    setUndoStack([]);
-    setRedoStack([]);
-    void loadVersion(projectId, versionId);
+    if (await loadVersion(projectId, versionId)) {
+      setUndoStack([]);
+      setRedoStack([]);
+    }
   }
 
   async function handleUndo() {
     if (!projectId || undoStack.length === 0) return;
     const targetId = undoStack[undoStack.length - 1];
     const leavingId = activeVersionId;
-    setUndoStack((prev) => prev.slice(0, -1));
-    if (leavingId) setRedoStack((prev) => [...prev, leavingId]);
-    await loadVersion(projectId, targetId);
+    if (await loadVersion(projectId, targetId)) {
+      setUndoStack((prev) => prev.slice(0, -1));
+      if (leavingId) setRedoStack((prev) => [...prev, leavingId]);
+    }
   }
 
   async function handleRedo() {
     if (!projectId || redoStack.length === 0) return;
     const targetId = redoStack[redoStack.length - 1];
     const leavingId = activeVersionId;
-    setRedoStack((prev) => prev.slice(0, -1));
-    if (leavingId) setUndoStack((prev) => [...prev, leavingId]);
-    await loadVersion(projectId, targetId);
+    if (await loadVersion(projectId, targetId)) {
+      setRedoStack((prev) => prev.slice(0, -1));
+      if (leavingId) setUndoStack((prev) => [...prev, leavingId]);
+    }
   }
 
   async function loadVersion(pid: string, versionId: string, preloaded?: VersionRow) {
-    const version = preloaded ?? (await api.getVersion(pid, versionId));
+    const loadSequence = ++versionLoadSequence.current;
+    let version: VersionRow;
+    try { version = preloaded ?? await api.getVersion(pid, versionId); }
+    catch (error) {
+      if (currentProjectRef.current === pid && loadSequence === versionLoadSequence.current) {
+        setInitError(requestErrorMessage(error, "Couldn’t open this version"));
+        retryProjectAction.current = async () => { await loadVersion(pid, versionId); };
+      }
+      return false;
+    }
+    if (currentProjectRef.current !== pid || loadSequence !== versionLoadSequence.current) return false;
+    setInitError(null);
     let layout = version.layout;
     if (!layout || Object.keys(layout).length === 0) {
       layout = computeDagreLayout(version.state);
@@ -397,6 +455,7 @@ export function AppShell() {
     setGhostLayoutHint({}); // no in-memory hint when jumping to an arbitrary version
     setRawState(version.state);
     setRawLayout(layout);
+    setLayoutSaveStatus("saved");
     setVersionEvidence(normalizeVersionEvidence(version.evidence));
     // No diff here — this just loads a version's actual current state, not
     // a "what changed" view. `diff` (and its removed-node ghosts) is only
@@ -408,10 +467,12 @@ export function AppShell() {
     // exists, isn't "the design", it's a leftover from the last edit.
     setDiff(null);
     setActiveVersionId(versionId);
+    return true;
   }
 
   async function handleSend(message: string) {
-    if (!projectId) return;
+    if (!projectId || busy) return false;
+    const sendingProjectId = projectId;
     setMessages((prev) => [...prev, { role: "user", content: message, createdAt: new Date().toISOString() }]);
     setBusy(true);
     setBusyStage(null);
@@ -426,13 +487,15 @@ export function AppShell() {
       // point is unchanged from before streaming existed.
       let result: ChatResponse | null = null;
       for await (const event of api.sendChatMessageStream(projectId, message, activeVersionId)) {
-        if (event.type === "stage") setBusyStage(event.stage);
+        if (event.type === "stage") { if (currentProjectRef.current === sendingProjectId) setBusyStage(event.stage); }
         else result = event.payload;
       }
       if (!result) throw new Error("The response stream ended without a result.");
+      if (currentProjectRef.current !== sendingProjectId) return false;
 
-      if (result.kind !== "error" && result.usage) {
+      if (result.usage) {
         setSessionTokens((t) => t + result.usage!.total_tokens);
+        setLastTurnTokens(result.usage.total_tokens);
       }
       if (result.kind === "question") {
         setMessages((prev) => [
@@ -477,15 +540,21 @@ export function AppShell() {
         setVersionsRefreshKey((k) => k + 1);
       } else {
         setMessages((prev) => [...prev, { role: "assistant", content: `⚠️ ${result.error}`, animate: true, createdAt: new Date().toISOString() }]);
+        return false;
       }
+      return true;
     } catch (e) {
+      if (currentProjectRef.current !== sendingProjectId) return false;
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: `⚠️ ${e instanceof Error ? e.message : String(e)}`, animate: true, createdAt: new Date().toISOString() },
+        { role: "assistant", content: `${requestErrorMessage(e, "Couldn’t send your message")} Your draft has been saved.`, createdAt: new Date().toISOString() },
       ]);
+      return false;
     } finally {
-      setBusy(false);
-      setBusyStage(null);
+      if (currentProjectRef.current === sendingProjectId) {
+        setBusy(false);
+        setBusyStage(null);
+      }
     }
   }
 
@@ -547,15 +616,39 @@ export function AppShell() {
     setMessages((prev) => [...prev, { role: "assistant", content: result.summary, animate: true }]);
   }
 
+  async function persistLayout(targetProjectId: string, targetVersionId: string, layout: LayoutMap, sequence: number) {
+    setLayoutSaveStatus("saving");
+    try {
+      await api.updateLayout(targetProjectId, targetVersionId, layout);
+      if (sequence === layoutSaveSequence.current) {
+        failedLayoutSave.current = null;
+        setLayoutSaveStatus("saved");
+      }
+    } catch {
+      if (sequence === layoutSaveSequence.current) {
+        failedLayoutSave.current = { projectId: targetProjectId, versionId: targetVersionId, layout };
+        setLayoutSaveStatus("error");
+      }
+    }
+  }
+
+  function handleRetryLayoutSave() {
+    const failed = failedLayoutSave.current;
+    if (!failed) return;
+    const sequence = ++layoutSaveSequence.current;
+    void persistLayout(failed.projectId, failed.versionId, failed.layout, sequence);
+  }
+
   function handleNodePositionsChange(updates: LayoutMap) {
     // Only the live editable graph persists drags — a compare snapshot has
     // no single version id of its own to write a layout onto here.
     if (!projectId || !activeVersionId || compareResult) return;
-    setRawLayout((prev) => {
-      const next = { ...prev, ...updates };
-      api.updateLayout(projectId, activeVersionId, next).catch(() => {});
-      return next;
-    });
+    const targetProjectId = projectId;
+    const targetVersionId = activeVersionId;
+    const next = { ...rawLayout, ...updates };
+    const sequence = ++layoutSaveSequence.current;
+    setRawLayout(next);
+    void persistLayout(targetProjectId, targetVersionId, next, sequence);
   }
 
   // Simulation runs client-side only against the currently loaded graph —
@@ -671,18 +764,20 @@ export function AppShell() {
 
   async function handleCompare(versionAId: string, versionBId: string) {
     if (!projectId) return;
+    const targetProjectId = projectId;
     try {
       const [result, versionB] = await Promise.all([api.compare(projectId, versionAId, versionBId), api.getVersion(projectId, versionBId)]);
+      if (currentProjectRef.current !== targetProjectId) return;
       let layout = versionB.layout;
       if (!layout || Object.keys(layout).length === 0) {
         layout = computeDagreLayout(versionB.state);
       }
       setCompareResult({ result, state: versionB.state, layout });
     } catch (e) {
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: `⚠️ Could not compare versions: ${e instanceof Error ? e.message : String(e)}`, createdAt: new Date().toISOString() },
-      ]);
+      if (currentProjectRef.current === targetProjectId) {
+        setInitError(requestErrorMessage(e, "Couldn’t compare these versions"));
+        retryProjectAction.current = () => handleCompare(versionAId, versionBId);
+      }
     }
   }
 
@@ -693,13 +788,9 @@ export function AppShell() {
    * "sharing" is just handing out a URL to a real, already-public route
    * that happens to render read-only instead of the full editor. */
   function handleCopyShareLink() {
-    if (!projectId || !activeVersionId) return;
+    if (!projectId || !activeVersionId) return "";
     const url = `${window.location.origin}/shared/${projectId}/${activeVersionId}`;
-    navigator.clipboard.writeText(url).catch(() => {
-      // clipboard permission denied or unavailable — the URL is still
-      // valid, the user just has to copy it from the address bar/prompt
-      // some browsers fall back to; nothing more to do from here.
-    });
+    return url;
   }
 
   const displayState = useMemo(() => {
@@ -719,22 +810,14 @@ export function AppShell() {
   const viewingHistorical = !compareResult && activeVersionId !== null && activeVersionId !== latestVersionId;
 
   return (
-    <div className="h-screen bg-background p-3">
-      <div ref={appRef} className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-surface shadow-raised dark:border-slate-800">
+    <div className="h-dvh bg-background p-0 sm:p-3">
+      <div ref={appRef} className="app-frame flex h-full flex-col overflow-hidden border border-slate-200 bg-surface dark:border-slate-800">
         <header
-          className="relative flex h-14 shrink-0 items-center justify-between overflow-hidden border-b border-slate-200 bg-surface px-4 dark:border-slate-800 dark:bg-surface"
-          style={{
-            // A gradient mesh spent exactly once, on the one strip of the
-            // app that's always visible — not a repeating hero pattern.
-            backgroundImage:
-              "radial-gradient(480px 140px at 12% -80%, color-mix(in srgb, var(--brand-400) 14%, transparent), transparent 65%)",
-          }}
+          className="app-header relative z-30 flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-surface px-4 dark:border-slate-800 dark:bg-surface"
         >
           <div className="flex items-center gap-2">
             {view === "landing" ? (
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-brand-400 to-brand-600 text-white shadow-soft">
-                <Boxes size={17} />
-              </div>
+              <BrandMark size={32} />
             ) : (
               // Wired to actually go home — found live: the logo mark reads
               // as a clickable "back to start" affordance (it's the one
@@ -744,9 +827,9 @@ export function AppShell() {
               <button
                 onClick={handleShowLanding}
                 title="Back to projects"
-                className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-brand-400 to-brand-600 text-white shadow-soft transition hover:brightness-110 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-background"
+                className="rounded-[10px_10px_10px_3px] transition hover:brightness-110 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-background"
               >
-                <Boxes size={17} />
+                <BrandMark size={32} />
               </button>
             )}
             <div className="leading-tight">
@@ -757,6 +840,7 @@ export function AppShell() {
                     projectName={projectName || "AI Architect"}
                     onSwitch={handleSwitchProject}
                     onCreate={handleShowLanding}
+                    onRename={(id, name) => { if (id === projectId) setProjectName(name); }}
                     switchingToId={switchingToId}
                   />
                   <p className="px-2 text-[11px] text-slate-400 dark:text-slate-500">
@@ -769,18 +853,15 @@ export function AppShell() {
                 // new or pick a path in," so a project-switcher control
                 // (whose own dropdown offers "+ New" again) is pure
                 // redundancy here, not a real affordance. Found live.
-                <p className="px-2 font-display text-sm font-semibold text-slate-800 dark:text-slate-100">AI Architect</p>
+                <p className="px-2 font-display text-sm font-semibold text-slate-800 dark:text-slate-100">ArchMind</p>
               )}
             </div>
           </div>
           <ThemeToggle />
         </header>
 
-        {initError ? (
-          <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-red-600 dark:text-red-400">
-            Could not reach the backend at NEXT_PUBLIC_API_URL: {initError}
-          </div>
-        ) : initializing ? (
+        {initError && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 border-b border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-200"><span>{initError}</span><div className="flex gap-4"><button disabled={projectActionPending} onClick={() => void retryProjectAction.current?.()} className="font-semibold underline">{projectActionPending ? "Retrying…" : "Retry"}</button><button onClick={() => { setInitError(null); if (routeProjectId !== projectId) router.replace(projectId ? `/project/${projectId}` : "/"); }} className="underline">Dismiss</button></div></div>}
+        {initializing ? (
           <div className="flex flex-1 items-center justify-center gap-2 text-sm text-slate-400 dark:text-slate-500">
             <Spinner className="h-4 w-4" /> Loading…
           </div>
@@ -840,7 +921,7 @@ export function AppShell() {
                       onFixInChat={handleFixInChat}
                     />
                   ) : (
-                    <ChatPanel messages={messages} onSend={handleSend} busy={busy || !projectId} busyStage={busyStage} onConsumeAnimation={handleConsumeAnimation} />
+                    <ChatPanel key={projectId} projectId={projectId ?? ""} hasArchitecture={!!rawState} historyError={historyError} onRetryHistory={() => void retryConversationHistory()} messages={messages} onSend={handleSend} busy={busy || historyLoading || !projectId} busyStage={busyStage} onConsumeAnimation={handleConsumeAnimation} />
                   )}
                 </div>
               </>
@@ -877,6 +958,9 @@ export function AppShell() {
                     projectId={!compareResult && projectId ? projectId : undefined}
                     versionId={!compareResult && activeVersionId ? activeVersionId : undefined}
                     evidence={compareResult ? undefined : versionEvidence}
+                    onStartChat={!compareResult ? () => { setMode("chat"); setMobileView("workspace"); } : undefined}
+                    layoutSaveStatus={!compareResult && activeVersionId ? layoutSaveStatus : undefined}
+                    onRetryLayoutSave={!compareResult ? handleRetryLayoutSave : undefined}
                     simDock={
                       // Permanently on the canvas, not gated behind opening
                       // the Simulate tab — the sidebar tab is now only for
@@ -902,6 +986,7 @@ export function AppShell() {
 
             const historyPanel = projectId && (
               <VersionHistory
+                key={projectId}
                 projectId={projectId}
                 activeVersionId={activeVersionId}
                 refreshKey={versionsRefreshKey}
@@ -922,7 +1007,7 @@ export function AppShell() {
                     visible at once, side by side. Unchanged from before —
                     the mobile view below is a fully separate layout, not
                     a squeeze of this one. */}
-                <div className="hidden min-h-0 flex-1 md:flex">
+                <div className="hidden min-h-0 flex-1 lg:flex">
                   <div style={{ width: panelWidth }} className="flex shrink-0 flex-col border-r border-slate-200 bg-surface dark:border-slate-800">
                     {workspacePanel}
                   </div>
@@ -959,7 +1044,7 @@ export function AppShell() {
                     `md`, so the three-pane row above is replaced entirely
                     (not shrunk) by a switcher over a single full-width
                     panel. */}
-                <div className="flex min-h-0 flex-1 flex-col md:hidden">
+                <div className="flex min-h-0 flex-1 flex-col lg:hidden">
                   <div className="border-b border-slate-200 p-2 dark:border-slate-800">
                     <Tabs active={mobileView} onChange={setMobileView} tabs={mobileTabs} />
                   </div>
@@ -975,7 +1060,7 @@ export function AppShell() {
         {sessionTokens > 0 && (
           <div className="flex h-6 shrink-0 items-center justify-end gap-1.5 border-t border-slate-200 bg-slate-50 px-3 text-[10px] text-slate-400 dark:border-slate-800 dark:bg-surface/60 dark:text-slate-500">
             <Zap size={10} />
-            {sessionTokens.toLocaleString()} tokens used this session
+            {lastTurnTokens.toLocaleString()} last turn · {sessionTokens.toLocaleString()} cumulative LLM tokens
           </div>
         )}
       </div>

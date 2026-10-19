@@ -22,7 +22,7 @@ class RestAPIError(RuntimeError):
         self.body = body
 
 
-async def post_chat_completion(base_url: str, api_key: str, model: str, messages: list[dict], timeout: float = 60.0) -> dict:
+async def post_chat_completion(base_url: str, api_key: str, model: str, messages: list[dict], timeout: float = 60.0, max_tokens: int = 1800) -> dict:
     """POST .../chat/completions, JSON mode on, and return the parsed
     response body. Raises RestAPIError on any non-2xx status — deliberately
     NOT retried in here (a REST 4xx/5xx isn't fixed by resending the same
@@ -34,7 +34,7 @@ async def post_chat_completion(base_url: str, api_key: str, model: str, messages
         resp = await client.post(
             f"{base_url}/chat/completions",
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={"model": model, "messages": messages, "response_format": {"type": "json_object"}, "temperature": 0.3},
+            json={"model": model, "messages": messages, "response_format": {"type": "json_object"}, "temperature": 0.3, "max_tokens": max_tokens},
         )
 
     if resp.status_code >= 400:

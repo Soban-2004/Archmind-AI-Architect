@@ -75,7 +75,8 @@ export function PaletteTiles({ activeKind, onKindChange, onPick }: TilesProps) {
       </div>
       <div className="flex max-h-80 flex-col gap-1 overflow-y-auto p-2">
         {types.map(({ type, info }) => (
-          <div
+          <button
+            type="button"
             key={type}
             draggable
             onDragStart={(e) => {
@@ -93,7 +94,7 @@ export function PaletteTiles({ activeKind, onKindChange, onPick }: TilesProps) {
               <p className="text-xs font-medium text-slate-700 dark:text-slate-200">{info.label}</p>
               <p className="mt-0.5 line-clamp-2 text-[10.5px] leading-snug text-slate-400 dark:text-slate-500">{info.description}</p>
             </div>
-          </div>
+          </button>
         ))}
       </div>
     </div>
@@ -103,6 +104,7 @@ export function PaletteTiles({ activeKind, onKindChange, onPick }: TilesProps) {
 interface Props {
   onPick: (selection: PaletteSelection) => void;
   disabled?: boolean;
+  label?: string;
 }
 
 /** The toolbar entry point — a "+" button opening PaletteTiles in a
@@ -112,7 +114,7 @@ interface Props {
  * (sensible default name/engine, and where it lands) is
  * ArchitectureCanvas's job now, since that's what owns screenToFlowPosition
  * and the drag/drop/right-click placement logic this menu shares with. */
-export function ComponentPalette({ onPick, disabled }: Props) {
+export function ComponentPalette({ onPick, disabled, label }: Props) {
   const [open, setOpen] = useState(false);
   const [activeKind, setActiveKind] = useState<NodeKind>("service");
   const rootRef = useRef<HTMLDivElement>(null);
@@ -132,14 +134,27 @@ export function ComponentPalette({ onPick, disabled }: Props) {
 
   return (
     <div ref={rootRef} className="relative">
-      <IconButton
-        onClick={() => setOpen((v) => !v)}
-        disabled={disabled}
-        className="bg-surface/90 shadow-soft backdrop-blur-sm dark:bg-surface/90"
-        title="Add a component"
-      >
-        <Plus size={14} className={open ? "text-brand-600 dark:text-brand-400" : ""} />
-      </IconButton>
+      {label ? (
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          disabled={disabled}
+          aria-expanded={open}
+          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-bp-line-strong bg-surface px-4 text-sm font-semibold text-bp-ink shadow-soft transition hover:border-brand-400 hover:bg-brand-50 active:scale-[.98] disabled:pointer-events-none disabled:opacity-50 dark:hover:bg-brand-500/10"
+        >
+          <Plus size={15} className={open ? "text-brand-600 dark:text-brand-400" : "text-bp-muted"} />
+          {label}
+        </button>
+      ) : (
+        <IconButton
+          onClick={() => setOpen((v) => !v)}
+          disabled={disabled}
+          className="bg-surface/90 shadow-soft backdrop-blur-sm dark:bg-surface/90"
+          title="Add a component"
+        >
+          <Plus size={14} className={open ? "text-brand-600 dark:text-brand-400" : ""} />
+        </IconButton>
+      )}
       {open && (
         <div className="animate-fade-in absolute right-0 top-full z-30 mt-1.5 rounded-xl bg-surface shadow-raised">
           <PaletteTiles

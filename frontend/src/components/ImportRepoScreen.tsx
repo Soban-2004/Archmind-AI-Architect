@@ -150,6 +150,15 @@ export function ImportRepoScreen({ onSuccess, onCancel }: Props) {
 
             {mode === "upload" ? (
               <div
+                role="button"
+                tabIndex={0}
+                aria-label="Choose a ZIP repository archive"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    inputRef.current?.click();
+                  }
+                }}
                 onDragOver={(e) => {
                   e.preventDefault();
                   setDragActive(true);
@@ -190,12 +199,13 @@ export function ImportRepoScreen({ onSuccess, onCancel }: Props) {
               </div>
             ) : (
               <div className="mt-3">
-                <label className="block text-[11px] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                <label htmlFor="repository-url" className="block text-[11px] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
                   Repo URL
                 </label>
                 <div className="mt-1 flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 focus-within:border-brand-400 focus-within:ring-2 focus-within:ring-brand-100 dark:border-slate-700 dark:bg-slate-800 dark:focus-within:ring-brand-500/20">
                   <GitBranch size={14} className="shrink-0 text-slate-300 dark:text-slate-600" />
                   <input
+                    id="repository-url"
                     value={githubUrl}
                     onChange={(e) => setGithubUrl(e.target.value)}
                     placeholder="github.com/owner/repo"
@@ -209,10 +219,11 @@ export function ImportRepoScreen({ onSuccess, onCancel }: Props) {
             )}
             {uploadError && <p className="mt-2 text-xs text-red-600 dark:text-red-400">⚠️ {uploadError}</p>}
 
-            <label className="mt-4 block text-[11px] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+            <label htmlFor="import-project-name" className="mt-4 block text-[11px] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
               Project name
             </label>
             <input
+              id="import-project-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Imported Project"

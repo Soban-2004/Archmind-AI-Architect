@@ -17,9 +17,9 @@ import {
   type NodeTypes,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Map, Network, Redo2, Trash2, Undo2, X } from "lucide-react";
+import { Check, CloudOff, Map, MessageSquare, Network, Redo2, RotateCw, Trash2, Undo2, X } from "lucide-react";
 import { toFlowElements } from "@/lib/diffView";
-import type { LayoutMap } from "@/lib/layout";
+import { NODE_HEIGHT, NODE_WIDTH, TRAFFIC_SOURCE_HEIGHT, TRAFFIC_SOURCE_WIDTH, type LayoutMap } from "@/lib/layout";
 import { applySimulation } from "@/lib/simView";
 import { listComponentTypes } from "@/lib/componentInfo";
 import type { AddNodeCommand, ArchEdge, ArchitectureState, ArchNode, MutationCommand, NodeKind, SimulationResult, VersionDiff, VersionEvidence } from "@/lib/types";
@@ -31,17 +31,17 @@ import { FlowEdge } from "./FlowEdge";
 import { NodeDetailCard } from "./NodeDetailCard";
 import { SimulationDock, type SimDockProps } from "./SimulationDock";
 import { TrafficSourceNode } from "./TrafficSourceNode";
-import { EmptyState, IconButton, Spinner } from "./ui";
+import { IconButton, Spinner } from "./ui";
 
 const nodeTypes: NodeTypes = { archNode: ArchNodeCard, trafficSource: TrafficSourceNode };
 const edgeTypes: EdgeTypes = { flow: FlowEdge };
 
 const MINIMAP_KIND_COLOR: Record<string, string> = {
-  service: "#3b82f6",
-  database: "#10b981",
-  queue: "#a855f7",
-  external_dependency: "#f97316",
-  infra_node: "#64748b",
+  service: "#c4472c",
+  database: "#147d70",
+  queue: "#d79a20",
+  external_dependency: "#8b5f88",
+  infra_node: "#718078",
 };
 
 /** What a manually-drawn edge should default to, based on what it's
@@ -123,12 +123,15 @@ interface Props {
   /** Present exactly when there's a real project+version to link to (i.e.
    * not already on the read-only shared view itself) — enables "Copy
    * read-only link" in the export menu. */
-  onShare?: () => void;
+  onShare?: () => string;
   /** Same "real project+version, not the read-only shared/compare view"
    * gate as onShare — passed straight through to ExportMenu to enable
    * "Download starter kit". */
   projectId?: string;
   versionId?: string;
+  onStartChat?: () => void;
+  layoutSaveStatus?: "saved" | "saving" | "error";
+  onRetryLayoutSave?: () => void;
 }
 
 /** Thin wrapper: ReactFlowProvider has to sit OUTSIDE the component that
@@ -165,14 +168,17 @@ function CanvasBody({
   projectId,
   versionId,
   evidence,
+  onStartChat,
+  layoutSaveStatus,
+  onRetryLayoutSave,
 }: Props) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [deletingEdge, setDeletingEdge] = useState(false);
   const [edgeError, setEdgeError] = useState<string | null>(null); // also used for a rejected manual add_node — see handlePaletteAdd
-  const [minimapVisible, setMinimapVisible] = useState(true);
+  const [minimapVisible, setMinimapVisible] = useState(false);
   const flowWrapperRef = useRef<HTMLDivElement>(null);
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, fitBounds, viewportInitialized } = useReactFlow();
 
   // "Pause" freezes the actual SVG particle animation in place rather than
   // just hiding a boolean — these are native SMIL <animateMotion>
@@ -243,6 +249,25 @@ function CanvasBody({
     () => baseNodes.map((n) => (dragOverrides[n.id] ? { ...n, position: dragOverrides[n.id] } : n)),
     [baseNodes, dragOverrides]
   );
+
+  const structureSignature = nodes.map((node) => node.id).join(",");
+  useEffect(() => {
+    if (!viewportInitialized || !structureSignature || !flowWrapperRef.current?.clientWidth) return;
+    const frame = requestAnimationFrame(() => {
+      // Include the synthetic traffic source using the shared, deterministic sizes.
+      const left = Math.min(...nodes.map((node) => node.position.x));
+      const top = Math.min(...nodes.map((node) => node.position.y));
+      const right = Math.max(...nodes.map((node) => node.position.x + (node.type === "trafficSource" ? TRAFFIC_SOURCE_WIDTH : NODE_WIDTH)));
+      const bottom = Math.max(...nodes.map((node) => node.position.y + (node.type === "trafficSource" ? TRAFFIC_SOURCE_HEIGHT : NODE_HEIGHT)));
+      void fitBounds({ x: left - 40, y: top - 64, width: right - left + 80, height: bottom - top + (dockActive ? 174 : 104) }, {
+        padding: 0.1,
+        duration: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 260,
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+    // Refit on structural changes, never while a user drags an existing node.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewportInitialized, structureSignature, fitBounds, dockActive]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
@@ -413,21 +438,31 @@ function CanvasBody({
       );
     }
     return (
-      <div className="relative flex h-full flex-col">
-        <EmptyState
-          icon={<Network size={22} />}
-          title="No architecture yet"
-          description={onApplyCommands ? "Answer a few questions in the chat, or add the first component yourself." : "Answer a few questions in the chat to generate one."}
-        />
-        {onApplyCommands && (
-          // No canvas is mounted yet, so there's nowhere to drop onto or
-          // right-click — a plain click-to-place (no position override,
-          // same as today) is the whole interaction here; drag/right-click
-          // both become available once there's an actual canvas below.
-          <div className="absolute bottom-6 left-1/2 -translate-x-1/2">
-            <ComponentPalette onPick={(sel) => void handlePaletteAdd(sel.kind, sel.type)} />
+      <div className="relative flex h-full items-center justify-center overflow-y-auto px-5 py-8">
+        <div className="w-full max-w-md rounded-2xl border border-bp-line bg-surface p-6 text-center shadow-soft sm:p-8">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
+            <Network size={21} />
           </div>
-        )}
+          <h2 className="font-display mt-4 text-lg font-semibold text-bp-ink">Build your first architecture</h2>
+          <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-bp-muted">
+            Describe the product and its constraints for a guided design, or place components manually when you already know the shape.
+          </p>
+          <div className="mt-6 flex flex-col justify-center gap-2 sm:flex-row">
+            {onStartChat && (
+              <button
+                type="button"
+                onClick={onStartChat}
+                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 text-sm font-semibold text-white shadow-soft transition hover:bg-brand-700 active:scale-[.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2"
+              >
+                <MessageSquare size={15} /> Start with a brief
+              </button>
+            )}
+            {onApplyCommands && (
+              <ComponentPalette label="Add first component" onPick={(sel) => void handlePaletteAdd(sel.kind, sel.type)} />
+            )}
+          </div>
+          <p className="mt-4 text-[11px] text-bp-muted">You can mix both approaches at any time.</p>
+        </div>
       </div>
     );
   }
@@ -441,7 +476,7 @@ function CanvasBody({
     // ReactFlowProvider the outer ArchitectureCanvas wraps it in.
     <div
       ref={flowWrapperRef}
-      className="relative h-full w-full"
+      className="architecture-stage relative h-full w-full"
       onDragOver={handleDragOverCanvas}
       onDrop={handleDropOnCanvas}
     >
@@ -453,13 +488,7 @@ function CanvasBody({
         onNodesChange={onNodesChange}
         onConnect={onApplyCommands ? onConnect : undefined}
         nodesConnectable={!!onApplyCommands}
-        fitView
-        // Compact-to-fit, not flow-bigger: the whole diagram always scales
-        // to the available space rather than requiring a scrollbar, so
-        // extra chrome (the sim dock) just needs its own reserved margin
-        // rather than a layout rethink — leave real room at the bottom
-        // when the dock is showing so it never sits over a node.
-        fitViewOptions={simDock ? { padding: { top: "40px", left: "40px", right: "40px", bottom: "110px" } } : undefined}
+        minZoom={0.2}
         proOptions={{ hideAttribution: true }}
         onNodeClick={(_, node) => {
           setSelectedNodeId(node.id);
@@ -504,7 +533,7 @@ function CanvasBody({
           });
         }}
       >
-        <Background variant={BackgroundVariant.Dots} gap={20} size={1.5} color="var(--rf-dot-color)" />
+        <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="var(--rf-dot-color)" />
         <Controls showInteractive={false} />
         {nodes.length > 5 && minimapVisible && (
           <MiniMap
@@ -520,6 +549,29 @@ function CanvasBody({
           />
         )}
       </ReactFlow>
+      <div className="pointer-events-none absolute left-4 top-4 flex items-center gap-2 rounded-lg bg-surface/95 px-3 py-2 text-xs shadow-soft">
+        <Network size={14} className="text-brand-500 dark:text-brand-400" />
+        <span className="font-medium text-slate-700 dark:text-slate-200">Architecture</span>
+        <span className="text-slate-500 dark:text-slate-400">{state?.nodes.length ?? 0} components</span>
+        {layoutSaveStatus && (
+          <span
+            role="status"
+            className={`ml-1 inline-flex items-center gap-1 border-l border-bp-line pl-2 ${
+              layoutSaveStatus === "error" ? "pointer-events-auto text-red-600 dark:text-red-400" : "text-bp-muted"
+            }`}
+          >
+            {layoutSaveStatus === "saving" ? (
+              <><Spinner className="h-3 w-3" /> Saving</>
+            ) : layoutSaveStatus === "error" ? (
+              <button type="button" onClick={onRetryLayoutSave} className="inline-flex items-center gap-1 font-medium hover:underline">
+                <CloudOff size={12} /> Save failed <RotateCw size={11} />
+              </button>
+            ) : (
+              <><Check size={12} className="text-bp-good" /> Saved</>
+            )}
+          </span>
+        )}
+      </div>
       {nodes.length > 5 && (
         // Top-right: Controls defaults to bottom-left and MiniMap to
         // bottom-right, so this is the one corner nothing else claims.
@@ -566,7 +618,7 @@ function CanvasBody({
               </span>
               ?
             </p>
-            <IconButton onClick={() => setSelectedEdgeId(null)} className="h-6 w-6 shrink-0">
+            <IconButton onClick={() => setSelectedEdgeId(null)} className="h-6 w-6 shrink-0" title="Close connection details">
               <X size={13} />
             </IconButton>
           </div>

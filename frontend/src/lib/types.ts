@@ -209,7 +209,7 @@ export type ChatResponse =
   // changed: no version, no diff. `sources` is only ever non-empty for a
   // web-grounded advisory answer.
   | { kind: "answer"; answer: string; usage: TokenUsage | null; sources?: WebSource[] }
-  | { kind: "error"; error: string };
+  | { kind: "error"; error: string; usage?: TokenUsage | null };
 
 // Mirrors backend/app/models/compare.py
 export interface DiffExplanationEntry {
@@ -320,8 +320,7 @@ export interface ChatMessage {
    * typewriter reveal; history loaded from the server renders instantly. */
   animate?: boolean;
   /** ISO timestamp, set client-side when the message is appended — shown
-   * on hover, not the backend's own created_at (this app doesn't reload
-   * conversation history into the UI yet, see README). */
+   * on hover. Restored history uses the backend's persisted created_at. */
   createdAt?: string;
   /** Real sources a web-grounded advisory answer actually cited (see
    * ChatResponse's "answer" variant) — undefined/empty for every other
